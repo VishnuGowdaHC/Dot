@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Reset default margins and prevent horizontal scroll */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  display: flex;
+  justify-content: end;
+  align-items: start;
+  padding-bottom: 20px;
+  padding-top: 10px;
+  overflow-x: hidden;
+  
+}
+
+/* Background wallpaper for the app */
+body {
+  
+  @apply text-white;
+}
+
+/* Frosted glass card */
+.card {
+
+  
+  background: rgba(0, 0, 0, 0.884);          /* semi-transparent */
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(12px);             /* ✅ blur behind */
+  -webkit-backdrop-filter: blur(12px);     /* Safari support */
+  border: 1px solid rgba(141, 139, 139, 0);
+}
+
+
+
+/* Target the scrollbar track */
+::-webkit-scrollbar {
+  width: 2px;
+  
+}
+
+/* Track background */
+::-webkit-scrollbar-track {
+  background: #29292938;
+ 
+}
+
+/* Scrollbar thumb */
+::-webkit-scrollbar-thumb {
+  background: #47464692;
+  border-radius: 6px;
+}
+
+/* Hover effect */
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
