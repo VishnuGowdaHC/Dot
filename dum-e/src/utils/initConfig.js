@@ -9,7 +9,7 @@ export default function initConfig() {
           const win = await window.Neutralino.window.getSize();
           const margin = 20;
           const x = displays[0].resolution.width - win.width - margin;
-          const y = displays[0].resolution.height - win.height - margin;
+          const y = displays[0].resolution.height - win.height - 40;
           await window.Neutralino.window.move(x, y);
         } catch (e) {
           console.error("error:", e);

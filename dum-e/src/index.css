@@ -6,11 +6,11 @@ html, body, #root {
   margin: 0;
   display: flex;
   justify-content: end;
-  align-items: start;
+  align-items: end;
   padding-bottom: 20px;
   padding-top: 10px;
   overflow-x: hidden;
-  
+  overflow-y: scroll
 }
 
 /* Background wallpaper for the app */
