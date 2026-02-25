@@ -8,6 +8,7 @@ intents = [
     "open leetcode",
     "open youtube",
     "start leetcode",
+    "open chatgpt",
     "chat with ai",
     "yo open yt"
 ]

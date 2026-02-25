@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from src.core.intentClassifier import get_intent
+from src.core.intentRouter import routeIntent
 from fastapi.middleware.cors import CORSMiddleware
+
 
 app = FastAPI()
 
@@ -18,7 +19,5 @@ class Input(BaseModel):
 @app.post("/intent")
 
 async def intent(input: Input):
-    print("user:", input.text)
-    intent, score = get_intent(input.text)
-    print("intent:", intent, "score:", score)
+    routeIntent(input.text)
     return { "status": "OK"}
