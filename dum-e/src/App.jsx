@@ -22,14 +22,14 @@ export default function App() {
     await window.Neutralino.app.exit() 
   }
 
-  async function sendText(text) {
+  async function sendText(text, isListening) {
     try{
       const res =await fetch("http://localhost:3000/intent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text, isListening })
       } 
     )
     const data = await res.json()
