@@ -14,7 +14,7 @@ def routeIntent(text):
     intent, score = get_intent(text)
     print(intent, score)
     for i in range(len(intents)):
-        if (intents[i] == intent) & (score > 0.58):
+        if (intents[i] == intent) & (score > 0.5):
             if intent == "open youtube" :
                 openWeb("youtube")
             elif intent == "open leetcode" :
