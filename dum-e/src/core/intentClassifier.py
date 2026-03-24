@@ -1,26 +1,39 @@
-from sentence_transformers import SentenceTransformer
-import numpy as np
+from sentence_transformers import SentenceTransformer, util
+from src.core.intentRouter import routeIntent
+import numpy as np 
 
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-intents = [
-    "open leetcode",
-    "open youtube",
-    "start leetcode",
-    "open chatgpt",
-    "chat with ai",
-    "yo open yt"
+automation_anchors = [
+    "open the browser", 
+    "launch spotify", 
+    "start notepad", 
+    "go to google.com",
+    "turn off the computer",
+    "what time is it",
+    "open website",
+    "open app",
+    "lauch"
 ]
 
-intentVector = model.encode(intents)
+intentVector = model.encode(automation_anchors)
 
-def get_intent(text):
+def getIntent(text):
+    print(f"In getIntent function: {text}")
     vec = model.encode([text])[0]
 
-    score = np.dot(intentVector, vec) / (np.linalg.norm(intentVector, axis=1)*np.linalg.norm(vec))
+    score = util.cos_sim(vec, intentVector)
+    cScore = score.numpy()
+    idx = np.argmax(cScore)
+    bestScore = cScore[0][idx]
+    print(bestScore)
+    if bestScore > 0.3:
+        routeIntent(text)
+    else:
+        print("Routing to LLM")
 
-    idx = np.argmax(score)
 
-    return intents[idx], score[idx]
+
+    
 

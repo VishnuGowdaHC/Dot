@@ -1,10 +1,10 @@
 from fastapi import FastAPI, WebSocket
 import asyncio
 from pydantic import BaseModel
-from src.core.intentRouter import routeIntent
 from fastapi.middleware.cors import CORSMiddleware
 import threading
 from src.core.voiceModel.voiceListener import startVoiceListener
+from src.core.intentClassifier import getIntent
 
 
 app = FastAPI()
@@ -22,7 +22,6 @@ app.add_middleware(
 
 class Input(BaseModel):
     text: str
-    isListening: bool
 
 def sendToWebsocket(text):
     asyncio.run_coroutine_threadsafe(transcription_queue.put(text), main_loop)
@@ -41,6 +40,7 @@ async def websocket_endpoint(websocket: WebSocket):
     print("WebSocket client connected!")
     try:
         while True:
+            
             text = await transcription_queue.get()
             
             await websocket.send_text(f'{{"type": "transcription", "text": "{text}"}}')
@@ -53,5 +53,5 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/intent")
 
 async def intent(input: Input):
-    routeIntent(input.text)
+    getIntent(input.text)
     return { "status": "OK"}

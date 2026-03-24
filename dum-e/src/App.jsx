@@ -6,7 +6,6 @@ import listening from "./assets/lo.json"
 export default function App() {
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState([]);
-  const [isListening, setIsListening] = useState(false);
   const chatRef = useRef(null);
   
  
@@ -22,14 +21,14 @@ export default function App() {
     await window.Neutralino.app.exit() 
   }
 
-  async function sendText(text, isListening) {
+  async function sendText(text) {
     try{
       const res =await fetch("http://localhost:3000/intent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ text, isListening })
+        body: JSON.stringify({ text })
       } 
     )
     const data = await res.json()
@@ -89,29 +88,6 @@ export default function App() {
           onChange={(e)=>{setValue(e.target.value); setIsListening(false);}}
           autoFocus />
           
-
-          <button
-            
-            className="relative flex justify-center items-center w-7 opacity-100 m-2 cursor-pointer"
-            onClick={() => setIsListening(prev => !prev)}
-          >
-            <img 
-              src="/mic.svg" 
-              alt="Mic" 
-              className={`absolute w-7 invert transition-all duration-400 ease-in-out ${
-                isListening ? "opacity-0 scale-50" : "opacity-50 scale-100"
-              }`} 
-            />
-
-            <div 
-              className={`absolute w-full brightness-0 invert transition-all duration-400 ease-in-out pointer-events-none ${
-                isListening ? "opacity-100 scale-[3]" : "opacity-0 scale-50"
-              }`}
-            >
-              <Lottie animationData={listening} loop={true} />
-            </div>
-          </button>
-
           <button
             className="w-6 invert m-2 cursor-pointer"
             onClick={() => handleEnter()}
