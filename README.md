@@ -27,7 +27,7 @@ Dot is a fully local AI system that can see your screen, control your applicatio
 
 ## Architecture
 
-![Dot Architecture](assets/DotArchitect.png)
+![Dot Architecture](dum-e/assets/DotArchitect.png)
 
 
 ---
