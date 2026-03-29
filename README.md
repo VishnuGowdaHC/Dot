@@ -39,7 +39,7 @@ Dot is a fully local AI system that can see your screen, control your applicatio
 | Voice + Text input pipeline | ✅ Done |
 | Intent routing (all-MiniLM-L6-v2) | ✅ Done |
 | Direct command execution | ✅ Done |
-| Automation engine → system control | ✅ Done |
+| Automation engine → system control(from direct command) | ✅ Done |
 | Wake word detection (separate thread) | ✅ Done |
 | Gemma 2 2B + Florence 2 vision layer | 🔄 In Progress |
 | MCP context layer | 🔄 In Progress |
