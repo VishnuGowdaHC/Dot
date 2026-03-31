@@ -6,9 +6,10 @@ import time
 last_trigger = 0
 COOLDOWN = 3
 
-model = Model(wakeword_models=["hey_jarvis"])
+model = Model(wakeword_models=["./hey_Dott.onnx"])
 
-def record_command(fs=16000, silence_ms=3000, threshold=2):
+def record_command(fs=16000, silence_ms=3000, threshold=2, timeout=5):
+    
     print("\nwakeup detected\n")
     buffer = []
     silence_samples = int((silence_ms / 1000) * fs)
@@ -26,11 +27,10 @@ def record_command(fs=16000, silence_ms=3000, threshold=2):
             
             if np.max(recent) < threshold:
                 print("🔇 Silence detected. Processing...\n")
-                break
-
-    stream.stop()
-    stream.close()
-    return np.array(buffer)
+                stream.stop()
+                stream.close()
+                return np.array(buffer)
+   
 
 def startVoiceListener(on_transcription_callback=None):
     print("🟢 Listening for 'Dot'...")
@@ -57,8 +57,8 @@ def startVoiceListener(on_transcription_callback=None):
         loop_count += 1 
         if loop_count % 12 == 0:  
             max_vol = np.max(np.abs(flat_chunk))
-            print(f"  [Mic Check] Max Volume: {max_vol} | Wake word score: {score:.3f}", end="\r \n")
-        if score > 0.1:
+            print(f"  [Mic Check] Max Volume: {max_vol} | Wake word score: {score:.3f}", end="\r ")
+        if score > 0.03:
             # 1. CRITICAL: Stop the wake word stream so we don't crash the microphone
             stream.stop()
             stream.close()
@@ -74,6 +74,8 @@ def startVoiceListener(on_transcription_callback=None):
             if on_transcription_callback and text:
                 on_transcription_callback(text)
             
+            print("mic is on cooldown for 2 seconds")
+            time.sleep(2.0)
             # 5. Restart the listening stream
             print("Resuming wake word listener...")
             stream = sd.InputStream(samplerate=16000, channels=1, dtype='int16')

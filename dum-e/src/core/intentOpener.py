@@ -2,7 +2,7 @@ from AppOpener import open as openApp
 import urllib.parse
 import webbrowser
 
-def routeIntent(text):
+def routeAppOpener(text):
 
     text = text.lower()
     print(text)
@@ -17,7 +17,7 @@ def routeIntent(text):
     
     try:
         #opening the app directly
-        openApp(target, throw_error=True)
+        openApp(target, throw_error=True, match_closest=True)
         print(f"Found the {target} app to open")
         return
     

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import threading
 from src.core.voiceModel.voiceListener import startVoiceListener
-from src.core.intentClassifier import getIntent
+from src.core.intentClassifier import intentRouter
 
 
 app = FastAPI()
@@ -53,5 +53,5 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/intent")
 
 async def intent(input: Input):
-    getIntent(input.text)
+    intentRouter(input.text)
     return { "status": "OK"}
