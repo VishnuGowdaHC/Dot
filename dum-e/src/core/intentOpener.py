@@ -25,7 +25,7 @@ def routeAppOpener(text):
         print("Did not find the app to open,  routing to web")
 
     
-    searchQuery = urllib.parse.quote(f"!ducky {target}")
+    searchQuery = urllib.parse.quote(f"!ducky {target}") #bang feature of duckduckgo
     url = f"https://duckduckgo.com/?q={searchQuery}"
     webbrowser.open(url)
 

@@ -5,7 +5,7 @@ whisper = WhisperModel("small.en", device="cpu", compute_type="int8")
 
 hallucinations = [
                 "thank you", "thank you.", "thanks for watching", 
-                "subscribe", "thank you for watching.", "thanks."
+                "subscribe", "thank you for watching.", "thanks.","Thank you."
             ] 
 
 def transcribe(audio):

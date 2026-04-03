@@ -20,4 +20,4 @@ def routeToLLM(text):
 
     print(f"Lang: {result.language}, Score: {result.complexity_score} Summary: {result.summary} Command: {result.command} Permission: {result.permission}")
 
-    return
+    return 
