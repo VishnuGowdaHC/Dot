@@ -2,7 +2,7 @@ from AppOpener import open as openApp
 import urllib.parse
 import webbrowser
 
-def routeAppOpener(text):
+async def routeAppOpener(text):
 
     text = text.lower()
     print(text)
@@ -16,18 +16,22 @@ def routeAppOpener(text):
         return
     
     try:
+        if target == "gmail":
+            raise Exception("routing to browser")
+        
         #opening the app directly
         openApp(target, throw_error=True, match_closest=True)
         print(f"Found the {target} app to open")
         return
     
     except Exception:
-        print("Did not find the app to open,  routing to web")
+        print("Caught exception" + str(Exception))
 
     
     searchQuery = urllib.parse.quote(f"!ducky {target}") #bang feature of duckduckgo
     url = f"https://duckduckgo.com/?q={searchQuery}"
     webbrowser.open(url)
+    return "Task Executed"
 
  
             

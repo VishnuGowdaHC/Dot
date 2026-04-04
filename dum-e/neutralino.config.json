@@ -36,18 +36,18 @@
   "modes": {
     "window": {
       "title": "dum-e-desktop",
-      "width": 400,
-      "height": 600,
+      "width": 600,
+      "height": 1200,
       "minWidth": 400,
       "minHeight": 200,
       
       
       "fullScreen": false,
-      "transparent": true,
-      "alwaysOnTop": true,
+      "transparent": false,
+      "alwaysOnTop": false,
       "icon": "/resources/icons/appIcon.png",
       "enableInspector": true,
-      "borderless": true,
+      "borderless": false,
       "maximize": false,
       "hidden": false,
       "resizable": true,

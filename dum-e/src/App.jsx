@@ -1,51 +1,41 @@
 import { useEffect, useState, useRef } from "react";
 import initConfig from "./utils/initConfig";
-import Lottie from "lottie-react"
-import listening from "./assets/lo.json"
+import { toDot, initWS } from "./utils/IOhandler";
+import { useMessage } from "./utils/messageContext";
+
 
 export default function App() {
   const [value, setValue] = useState("");
-  const [messages, setMessages] = useState([]);
   const chatRef = useRef(null);
+  const {messages, addMessage} = useMessage()
+
+  const now = new Date();
+  const day = now.toLocaleDateString('en-US', { weekday: 'long' });
+  const date = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric' });
   
  
   initConfig();
+
+  useEffect(() => {
+    console.log("In App.js initWS initiated")
+    initWS(addMessage)
+  }, []) 
   
   useEffect(() => {
     if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+      chatRef.current.scrollTop = chatRef.current.scroll;
     }
   }, [messages]);
-
-  async function handleExit() {
-    await window.Neutralino.app.exit() 
-  }
-
-  async function sendText(text) {
-    try{
-      const res =await fetch("http://localhost:3000/intent", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ text })
-      } 
-    )
-    const data = await res.json()
-    console.log(data)
-    } catch(e) {
-      console.error(e)
-    }
-  }
 
   async function handleEnter() {
     if (!value.trim()) return;
     
     const textTosend = value
-    setMessages((prev)=>[...prev, value]);
+    addMessage("user", value)
+    console.log("input:"+textTosend)
     setValue("");
     
-    await sendText(textTosend)
+    await toDot(textTosend)
   }
 
   const handleKey = (e) => {
@@ -55,48 +45,64 @@ export default function App() {
   }
 
   return (
-    <div className="flex  flex-col justify-center text-right h- w-[300px] card bg-black/20 rounded-2xl  p-1">
-      <div className=" text-center m-3">
-        <button onClick={handleExit}>
-        <img className="w-12" src="/logo.svg" alt="" />
-        </button>
-      </div>
-      <div ref={chatRef} className="flex flex-col w-full justify-end h-[100px]  px-4 pb-4 ">
-        <div className="flex flex-col-reverse overflow-y-auto">
-          <ul id="chatList" className="list-none p-0 m-0 space-y-2">
-            {
-              messages.map((message, index) => (
-                <li
-                  className="text-[14px] "
-                  key={index}
-                >
-                  {message}
-                </li>
-              ))
-            }
-          </ul>
-        </div>
-      
+    <div className="w-full h-screen bg-black overflow-hidden flex flex-col">
     
-        <div className=" flex bg-white/10 mt-4 text-white rounded-sm border pl-2 border-white/20">
-          
-          <input 
-          className="w-full  bg-transparent text-white outline-none" 
-          type="text"
-          value={value}
-          onKeyDown={handleKey}
-          onChange={(e)=>{setValue(e.target.value); setIsListening(false);}}
-          autoFocus />
-          
-          <button
-            className="w-6 invert m-2 cursor-pointer"
+      {/* Header */}
+      <div className="flex justify-center items-center px-6 pt-5 pb-2">
+        <h1 className="text-[21px] font-semibold">Dot</h1>
+      </div>
+    
+      {/* Messages — fills remaining space */}
+      <div className="flex-1 overflow-y-auto px-8 py-5 flex flex-col gap-5">
+    
+        <div className="flex justify-center">
+          <span className="text-[11px] tracking-widest uppercase text-zinc-600">{day} {date}</span>
+        </div>
+        {
+           messages.map((message, index) => ( 
+            message.role === "user" ? (
+              <div key={index} className="flex justify-end">
+                <div className="bg-[#242424] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[88%]">
+                  {message.content}
+                </div>
+              </div>
+            ) : (
+              <div key={index} className="flex flex-col gap-1">
+                <div className="bg-[#161616] rounded-2xl rounded-tl-sm px-4 py-3 max-w-[88%]">
+                  {message.content}
+                </div>
+              </div>
+            )
+           ))
+         }
+ 
+      </div>
+    
+      {/* Input bar — pinned to bottom */}
+      <div className=" px-8 pb-6 pt-3 ">
+        <div className="flex items-center gap-3 bg-[#1a1a1a] rounded-2xl px-4 py-3">
+          <button className="w-8 h-8 rounded-xl bg-[#1a1a1a] flex items-center justify-center cursor-pointer"
+          >
+            <img src="/file.svg" alt="" />
+          </button>
+          <input
+            type="text"
+            placeholder="What's on your mind?..."
+            value={value}
+            onKeyDown={handleKey}
+            onChange={(e)=>{setValue(e.target.value)}}
+            autoFocus
+            className="flex-1 bg-transparent text-[14px] text-zinc-200 placeholder-zinc-600 outline-none"
+          />
+          <button className="w-8 h-8 rounded-xl bg-[#e5332a] flex items-center justify-center cursor-pointer"
             onClick={() => handleEnter()}
           >
-              <img src="/send.svg" alt="" />
+            <img src="/send.svg" alt="" />
           </button>
-
         </div>
       </div>
+    
     </div>
+
   );
 }
