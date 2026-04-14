@@ -39,9 +39,9 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             
             text = await websocket.receive_text()
-            data = await intentRouter(text)
-            print(f"Received from frontend: {data}")
-            await websocket.send_text(json.dumps({"type": "result","data": data}))
+            data = await intentRouter(websocket,text)
+            print(f"Received from dot: {data}")
+            await websocket.send_text(json.dumps({"type": "result", "data": data}))
             print(f"Sent to frontend: {text}")
             
     except Exception as e:

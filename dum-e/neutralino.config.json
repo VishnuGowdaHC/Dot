@@ -38,20 +38,20 @@
       "title": "dum-e-desktop",
       "width": 600,
       "height": 1200,
-      "minWidth": 400,
-      "minHeight": 200,
-      
-      
+      "minWidth": 600,
+      "minHeight": 400,
       "fullScreen": false,
+      "maximize": false,
+      "maximizable": false,
+
       "transparent": false,
       "alwaysOnTop": false,
       "icon": "/resources/icons/appIcon.png",
       "enableInspector": true,
       "borderless": false,
-      "maximize": false,
       "hidden": false,
       "resizable": true,
-      "exitProcessOnClose": false
+      "exitProcessOnClose": true
     },
     "browser": {
       "globalVariables": {

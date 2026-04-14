@@ -22,7 +22,7 @@ automation_anchors = [
 
 intentVector = model.encode(automation_anchors)
 
-async def intentRouter(text):
+async def intentRouter(websocket, text):
     print(f"In getIntent function: {text}")
     vec = model.encode([text])[0]
 
@@ -32,10 +32,11 @@ async def intentRouter(text):
     bestScore = cScore[0][idx]
     
     print(bestScore)
-    if bestScore > 0.3 and len(text.split()) < 6:
+    
+    if (bestScore > 0.3) and (len(text.split()) < 6):
         return await routeAppOpener(text)
     else:
-        return await routeToLLM(text)
+        return await routeToLLM(websocket, text)
          
 
 

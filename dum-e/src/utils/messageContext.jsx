@@ -9,7 +9,7 @@ export function MessageProvider({ children }) {
         setMessages(prev => [...prev, {role: role, content: content}])
     }
     return (
-        <MessageContext.Provider value={{messages, addMessage}}>
+        <MessageContext.Provider value={{messages, addMessage, setMessages}}>
             {children}
         </MessageContext.Provider>
     )
