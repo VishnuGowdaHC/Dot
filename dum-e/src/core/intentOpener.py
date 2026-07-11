@@ -3,7 +3,7 @@ import urllib.parse
 import webbrowser
 
 async def routeAppOpener(text):
-
+    print("inside routeAppOpener", text)
     text = text.lower()
     print(text)
     if "open" in text:

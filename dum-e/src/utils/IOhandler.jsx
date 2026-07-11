@@ -1,4 +1,3 @@
-
 let ws;
 
 export function initWS(addMessage, setMessages) {
@@ -25,11 +24,11 @@ export function initWS(addMessage, setMessages) {
           )
         } else if (payload.type === "result") {
 
-          console.log("In IOhandler.js: "+ payload.data + payload.type)
+          console.log("Result In IOhandler.js: "+ payload.data + payload.type)
         }
       }
   } catch (error) {
-      console.log("In IOhandler.js: "+error)
+      console.log("Error In IOhandler.js: "+error)
   }
 }
 

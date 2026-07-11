@@ -26,14 +26,14 @@ def record_command(fs=16000, silence_ms=3000, threshold=2, timeout=5):
             recent = np.abs(buffer[-silence_samples:])
             
             if np.max(recent) < threshold:
-                print("🔇 Silence detected. Processing...\n")
+                print("Silence detected. Processing...\n")
                 stream.stop()
                 stream.close()
                 return np.array(buffer)
    
 
 def startVoiceListener(on_transcription_callback=None):
-    print("🟢 Listening for 'Dot'...")
+    print("Listening for 'Dot'...")
     
     # We use a standard while loop instead of a callback so we can safely stop it
     stream = sd.InputStream(samplerate=16000, channels=1, dtype='int16')

@@ -1,4 +1,5 @@
 from faster_whisper import WhisperModel
+import asyncio
 from src.core.intentOpener import routeAppOpener
 
 whisper = WhisperModel("small.en", device="cpu", compute_type="int8")
@@ -14,11 +15,12 @@ def transcribe(audio):
     text = " ".join([s.text for s in segments])
 
     print("In transcribe function: \n", text)
-    if not text or text in hallucinations:
+    text_norm = text.strip().lower()
+    if not text_norm or text_norm in [h.lower() for h in hallucinations]:
         print("Hallucination detected. Routing to LLM...")
         return
     
-    routeAppOpener(text)
+    asyncio.run(routeAppOpener(text))
     return text
 
     
