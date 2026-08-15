@@ -9,22 +9,8 @@ export function initWS(addMessage, setMessages) {
       }  
       ws.onmessage = (event) => {
         const payload = JSON.parse(event.data);
-        if (payload.type === "stream") {
-          setMessages((prev) => {
-              const updated = prev[prev.length - 1];
-
-              if (updated && updated.role === "dot") {
-                return [
-                  ...prev.slice(0, -1),
-                  {...updated, content: updated.content + payload.data},
-                ]
-              }
-              return [...prev, {role: "dot", content: payload.data}];
-            }
-          )
-        } else if (payload.type === "result") {
-
-          console.log("Result In IOhandler.js: "+ payload.data + payload.type)
+        if (payload.type === "result") {
+          setMessages((prev) => [...prev, { role: "dot", content: payload.data }]);
         }
       }
   } catch (error) {

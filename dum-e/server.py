@@ -2,8 +2,8 @@ from fastapi import FastAPI, WebSocket
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 import threading
-from src.core.voiceModel.voiceListener import startVoiceListener
-from src.core.intentClassifier import intentRouter
+from src.dot.voiceModel.voiceListener import startVoiceListener
+from src.dot.core.router import intentRouter
 import json
 
 
