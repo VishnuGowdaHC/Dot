@@ -1,23 +1,7 @@
-import asyncio
 from fastmcp import Client
-import os
-from dotenv import load_dotenv
+import asyncio
 
-load_dotenv()
-mcp_config = {
-    "mcpServers": {
-        "github": {
-        "command": "../MCPServers/github-mcp-server.exe",
-        "args": ["stdio"],
-        "env": {
-          "GITHUB_PERSONAL_ACCESS_TOKEN": os.getenv("GITHUB_TOKEN")
-        }
-      },
-
-    }
-}
-
-async def fetch(server, server_settings):
+async def fetch_server_tools(server: str, server_settings: dict) -> list:
     try:
         client = Client({
             "mcpServers": {
@@ -40,22 +24,19 @@ async def fetch(server, server_settings):
 
             return server_tools
     except Exception as e:
-        print(e)
+        print("In fetch_server_tools: ",e)
         return []
 
-
-async def main():
-    tasks = [
-        fetch(server, server_settings) 
-        for server, server_settings in mcp_config['mcpServers'].items()
-    ]
-
-    results = await asyncio.gather(*tasks)
-    
-    all_tools = [tool for tool in results]
-
-  
+async def execute_mcp_tool(server_settings: dict, tool_name: str, tool_args: dict):
+    async with Client({
+        "mcpServers": {
+            'target_server': server_settings
+        }
+    }) as active_session:
         
-    
+        result = await active_session.call_tool(
+            name=tool_name,
+            arguments=tool_args
+        )
 
-asyncio.run(main())
+        return result.data

@@ -1,20 +1,20 @@
 from ollama import chat
 import asyncio
 import json
-from src.core.prompts import systemPrompt
+from core.prompts import systemPrompt
 
-async def routeToLLM(websocket, text):
+async def llm(websocket, text):
     response = chat(
         model='dot-engine',
         messages=[
                     {'role': 'system', 'content': systemPrompt}, 
                     {'role': 'user', 'content': text}
                 ],
-        stream=True, 
+        stream=False, 
         think=True
     )
 
-    
+    return response
     for chunk in response:
         await websocket.send_text(json.dumps({"type": "stream", "data": chunk["message"]["content"]}))
     
