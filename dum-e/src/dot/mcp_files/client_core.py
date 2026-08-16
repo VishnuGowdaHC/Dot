@@ -1,6 +1,8 @@
 from fastmcp import Client
 
 async def fetch_server_tools(server: str, server_settings: dict) -> list:
+    print("In fetch_server_tools")
+    print(server, server_settings)
     try:
         client = Client({
             "mcpServers": {
@@ -16,7 +18,7 @@ async def fetch_server_tools(server: str, server_settings: dict) -> list:
             for tool in tools_arr:
                 server_tools.append({
                     "service": server,
-                    "toolName": tool.name,
+                    "toolName": f"{server}_{tool.name}",
                     "description": tool.description,
                     "inputSchema": tool.inputSchema
                 })

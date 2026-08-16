@@ -6,15 +6,31 @@ path = os.path.join(os.path.dirname(__file__), "storage", "chroma_db")
 chroma_client = chromadb.PersistentClient(path=path)
 tools_collection = chroma_client.get_or_create_collection(name='mcp_tools')
 
-def get_relevant_tools(query: str, distance_threshold=0.8, k=2, service_hint=None):
+def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=0.8,  ):
     print(f"query: {query}")
+    selected_tool = []
+
+    if service_hint == "browser":
+        browser_results = tools_collection.get(
+            where={"service": "browser"}
+        )
+
+        if browser_results and browser_results.get("metadatas"):
+            for metadata in browser_results["metadatas"]:
+                tool_schema = json.loads(metadata["inputSchema"])
+                selected_tool.append({
+                    "tool_name": metadata["toolName"],
+                    "tool_service": metadata["service"],
+                    "schema": tool_schema
+                })
+
+        return selected_tool
+
     results = tools_collection.query(
         query_texts=[query],
         n_results=k,
         where={"service": service_hint} if service_hint else None
     )
-
-    selected_tool = []
     
     if results and "distances" in results and results["distances"]:
         for doc, metadata, distance in zip(results["documents"][0], results["metadatas"][0], results["distances"][0]):
@@ -46,4 +62,8 @@ def get_all_services(force_refresh=False):
         _available_services_cache = {m["service"] for m in items["metadatas"]}
     
     return list(_available_services_cache)
+
+if __name__ == "__main__":
+    item = get_all_services(force_refresh=True)
+    print(item)
 

@@ -11,7 +11,8 @@ def llm(query, schema: dict | None = None):
                 ],
         stream=False, 
         think=True,
-        format=schema
+        format=schema,
+        options={"temperature": 0.4}
     )
    
     return response['message']['content']

@@ -1,6 +1,6 @@
 from faster_whisper import WhisperModel
 import asyncio
-from src.dot.automation.intentOpener import routeAppOpener
+from src.dot.core.intentOpener import routeAppOpener
 
 whisper = WhisperModel("small.en", device="cpu", compute_type="int8")
 

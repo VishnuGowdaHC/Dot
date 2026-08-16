@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer, util
-from src.dot.automation.intentOpener import routeAppOpener
+from src.dot.core.intentOpener import routeAppOpener
 from src.dot.core.engine import reAct_loop
 import numpy as np 
 import uuid

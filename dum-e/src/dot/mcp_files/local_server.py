@@ -1,39 +1,47 @@
-import mmap
-import os
 from fastmcp import FastMCP
+mcp = FastMCP(name="Dot Automation")
 
-mcp = FastMCP(name="Dot Native Memory & Automation")
+# --- Browser (Playwright, accessibility-tree based) ---
+@mcp.tool
+def browser_navigate(url: str) -> str: ...
 
 @mcp.tool
-def search_active_session(keyword: str, session_id: str) -> str:
-    """
-    Searches the current session's evicted .md memory log for a keyword. 
-    Use this when the user references past information not in your immediate context.
-    """
-    filepath = os.path.join(os.path.dirname(__file__), "memory", "session_logs", f"{session_id}.md")
-    
-    if not os.path.exists(filepath):
-        return f"Session log {session_id} does not exist yet."
+def browser_snapshot() -> str:
+    """Returns pruned accessibility tree of current page."""
+    ...
 
-    keyword_bytes = keyword.lower().encode('utf-8')
-    
-    with open(filepath, "r") as f:
-        # Prevent mmap from crashing on empty files
-        if os.fstat(f.fileno()).st_size == 0:
-            return "Session log is currently empty."
-            
-        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-            index = mm.find(keyword_bytes)
-            
-            if index == -1:
-                return f"No matches found for '{keyword}'."
-                
-            # Slice 300 bytes of context around the match
-            start = max(0, index - 300)
-            end = min(mm.size(), index + 300)
-            
-            chunk = mm[start:end].decode('utf-8', errors='ignore')
-            return f"--- Past Memory Retrieved ---\n...{chunk}..."
+@mcp.tool
+def browser_click(role: str, name: str) -> str:
+    """Click element by accessible role + name, e.g. role='button', name='Search'"""
+    ...
+
+@mcp.tool
+def browser_fill(role: str, name: str, text: str) -> str: ...
+
+# --- Native OS UI (pywinauto, UI Automation tree) ---
+@mcp.tool
+def os_snapshot(window_title: str = None) -> str:
+    """Returns pruned UI Automation tree for the active or named window."""
+    ...
+
+@mcp.tool
+def os_click(window_title: str, control_name: str) -> str: ...
+
+@mcp.tool
+def os_type(window_title: str, control_name: str, text: str) -> str: ...
+
+# --- Raw screen fallback (only when neither tree gives a usable target) ---
+@mcp.tool
+def screen_capture() -> str:
+    """Returns a screenshot for vision-based targeting. Use only when
+    browser_snapshot/os_snapshot don't expose the needed element."""
+    ...
+
+@mcp.tool
+def screen_click_coords(x: int, y: int) -> str: ...
+
+@mcp.tool
+def screen_type(text: str) -> str: ...
 
 if __name__ == "__main__":
     mcp.run()
