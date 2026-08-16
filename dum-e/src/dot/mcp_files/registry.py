@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 
 from src.dot.mcp_files.client_core import fetch_server_tools
 from src.dot.memory.collections.tools_collection import upsert_tools
+from src.dot.memory.collections.native_tools_collection import sync_native_tools
+from src.dot.memory.vector_store import get_all_services
 
 load_dotenv()
 
@@ -21,7 +23,6 @@ def load_server_config() -> dict:
         config_data = f.read()
 
     github_token = os.getenv("GITHUB_TOKEN", "")
-    print(github_token)
     config_data = config_data.replace("${GITHUB_TOKEN}", github_token)
 
     config_dict = json.loads(config_data)
@@ -43,6 +44,8 @@ async def sync_registry():
     all_tools = [tool for server_list in results for tool in server_list]
 
     upsert_tools(all_tools)
+    get_all_services(force_refresh=True)
+    sync_native_tools()
 
 if __name__ == "__main__":
     asyncio.run(sync_registry())

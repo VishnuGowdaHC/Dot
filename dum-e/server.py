@@ -4,7 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import threading
 from src.dot.voiceModel.voiceListener import startVoiceListener
 from src.dot.core.router import intentRouter
+from src.dot.memory.session_memory.manager import SessionStorage
+from src.dot.memory.collections.session_collection import embed_session_to_chroma
 import json
+import uuid
 
 
 app = FastAPI()
@@ -34,16 +37,21 @@ async def start_voice():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    active_session = SessionStorage(session_id=str(uuid.uuid4()))
     print("WebSocket client connected!")
     try:
         while True:
             
             text = await websocket.receive_text()
-            data = await intentRouter(websocket,text)
+            data = await intentRouter(websocket, text, active_session)
             print(f"Received from dot: {data}")
             await websocket.send_text(json.dumps({"type": "result", "data": data}))
             print(f"Sent to frontend: {text}")
             
     except Exception as e:
         print(f"WebSocket disconnected: {e}")
+        try:
+            embed_session_to_chroma(active_session.session_id, active_session.filepath)
+        except Exception as embed_err:
+            print(f"Failed to embed session {active_session.session_id}: {embed_err}")
 

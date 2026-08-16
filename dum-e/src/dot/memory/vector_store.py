@@ -4,11 +4,11 @@ import os
 
 path = os.path.join(os.path.dirname(__file__), "storage", "chroma_db")
 chroma_client = chromadb.PersistentClient(path=path)
-collection = chroma_client.get_or_create_collection(name='mcp_tools')
+tools_collection = chroma_client.get_or_create_collection(name='mcp_tools')
 
 def get_relevant_tools(query: str, distance_threshold=0.8, k=2, service_hint=None):
     print(f"query: {query}")
-    results = collection.query(
+    results = tools_collection.query(
         query_texts=[query],
         n_results=k,
         where={"service": service_hint} if service_hint else None
@@ -36,3 +36,14 @@ def get_relevant_tools(query: str, distance_threshold=0.8, k=2, service_hint=Non
         })
 
     return selected_tool
+
+_available_services_cache = None
+def get_all_services(force_refresh=False):
+    global _available_services_cache
+    if _available_services_cache is None or force_refresh:
+        items = tools_collection.get()
+
+        _available_services_cache = {m["service"] for m in items["metadatas"]}
+    
+    return list(_available_services_cache)
+

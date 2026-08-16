@@ -1,10 +1,17 @@
-import mmap
 import os
-from fastmcp import FastMCP
+import mmap
+import time
+import json
+import chromadb
 
-mcp = FastMCP(name="Dot Native Memory & Automation")
+path = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "storage",
+    "chroma_db"
+)
+chroma_client = chromadb.PersistentClient(path=path)
+session_collection = chroma_client.get_or_create_collection(name='sessions_memory')
 
-@mcp.tool
 def search_active_session(keyword: str, session_id: str) -> str:
     """
     Searches the current session's evicted .md memory log for a keyword. 
@@ -35,5 +42,12 @@ def search_active_session(keyword: str, session_id: str) -> str:
             chunk = mm[start:end].decode('utf-8', errors='ignore')
             return f"--- Past Memory Retrieved ---\n...{chunk}..."
 
-if __name__ == "__main__":
-    mcp.run()
+def search_past_sessions(query: str, k: int = 3) -> str:
+    results = session_collection.query(query_texts=[query], n_results=k)
+    if not results or not results.get("documents") or not results["documents"][0]:
+        return "No relevant past sessions found."
+
+    lines = []
+    for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
+        lines.append(f"[Session {meta['session_id']}, chunk {meta['chunk_idx']}]: {doc}")
+    return "\n".join(lines)
