@@ -263,6 +263,6 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
 
 
 if __name__ == "__main__":
-    query1 = "get a repo with most stars in github"
+    query1 = "can u search andrew ng and retrive some info about him use navigate directly and q?"
     result = asyncio.run(reAct_loop(query1, llm, active_session, max_steps=8))
     print(result)

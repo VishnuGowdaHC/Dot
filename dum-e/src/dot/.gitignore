@@ -1,2 +1,5 @@
 /bin
 .env
+./memory/storage
+./memory/tokenizer_files
+./memory/session_logs
