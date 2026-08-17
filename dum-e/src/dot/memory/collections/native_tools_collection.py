@@ -2,9 +2,11 @@ from src.dot.memory.collections.tools_collection import upsert_tools
 from src.dot.memory.session_memory.search import search_active_session
 from src.dot.memory.session_memory.search import search_past_sessions
 
+
 NATIVE_TOOLS = {
     "search_active_session": search_active_session,
     "search_past_sessions": search_past_sessions,
+    
     # "query_user_profile": query_user_profile,
     # "query_sqlite": query_sqlite,
 }
@@ -29,9 +31,9 @@ NATIVE_TOOL_SCHEMAS = {
             "required": ["query"],
         },
     },
+    
     # add more native tool schemas here as you build them
 }
-
 def sync_native_tools():
     """Registers native (non-MCP) tools into the same tool registry
     used for MCP discovery, so get_relevant_tools finds both via the

@@ -1,4 +1,3 @@
-# ---- src/dot/core/engine.py --------------------------------------------
 from pydantic import BaseModel, field_validator
 from typing import Literal, Optional
 import os
@@ -7,12 +6,14 @@ import uuid
 import asyncio
 import json
 
-from src.dot.memory.vector_store import get_relevant_tools, get_all_services
+from src.dot.memory.vector_store import get_relevant_tools, get_all_services, get_full_service_tools_text
+from src.dot.core.gaurdrails import check_guardrails, _missing_dependencies
 from src.dot.mcp_files.mcpClient import execute_mcp_tool, get_multi_server_client
 from src.dot.memory.session_memory.manager import SessionStorage
 from src.dot.memory.collections.native_tools_collection import NATIVE_TOOLS
 from src.dot.core.llm import llm
 from src.dot.core.utils import *  
+from src.dot.automation_mcp.browser_automation import TOOL_DEPENDENCIES
 
 active_session = SessionStorage(session_id=str(uuid.uuid4()))
 
@@ -43,7 +44,7 @@ class AgentStep(BaseModel):
 
 MAX_LOOP_TOKENS = 6000
 MAX_IDENTICAL_FAILURES = 3
-
+BYPASS_SERVICES = {"browser", "native"}
 
 def _failure_signature(step_obj: AgentStep, error_text: str) -> str:
     return f"{step_obj.action}:{error_text[:60]}"
@@ -60,12 +61,21 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
     active_history_context = session.get_context_string()
     available_services = get_all_services()
 
+    bypass_tools_text = "\n\n".join(
+        f"<{svc.upper()}_TOOLS>\n{get_full_service_tools_text(svc)}\n</{svc.upper()}_TOOLS>"
+        for svc in BYPASS_SERVICES if svc in available_services
+    )
+
+    print(bypass_tools_text)
+
     history_parts = [{
         "role": "context",
         "text": f"""
             <AVAILABLE_TOOL_SERVICES>
             {', '.join(available_services) if available_services else 'None registered.'}
             </AVAILABLE_TOOL_SERVICES>
+
+            {bypass_tools_text}
 
             <PREVIOUS_SESSION_CONTEXT>
             {active_history_context or "No previous history."}
@@ -84,7 +94,6 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
 
     def record_error(step_obj, error_text):
         nonlocal last_failure_sig, identical_failure_count
-
         sig = _failure_signature(step_obj, error_text)
         if sig == last_failure_sig:
             identical_failure_count += 1
@@ -96,7 +105,7 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
             return True
 
         if identical_failure_count == 2:
-            error_text += ' [Repeated mistake. Example: {"action": "Tool", "tool_service": "<service>", "get_tool": "<phrase>"}]'
+            error_text += "\n[Repeated mistake — re-read the fix instructions above carefully and apply them exactly.]"
 
         history_parts.append({"role": "error", "text": f"[{error_text}]", "pinned": False})
         return False
@@ -141,15 +150,15 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
             # tool discovery
             elif step_obj.action == 'Tool':
                 # guard: already found a tool last step - re-searching instead of using it
-                if history_parts and history_parts[-1].get("role") == "tool_found":
-                    if record_error(step_obj, "You already found a matching tool in the previous step. Do NOT search again — use action='Tool-exec' with the tool_name/tool_args from the schema shown, or action='Plan' if multiple steps are needed."):
-                        return "I found the right tool but couldn't complete the request — could you try rephrasing?"
-                    continue
-
-                if not step_obj.get_tool:
-                    if record_error(step_obj, "action='Tool' requires get_tool to be set to a search phrase. Do not fill tool_name/tool_args yet — that comes after Tool-exec."):
+                violation = check_guardrails(step_obj, history_parts, pending_plan)
+                if violation:
+                    if record_error(step_obj, violation):
                         return "I couldn't figure out the right tool to use for this — could you rephrase your request?"
                     continue
+
+                # self-heal: model nested get_tool inside tool_args instead of top-level
+                if step_obj.action == 'Tool' and not step_obj.get_tool and step_obj.tool_args and 'get_tool' in step_obj.tool_args:
+                    step_obj.get_tool = step_obj.tool_args.pop('get_tool')
 
                 results = get_relevant_tools(query=step_obj.get_tool, k=5, service_hint=step_obj.tool_service)
                 if results:
@@ -171,6 +180,14 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
                     continue
 
             elif step_obj.action == 'Tool-exec':
+                # guard: required tools not found
+                violation = check_guardrails(step_obj, history_parts, pending_plan)
+                if violation:
+                    if record_error(step_obj, violation):
+                        return "I couldn't reliably interact with the page — could you try again?"
+                    continue
+
+                # guard: already ran this tool last step
                 if run_log["steps"]:
                     last_step = run_log["steps"][-1]
                     if last_step.get("tool") == step_obj.tool_name and history_parts[-1].get("role") == "observation":
@@ -181,6 +198,7 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
                         })
                         continue
 
+                # run tool
                 if step_obj.tool_service == 'native':
                     fn = NATIVE_TOOLS.get(step_obj.tool_name)
                     if fn is None:
@@ -199,19 +217,18 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
 
                 log_path = dump_observation(observation, step, step_obj.tool_name)
                 trimmed = trim_observation(observation, session)
-                history_parts.append({"role": "observation", "text": f"\n[Observation: {trimmed}]\n[Full data saved: {log_path}]", "pinned": False})
+                history_parts.append({
+                    "role": "observation",
+                    "text": f"\n[Observation: {trimmed}]\n[Full data saved: {log_path}]", 
+                    "source_tool": step_obj.tool_name,
+                    "pinned": False})
                 identical_failure_count = 0
 
             elif step_obj.action == 'Plan':
-                has_tool_lookup = any(h.get("role") == "tool_found" for h in history_parts)
-                if not has_tool_lookup:
-                    if record_error(step_obj, "Do not guess tool names. You MUST use action='Tool' first to search for available tools before creating a Plan."):
+                violation = check_guardrails(step_obj, history_parts, pending_plan)
+                if violation:
+                    if record_error(step_obj, violation):
                         return "I need more information before I can plan this out — could you clarify what you'd like me to do?"
-                    continue
-
-                if not step_obj.plan_steps:
-                    if record_error(step_obj, "action='Plan' requires plan_steps to be a non-empty list of concrete tool calls."):
-                        return "I couldn't form a valid plan for this request."
                     continue
 
                 pending_plan = step_obj.plan_steps
@@ -224,8 +241,9 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
                 identical_failure_count = 0
 
             elif step_obj.action == 'Auto-tool':
-                if not pending_plan:
-                    if record_error(step_obj, "Auto-tool called with no plan formed. Emit a 'Plan' action first."):
+                violation = check_guardrails(step_obj, history_parts, pending_plan)
+                if violation:
+                    if record_error(step_obj, violation):
                         return "I lost track of the plan for this task — could you try again?"
                     continue
 
@@ -240,6 +258,7 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
                     history_parts.append({
                         "role": "observation",
                         "text": f"[Step {i} ({planned_step.tool_name}) Data: {obs_text[:1500]}]",
+                        "source_tool": planned_step.tool_name,
                         "pinned": False,
                     })
 
@@ -263,6 +282,8 @@ async def reAct_loop(query, llm, session: SessionStorage, max_steps=8):
 
 
 if __name__ == "__main__":
-    query1 = "can u search andrew ng and retrive some info about him use navigate directly and q?"
+    query1 = "play bbno$ two on youtube"
+    query3 = "can u list the browser tools with schema on what all they can do?"
+    query2 = "can u list the browser tools with schema on what all they can do?"
     result = asyncio.run(reAct_loop(query1, llm, active_session, max_steps=8))
     print(result)

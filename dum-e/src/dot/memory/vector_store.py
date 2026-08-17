@@ -10,13 +10,14 @@ def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=0.
     print(f"query: {query}")
     selected_tool = []
 
-    if service_hint == "browser":
-        browser_results = tools_collection.get(
-            where={"service": "browser"}
+    BYPASS_SERVICES = {"browser", "native"}
+    if service_hint in BYPASS_SERVICES:
+        results = tools_collection.get(
+            where={"service": service_hint}
         )
 
-        if browser_results and browser_results.get("metadatas"):
-            for metadata in browser_results["metadatas"]:
+        if results and results.get("metadatas"):
+            for metadata in results["metadatas"]:
                 tool_schema = json.loads(metadata["inputSchema"])
                 selected_tool.append({
                     "tool_name": metadata["toolName"],
@@ -62,6 +63,11 @@ def get_all_services(force_refresh=False):
         _available_services_cache = {m["service"] for m in items["metadatas"]}
     
     return list(_available_services_cache)
+
+def get_full_service_tools_text(service):
+    results = get_relevant_tools("", service_hint=service)  # your existing bypass returns everything
+    lines = [f"- {t['tool_name']}: {t['schema']}" for t in results]
+    return "\n".join(lines)
 
 if __name__ == "__main__":
     item = get_all_services(force_refresh=True)

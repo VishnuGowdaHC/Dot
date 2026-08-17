@@ -1,5 +1,7 @@
 from fastmcp import FastMCP
 from playwright.async_api import async_playwright
+import webbrowser
+import urllib.parse
 
 mcp = FastMCP(name="Dot Browser Automation")
 
@@ -8,6 +10,13 @@ mcp = FastMCP(name="Dot Browser Automation")
 _playwright = None
 _browser = None
 _page = None
+
+TOOL_DEPENDENCIES = {
+    "browser_browser_click": ["browser_browser_snapshot"],
+    "browser_browser_fill": ["browser_browser_snapshot"],
+    # any future tool that also needs a snapshot first just gets added here —
+    # the loop code never changes
+}
 
 async def _ensure_browser():
     global _playwright, _browser, _page
@@ -73,6 +82,22 @@ async def browser_navigate(url: str) -> dict:
     except Exception as e:
         return {"success": False, "detail": f"navigation to {url} failed", "error": str(e)}
 
+@mcp.tool
+def quick_search_web(target: str, bang: str = "ducky") -> dict:
+    """Open a quick web search or jump directly to a site in the user's
+    default browser using DuckDuckGo bangs. This is a FIRE-AND-FORGET
+    action — once it succeeds, the task is complete, no follow-up needed.
+    Common bangs: 'ducky' (default, jump to top result), 'yt' (YouTube),
+    'w' (Wikipedia), 'gh' (GitHub), 'maps' (Google Maps).
+    """
+    print(f"Opening quick search for '{target}' via !{bang}")
+    try:
+        searchQuery = urllib.parse.quote(f"!ducky {target}")
+        url = f"https://duckduckgo.com/?q={searchQuery}"
+        webbrowser.open(url)
+        return {"success": True, "detail": f"opened quick search for '{target}' via !{bang}", "error": None}
+    except Exception as e:
+        return {"success": False, "detail": None, "error": str(e)}
 
 @mcp.tool
 async def browser_snapshot() -> dict:
@@ -106,13 +131,13 @@ async def browser_snapshot() -> dict:
 
 @mcp.tool
 async def browser_click(role: str, name: str) -> dict:
-    """Click a button, link, or search result on the current webpage.
+    """Click a button, link, or search result. Requires: browser_browser_snapshot
     CRITICAL: You MUST use browser_snapshot first to find the exact 'role' and 'name' 
     of the element. NEVER guess the role or name."""
     try:
         page = await _ensure_browser()
-        locator = await page.get_by_role(role, name=name)
-        locator.click(timeout=5000)
+        locator = page.get_by_role(role, name=name)
+        await locator.click(timeout=5000)
         await page.wait_for_load_state("domcontentloaded", timeout=5000)
         return {"success": True, "detail": f"clicked {role} '{name}'", "error": None}
     except Exception as e:
@@ -126,8 +151,8 @@ async def browser_fill(role: str, name: str, text: str) -> dict:
     of the element. NEVER guess the role or name."""
     try:
         page = await _ensure_browser()
-        locator = await page.get_by_role(role, name=name)
-        locator.fill(text, timeout=5000)
+        locator = page.get_by_role(role, name=name)
+        await locator.fill(text, timeout=5000)
         return {"success": True, "detail": f"filled {role} '{name}' with text", "error": None}
     except Exception as e:
         return {"success": False, "detail": f"fill failed on {role} '{name}'", "error": str(e)}
@@ -141,8 +166,8 @@ async def browser_extract_text(role: str = None, name: str = None) -> dict:
     try:
         page = await _ensure_browser()
         if role and name:
-            locator = await page.get_by_role(role, name=name)
-            text = locator.inner_text(timeout=5000)
+            locator = page.get_by_role(role, name=name)
+            text = await locator.inner_text(timeout=5000)
         else:
             text = await page.inner_text("body", timeout=5000)
         return {"success": True, "detail": text, "error": None}

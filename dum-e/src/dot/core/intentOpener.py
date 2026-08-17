@@ -1,6 +1,7 @@
 from AppOpener import open as openApp
 import urllib.parse
 import webbrowser
+import asyncio
 
 async def routeAppOpener(text):
     print("inside routeAppOpener", text)
@@ -32,6 +33,9 @@ async def routeAppOpener(text):
     url = f"https://duckduckgo.com/?q={searchQuery}"
     webbrowser.open(url)
     return "Task Executed"
+
+if __name__ == "__main__":
+    asyncio.run(routeAppOpener("play bbno$ on youtube"))
 
  
             

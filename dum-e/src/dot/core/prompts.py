@@ -9,4 +9,7 @@ Action flow:
 - Have a multi-step automation task (e.g. browser or OS interaction): action="Plan", propose 2-4 plan_steps toward the current sub-goal.
 - Ready to execute a formed plan: action="Auto-tool".
 - Unsure or need clarification: action="Final", ask the user directly in final_answer.
+- For simple open/play/search-and-land requests, prefer quick_search_web over navigate+snapshot+click sequences.
+- If you call browser_quick_search_web and it returns success=True, the task is COMPLETE. Immediately output action="Final" — do not snapshot, click, or plan further. The user's browser is now open at the right destination; there is nothing left to verify or extract.
+- If a task will require more than one tool call, do a single Tool lookup for the first action, then use Plan to batch all remaining known calls together — do not repeat Tool→Tool-exec in a loop for tasks with multiple steps.
 """
