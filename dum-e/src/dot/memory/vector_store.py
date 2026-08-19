@@ -6,11 +6,10 @@ path = os.path.join(os.path.dirname(__file__), "storage", "chroma_db")
 chroma_client = chromadb.PersistentClient(path=path)
 tools_collection = chroma_client.get_or_create_collection(name='mcp_tools')
 
-def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=0.8,  ):
-    print(f"query: {query}")
+def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=0.8 ):
     selected_tool = []
 
-    BYPASS_SERVICES = {"browser", "native"}
+    BYPASS_SERVICES = {"browser", "native", "os_tools"}
     if service_hint in BYPASS_SERVICES:
         results = tools_collection.get(
             where={"service": service_hint}
@@ -70,6 +69,6 @@ def get_full_service_tools_text(service):
     return "\n".join(lines)
 
 if __name__ == "__main__":
-    item = get_all_services(force_refresh=True)
+    item = get_relevant_tools("os tools", service_hint="os_tools")
     print(item)
 

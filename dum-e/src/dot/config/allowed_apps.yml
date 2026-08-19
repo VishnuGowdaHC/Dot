@@ -1,0 +1,6 @@
+os_automation:
+  # Add the exact executable names you want Dot to be able to start or kill
+  allowed_processes:
+    - discord.exe
+    - chrome.exe
+    - code.exe

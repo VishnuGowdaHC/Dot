@@ -1,7 +1,10 @@
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
+from fastmcp.client.sampling import SamplingMessage
+from mcp.types import ImageContent, TextContent
 from playwright.async_api import async_playwright
 import webbrowser
 import urllib.parse
+from typing import Optional
 
 mcp = FastMCP(name="Dot Browser Automation")
 
@@ -12,10 +15,9 @@ _browser = None
 _page = None
 
 TOOL_DEPENDENCIES = {
-    "browser_browser_click": ["browser_browser_snapshot"],
-    "browser_browser_fill": ["browser_browser_snapshot"],
-    # any future tool that also needs a snapshot first just gets added here —
-    # the loop code never changes
+    "browser_click": ["browser_snapshot"],
+    "browser_fill": ["browser_snapshot"],
+   
 }
 
 async def _ensure_browser():
@@ -73,8 +75,17 @@ async def _prune_snapshot(node, max_depth=6, depth=0):
 
 
 @mcp.tool
-async def browser_navigate(url: str) -> dict:
-    """Navigate the browser to a URL."""
+async def ai_background_load_page(url: str) -> dict:
+    """
+    USE ONLY FOR COMPLEX PLANS
+    Navigate the active browser session to a specified URL.
+    
+    Args:
+        url (str): The complete web address to navigate to (e.g., 'https://github.com').
+        
+    Returns:
+        dict: A status dictionary containing 'success', 'detail', and 'error' keys.
+    """
     try:
         page = await _ensure_browser()
         await page.goto(url, wait_until="domcontentloaded", timeout=15000)
@@ -83,26 +94,87 @@ async def browser_navigate(url: str) -> dict:
         return {"success": False, "detail": f"navigation to {url} failed", "error": str(e)}
 
 @mcp.tool
-def quick_search_web(target: str, bang: str = "ducky") -> dict:
-    """Open a quick web search or jump directly to a site in the user's
+def open_desktop_tab_for_user(target: str) -> dict:
+    """
+    Open a quick web search or jump directly to a site in the user's
     default browser using DuckDuckGo bangs. This is a FIRE-AND-FORGET
     action — once it succeeds, the task is complete, no follow-up needed.
-    Common bangs: 'ducky' (default, jump to top result), 'yt' (YouTube),
-    'w' (Wikipedia), 'gh' (GitHub), 'maps' (Google Maps).
+    
+    Args:
+        target (str): The search query or website name (e.g., 'Shape of You', 'Python documentation').
+        
+    Returns:
+        dict: A status dictionary indicating if the local browser successfully opened.
     """
-    print(f"Opening quick search for '{target}' via !{bang}")
+    print(f"Opening quick search for '{target}' via !ducky ")
     try:
         searchQuery = urllib.parse.quote(f"!ducky {target}")
         url = f"https://duckduckgo.com/?q={searchQuery}"
         webbrowser.open(url)
-        return {"success": True, "detail": f"opened quick search for '{target}' via !{bang}", "error": None}
+        return {
+            "success": True,
+            "detail": f"opened quick search for '{target}'",
+            "error": None,
+            "terminal": True
+        }
+    except Exception as e:
+        return {"success": False, "detail": None, "error": str(e), "terminal": False}
+
+@mcp.tool
+async def screenshot(ctx: Context, question: str = "Describe what's visible on screen.") -> dict:
+    """
+    ONLY use this to capture internal web pages inside the browser
+    Capture a screenshot of the current browser viewport (only what's
+    visibly on screen, not the full scrollable page) and have the vision
+    model describe it in plain text. Use this when the user asks what's
+    on screen, what a page looks like, or to describe visual content
+    a text-only extraction (browser_extract_text) can't capture.
+    
+
+    Args:
+        question (str, optional): What to focus on when describing the screenshot
+            (e.g. "Is there a login button?", "What's the main headline?").
+            Defaults to a general description.
+
+    Returns:
+        dict: A status dictionary where 'detail' contains a short TEXT description
+        of the screenshot — never raw image bytes.
+    """
+    try:
+        page = await _ensure_browser()
+        screenshot_bytes = await page.screenshot(full_page=False, timeout=5000)
+        import base64
+        encoded = base64.b64encode(screenshot_bytes).decode("utf-8")
+        result = await ctx.sample(
+            messages=[
+                SamplingMessage(
+                    role="user",
+                    content=ImageContent(type="image", data=encoded, mimeType="image/png"),
+                ),
+                SamplingMessage(
+                    role="user",
+                    content=TextContent(type="text", text=question),
+                ),
+            ],
+            system_prompt="Describe the screenshot in 2-3 concise sentences.",
+            max_tokens=200,
+        )
+        description = result.text if hasattr(result, "text") else str(result)
+        return {"success": True, "detail": description, "error": None}
     except Exception as e:
         return {"success": False, "detail": None, "error": str(e)}
 
+
 @mcp.tool
-async def browser_snapshot() -> dict:
-    """Get the current state of the webpage. Use this to see search 
-    results, headings, and links before clicking or extracting text."""
+async def snapshot() -> dict:
+    """
+    Get the current state of the webpage. Use this to see search 
+    results, headings, and links before clicking or extracting text.
+    Returns a pruned list of interactive and structural DOM elements.
+    
+    Returns:
+        dict: A status dictionary where 'detail' contains a list of up to 40 interactive elements (tag, text, href, name).
+    """
     try:
         page = await _ensure_browser()
         
@@ -130,10 +202,19 @@ async def browser_snapshot() -> dict:
 
 
 @mcp.tool
-async def browser_click(role: str, name: str) -> dict:
-    """Click a button, link, or search result. Requires: browser_browser_snapshot
-    CRITICAL: You MUST use browser_snapshot first to find the exact 'role' and 'name' 
-    of the element. NEVER guess the role or name."""
+async def click(role: str, name: str) -> dict:
+    """
+    Click a button, link, or search result on the active webpage. Requires: browser_browser_snapshot.
+    CRITICAL: You MUST use browser_snapshot first to find the exact 'role' (tag) and 'name' (text/aria-label) 
+    of the element. NEVER guess the role or name.
+    
+    Args:
+        role (str): The HTML tag or ARIA role of the element to click (e.g., 'a', 'button').
+        name (str): The visible text or accessible name of the element to click.
+        
+    Returns:
+        dict: A status dictionary confirming the click action or containing error details.
+    """
     try:
         page = await _ensure_browser()
         locator = page.get_by_role(role, name=name)
@@ -145,10 +226,20 @@ async def browser_click(role: str, name: str) -> dict:
 
 
 @mcp.tool
-async def browser_fill(role: str, name: str, text: str) -> dict:
-    """Type text into a search box, form field, or input on the current webpage. 
+async def fill(role: str, name: str, text: str) -> dict:
+    """
+    Type text into a search box, form field, or input on the current webpage. 
     CRITICAL: You MUST use browser_snapshot first to find the exact 'role' and 'name' 
-    of the element. NEVER guess the role or name."""
+    of the input element. NEVER guess the role or name.
+    
+    Args:
+        role (str): The HTML tag or ARIA role of the input element (e.g., 'input').
+        name (str): The visible text, placeholder, or accessible name of the input field.
+        text (str): The exact string of text to type into the field.
+        
+    Returns:
+        dict: A status dictionary confirming the fill action or containing error details.
+    """
     try:
         page = await _ensure_browser()
         locator = page.get_by_role(role, name=name)
@@ -159,10 +250,19 @@ async def browser_fill(role: str, name: str, text: str) -> dict:
 
 
 @mcp.tool
-async def browser_extract_text(role: str = None, name: str = None) -> dict:
-    """Read/extract the visible text content from the webpage or a 
-    specific element — titles, search result text, article content.
-    Use this to get the actual text/title of what's on screen."""
+async def extract_text(role: str = None, name: str = None) -> dict:
+    """
+    Read and extract the visible text content from the active webpage.
+    If role and name are provided, it extracts text from that specific element.
+    If no arguments are provided, it extracts all visible text from the entire page body.
+    
+    Args:
+        role (str, optional): The HTML tag or role of a specific element to extract from. Defaults to None.
+        name (str, optional): The accessible name or text of a specific element to extract from. Defaults to None.
+        
+    Returns:
+        dict: A status dictionary where 'detail' contains the extracted text string.
+    """
     try:
         page = await _ensure_browser()
         if role and name:

@@ -24,7 +24,7 @@ automation_anchors = [
 
 intentVector = model.encode(automation_anchors)
 
-async def intentRouter(websocket, text, active_session):
+async def intentRouter(websocket, text, active_session, active_client):
     print(f"In getIntent function: {text}")
     vec = model.encode([text])[0]
 
@@ -38,7 +38,7 @@ async def intentRouter(websocket, text, active_session):
     if (bestScore > 0.3) and (len(text.split()) < 6):
         return await routeAppOpener(text)
     else:
-        return await reAct_loop(websocket, text, llm, session=active_session, max_steps=8)
+        return await reAct_loop(websocket, text, llm, session=active_session, active_client=active_client, max_steps=8)
          
 
 

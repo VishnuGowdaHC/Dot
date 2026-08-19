@@ -105,8 +105,8 @@ def compress_history(history_parts, session, target_tokens=4000):
 
     # Walk backwards, keep recent entries until we'd exceed the budget
     kept = []
-    running = sum(session.count_tokens(p["text"]) for p in pinned)
-
+    running = sum(session.count_tokens(p["text"]) for p in pinned) + \
+          sum(session.count_tokens(p["text"]) for p in recent_errors)
     for part in reversed(unpinned):
         cost = session.count_tokens(part["text"])
         if running + cost > target_tokens:
@@ -125,8 +125,8 @@ def compress_history(history_parts, session, target_tokens=4000):
 
 def summarize_dropped(text: str) -> str:
     # crude but cheap: pull tool names + outcomes, skip full reasoning text
-    tool_calls = re.findall(r"\[Found tool: (\w+)", text)
-    observations = re.findall(r"\[Observation: (.{0,80})", text)
+    tool_calls = re.findall(r"^- (\w+) via", text, re.MULTILINE)
+    observations = re.findall(r"\[Observation from (\w+)\]: (.{0,80})", text)
     parts = []
     if tool_calls:
         parts.append(f"tools used: {', '.join(tool_calls)}")
@@ -142,33 +142,33 @@ def summarize_plan_log(results_log, aborted_at):
     return (f"{done}/{len(results_log)} steps completed. "
             f"Failed at step {aborted_at} ({failed_step['tool']}): {failed_step.get('error', 'verification failed')}.")
 
-async def dispatch_tool(planned_step, active_client) -> dict:
-    """Executes one tool call (native or MCP) and returns its
-    self-reported result. Assumes every automation tool follows
-    the {success, detail, error} contract."""
-    try:
-        if planned_step.tool_service == "native":
-            fn = NATIVE_TOOLS.get(planned_step.tool_name)
-            if fn is None:
-                return {"success": False, "detail": "", "error": f"Unknown native tool: {planned_step.tool_name}"}
-            result = fn(**(planned_step.tool_args or {}))
-        else:
-            result = await execute_mcp_tool(active_client, planned_step.tool_service, planned_step.tool_name, planned_step.tool_args)
+# async def dispatch_tool(planned_step, active_client) -> dict:
+#     """Executes one tool call (native or MCP) and returns its
+#     self-reported result. Assumes every automation tool follows
+#     the {success, detail, error} contract."""
+#     try:
+#         if planned_step.tool_service == "native":
+#             fn = NATIVE_TOOLS.get(planned_step.tool_name)
+#             if fn is None:
+#                 return {"success": False, "detail": "", "error": f"Unknown native tool: {planned_step.tool_name}"}
+#             result = fn(**(planned_step.tool_args or {}))
+#         else:
+#             result = await execute_mcp_tool(active_client, planned_step.tool_service, planned_step.tool_name, planned_step.tool_args)
 
-        # guard against tools that don't yet follow the contract
-        if not isinstance(result, dict) or "success" not in result:
-            return {"success": True, "detail": str(result), "error": None}  # legacy passthrough, assume ok
-        return result
+#         # guard against tools that don't yet follow the contract
+#         if not isinstance(result, dict) or "success" not in result:
+#             return {"success": True, "detail": str(result), "error": None}  # legacy passthrough, assume ok
+#         return result
 
-    except Exception as e:
-        return {"success": False, "detail": "", "error": str(e)}
+#     except Exception as e:
+#         return {"success": False, "detail": "", "error": str(e)}
 
-async def act_and_verify(planned_step, active_client, max_retries=2):
-    last_result = None
-    for attempt in range(max_retries):
-        last_result = await dispatch_tool(planned_step, active_client)
-        if last_result["success"]:
-            return last_result
-    return last_result  # return the last failure if all retries exhausted
+# async def act_and_verify(planned_step, active_client, max_retries=2):
+#     last_result = None
+#     for attempt in range(max_retries):
+#         last_result = await dispatch_tool(planned_step, active_client)
+#         if last_result["success"]:
+#             return last_result
+#     return last_result  # return the last failure if all retries exhausted
 
 

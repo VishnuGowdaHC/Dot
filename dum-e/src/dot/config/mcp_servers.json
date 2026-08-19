@@ -10,6 +10,10 @@
     "browser": {
       "command": "py",
       "args": ["-m", "src.dot.automation_mcp.browser_automation"]
+    },
+    "os_tools": {
+      "command": "py",
+      "args": ["-m", "src.dot.automation_mcp.os_automation"]
     }
   }
 }
