@@ -1,0 +1,58 @@
+{
+    "backends": {
+        "cuda": {
+            "asset_keywords": [
+                "cudart",
+                "win",
+                "cuda",
+                "x64.zip"
+            ],
+            "executable": "bin\\llama-server.exe"
+        },
+        "cpu": {
+            "url": "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-b3580-bin-win-avx2-x64.zip",
+            "executable": "bin\\llama-server.exe"
+        }
+    },
+    "models": {
+        "2B": {
+            "repo_id": "google/gemma-4-2b-it-qat-q4_0-gguf",
+            "filename": "gemma-4-E2B_q4_0-it.gguf",
+            "mmproj": "gemma-4-E2B-it-mmproj.gguf",
+            "context_size": 8192
+        },
+        "4B": {
+            "repo_id": "google/gemma-4-E4B-it-qat-q4_0-gguf",
+            "filename": "gemma-4-E4B_q4_0-it.gguf",
+            "mmproj": "gemma-4-E4B-it-mmproj.gguf",
+            "context_size": 8192
+        },
+        "12B": {
+            "repo_id": "google/gemma-4-12b-it-qat-q4_0-gguf",
+            "filename": "gemma-4-12b-it-qat-q4_0.gguf",
+            "mmproj": "mmproj-gemma-4-12b-it-qat-q4_0.gguf",
+            "context_size": 4096
+        }
+    },
+    "launcher_templates": {
+        "cuda": "llama-server.exe -m {model_file} --mmproj {mmproj_file} --port {port} -c {context_size} -fa on -ctk q8_0 -ctv q8_0 -ngl {gpu_layers} --temp {temperature} --alias dot-engine",
+        "cpu": "llama-server.exe -m {model_file} --mmproj {mmproj_file} --port {port} -c {context_size} -fa on -ctk q8_0 -ctv q8_0 --temp {temperature} --alias dot-engine",
+        "orchestrator": "cd dum-e && py -m uvicorn server:app --port 3000",
+        "frontend": "cd dum-e && neu run"
+    },
+    "active_settings": {
+        "backend": "cuda",
+        "selected_tier": "4B",
+        "port": 11434,
+        "context_size": 8192,
+        "temperature": 0.0,
+        "gpu_layers": 99,
+        "user_name": "User"
+    },
+    "cloud": {
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "api_key": ""
+    }
+}

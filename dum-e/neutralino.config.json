@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "defaultMode": "window",
   "port": 0,
-  "documentRoot": "/resources/",
-  "url": "http://localhost:5173/",
+  "documentRoot": "/dist/",
+  "url": "/",
   "enableServer": true,
   "enableNativeAPI": true,
   "tokenSecurity": "one-time",
@@ -14,13 +14,13 @@
     "writeToLogFile": true
   },
   "nativeAllowList": [
-  "window.*",
-  "events.*",
-  "app.*",
-  "os.*",
-  "computer.*",
-  "debug.log"
-],
+    "window.*",
+    "events.*",
+    "app.*",
+    "os.*",
+    "computer.*",
+    "debug.log"
+  ],
   "globalVariables": {
     "TEST1": "Hello",
     "TEST2": [
@@ -43,11 +43,10 @@
       "fullScreen": false,
       "maximize": false,
       "maximizable": false,
-
       "transparent": false,
       "alwaysOnTop": false,
       "icon": "/resources/icons/appIcon.png",
-      "enableInspector": true,
+      "enableInspector": false,
       "borderless": false,
       "hidden": false,
       "resizable": true,
@@ -79,15 +78,17 @@
   },
   "cli": {
     "binaryName": "dum-e-desktop",
-    "resourcesPath": "/resources/",
+    "resourcesPath": "/dist/",
     "extensionsPath": "/extensions/",
-    "clientLibrary": "/resources/js/neutralino.js",
+    "clientLibrary": "/dist/neutralino.js",
+    "distributionPath": "/out",
     "binaryVersion": "6.5.0",
     "clientVersion": "6.5.0",
     "frontendLibrary": {
       "patchFile": "./index.html",
       "devUrl": "http://localhost:5173",
       "devCommand": "cmd /c npm run dev",
+      "buildCommand": "cmd /c npm run build",
       "projectPath": "/"
     }
   }

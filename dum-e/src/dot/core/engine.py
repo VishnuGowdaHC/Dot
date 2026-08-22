@@ -9,7 +9,7 @@ import re
 
 from src.dot.memory.vector_store import get_relevant_tools, get_all_services
 from src.dot.core.gaurdrails import check_guardrails, _is_real_value 
-from src.dot.mcp_files.mcpClient import execute_mcp_tool, get_multi_server_client
+from src.dot.mcp_files.mcpClient import execute_mcp_tool
 from src.dot.memory.session_memory.manager import SessionStorage
 from src.dot.memory.collections.native_tools_collection import NATIVE_TOOLS
 from src.dot.core.llm import llm
@@ -228,7 +228,6 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
                 new_tools_text = "\n".join(lines)
                 log_debug(f"[TOOLS FOUND]:\n{new_tools_text}")
                 
-                # UPDATE ROLE INSTEAD OF APPENDING
                 # UPDATE ROLE INSTEAD OF APPENDING
                 existing_tools_role = next((h for h in history_parts if h.get("role") == "tool_found"), None)
                 rule_text = "[If the exact tool you need is listed above, use action='Tool-exec'. If the tool you need is MISSING, use action='Tool' to search again with a DIFFERENT query.]"
