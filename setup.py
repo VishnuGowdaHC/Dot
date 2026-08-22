@@ -762,6 +762,27 @@ class DotInstaller(ctk.CTk):
                         f"pip install failed:\n{result.stderr.strip() or result.stdout.strip()}"
                     )
 
+            # 0b. Install frontend (NeutralinoJS) dependencies
+            dume_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dum-e")
+            if os.path.isdir(dume_dir) and os.path.exists(os.path.join(dume_dir, "package.json")):
+                self.update_status("Installing frontend dependencies (npm install)...", 0.05)
+                npm_cmd = shutil.which("npm")
+                if not npm_cmd:
+                    raise FileNotFoundError(
+                        "Could not find npm on your system PATH.\n"
+                        "Please install Node.js (https://nodejs.org) and ensure npm is added to PATH."
+                    )
+                result = subprocess.run(
+                    [npm_cmd, "install"],
+                    cwd=dume_dir,
+                    capture_output=True, text=True,
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"npm install failed:\n{result.stderr.strip() or result.stdout.strip()}"
+                    )
+
             backend_choice = self.config["active_settings"]["backend"]
             if backend_choice == "cloud":
                 self.update_status("Cloud environment selected. Skipping local downloads...", 0.5)

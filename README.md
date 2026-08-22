@@ -168,4 +168,22 @@ Scaffolded components currently in active development:
 
 ---
 
+## Installation
+
+1. **Run `start_setup.bat`** — this launches the Dot Setup Wizard.
+2. **Follow the on-screen instructions** — the wizard will:
+   - Analyze your hardware (GPU, VRAM, RAM)
+   - Let you pick a compute backend (CUDA / CPU / Cloud API)
+   - Guide you through downloading the model files
+   - Install all Python dependencies automatically
+   - Install frontend (NeutralinoJS) dependencies via `npm install`
+   - Generate the launcher script
+3. **Launch Dot** — once setup is complete, run `start_dot.bat` to boot the inference engine, orchestrator, and UI.
+
+> **Requirements:**
+> - [Python 3.10+](https://www.python.org/downloads/) — must be added to PATH
+> - [Node.js](https://nodejs.org) — must be added to PATH (needed for `npm install`)
+
+---
+
 *Built on an RTX 3070 laptop. Designed to run on yours too.*
