@@ -93,16 +93,22 @@ echo [OK] Virtual environment created (.venv)
 :INSTALL_DEPS
 :: 3. Install all requirements.txt dependencies into .venv
 echo.
-echo [*] Upgrading pip in .venv...
-.venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+echo [*] Preparing pip, setuptools, and wheel in .venv...
+.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel --quiet
 
 echo [*] Installing all dependencies in .venv from requirements.txt...
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+echo     (This may take a few minutes for PyTorch and audio dependencies)
+.venv\Scripts\python.exe -m pip install -r requirements.txt > "%~dp0pip_install.log" 2>&1
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed in .venv. >> "%LOG_FILE%"
+    echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed in .venv. See pip_install.log. >> "%LOG_FILE%"
+    type "%~dp0pip_install.log" >> "%LOG_FILE%"
     echo.
-    echo [ERROR] Failed to install requirements into .venv.
-    echo Please review the error output above and check error.log.
+    echo [ERROR] Dependency installation encountered an issue.
+    echo --------------------------------------------------------
+    echo Last error output:
+    powershell -Command "Get-Content '%~dp0pip_install.log' -Tail 20"
+    echo --------------------------------------------------------
+    echo Full details saved to error.log and pip_install.log.
     pause
     exit /b 1
 )
@@ -110,7 +116,7 @@ if errorlevel 1 (
 :: 4. Ensure Playwright browser binaries
 echo.
 echo [*] Ensuring Playwright browser binaries in .venv...
-.venv\Scripts\python.exe -m playwright install chromium
+.venv\Scripts\python.exe -m playwright install chromium >nul 2>&1
 if errorlevel 1 (
     echo [%DATE% %TIME%] [WARNING] Playwright chromium browser binary installation returned non-zero code. >> "%LOG_FILE%"
     echo [Warning] Playwright chromium install encountered an issue (non-fatal).
