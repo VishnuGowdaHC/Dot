@@ -394,18 +394,36 @@ class DotInstaller(ctk.CTk):
 
     def run_install_worker(self):
         try:
-            # 1. Frontend npm install
+            py_exe = get_python_exe()
+
+            # 1. Install all Python project requirements
+            req_path = os.path.join(BASE_DIR, "requirements.txt")
+            if os.path.exists(req_path):
+                self.update_status("Installing Python dependencies (PyTorch, MCP, audio models)...", 0.05)
+                res = subprocess.run([py_exe, "-m", "pip", "install", "-r", req_path], capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                if res.returncode != 0:
+                    log_error(f"pip install failed: {res.stderr}")
+                    raise RuntimeError(f"pip install failed: {res.stderr[:200] if res.stderr else 'unknown error'}")
+
+            # 2. Install Playwright browser
+            self.update_status("Ensuring Playwright browser binaries...", 0.2)
+            try:
+                subprocess.run([py_exe, "-m", "playwright", "install", "chromium"], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except Exception as pw_err:
+                log_error(f"Playwright browser install warning: {pw_err}")
+
+            # 3. Frontend npm install
             dume_dir = os.path.join(BASE_DIR, "dum-e")
             if os.path.exists(os.path.join(dume_dir, "package.json")):
-                self.update_status("Installing frontend dependencies (npm install)...", 0.1)
+                self.update_status("Installing frontend dependencies (npm install)...", 0.35)
                 npm_cmd = shutil.which("npm") or "npm"
                 subprocess.run([npm_cmd, "install"], cwd=dume_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
             backend = self.backend_var.get()
 
-            # 2. Local Engine Downloads
+            # 4. Local Engine Downloads
             if backend != "cloud":
-                self.update_status("Fetching llama.cpp binaries from GitHub...", 0.3)
+                self.update_status("Fetching llama.cpp binaries from GitHub...", 0.5)
                 bin_dir = os.path.join(BASE_DIR, "bin")
                 os.makedirs(bin_dir, exist_ok=True)
 
@@ -415,13 +433,13 @@ class DotInstaller(ctk.CTk):
 
                 zip_urls = self.resolve_release_zips(res.json(), backend)
                 for i, url in enumerate(zip_urls):
-                    self.update_status(f"Downloading engine archive ({i+1}/{len(zip_urls)})...", 0.4 + (i * 0.2))
+                    self.update_status(f"Downloading engine archive ({i+1}/{len(zip_urls)})...", 0.6 + (i * 0.15))
                     z_res = requests.get(url, stream=True, timeout=30)
                     z_res.raise_for_status()
                     with zipfile.ZipFile(io.BytesIO(z_res.content)) as zf:
                         zf.extractall(bin_dir)
 
-            # 3. Finalize
+            # 5. Finalize
             self.update_status("Writing configuration and generating launcher...", 0.9)
             self.finalize_setup()
             self.update_status("Setup Complete!", 1.0)
@@ -528,18 +546,29 @@ set DOT_CLOUD_MODEL={self.config['cloud']['model']}
 """
 
         bat_content = f"""@echo off
+setlocal enabledelayedexpansion
 {env_block}
 echo ========================================================
 echo   Dot is starting up -- please wait...
 echo ========================================================
 echo.
 {engine_block}echo [2/3] Starting Python Orchestrator...
-start "" /min cmd /c "{orchestrator_cmd}"
+start "Dot Backend" /min cmd /c "{orchestrator_cmd} || pause"
 
 <nul set /p =[2/3] Waiting for orchestrator on port 3000 
+set ORCH_RETRIES=0
 :WAIT_ORCH
 powershell -Command "try {{ $null = (New-Object Net.Sockets.TcpClient('127.0.0.1', 3000)).Close(); exit 0 }} catch {{ exit 1 }}" >nul 2>&1
 if errorlevel 1 (
+    set /a ORCH_RETRIES+=1
+    if !ORCH_RETRIES! geq 30 (
+        echo  [FAILED]
+        echo.
+        echo [ERROR] Python Orchestrator failed to start on port 3000 within 60 seconds.
+        echo Please check the Dot Backend terminal or logs for error messages.
+        pause
+        exit /b 1
+    )
     <nul set /p =.
     timeout /t 2 /nobreak >nul
     goto WAIT_ORCH

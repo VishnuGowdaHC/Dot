@@ -1,13 +1,13 @@
 @echo off
-setlocal
-title Dot Assistant Setup Launcher
+setlocal enabledelayedexpansion
+title Dot Assistant Setup Bootstrap
 
 echo ========================================================
-echo   Dot Setup Wizard Bootstrap
+echo   Dot Setup & Environment Bootstrap
 echo ========================================================
 echo.
 
-:: 1. Locate Python 3.12 interpreter
+:: 1. Check Python 3.12 availability
 set "PY_CMD="
 
 py -3.12 --version >nul 2>&1
@@ -22,7 +22,7 @@ if not errorlevel 1 (
     goto FOUND_PYTHON
 )
 
-:: Python 3.12 not found -> Check if winget is installed
+:: Python 3.12 not found -> check winget
 echo [!] Python 3.12 is required for local inference, PyTorch CUDA, and audio models.
 echo [!] Python 3.12 was not detected on your system.
 echo.
@@ -39,9 +39,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: winget is available on this device -> Prompt user
 set /p INSTALL_PY="Would you like to auto-install Python 3.12 using Windows Package Manager (winget)? (Y/N): "
-
 if /i "%INSTALL_PY%"=="Y" (
     echo.
     echo [*] Installing Python 3.12 via winget...
@@ -64,20 +62,40 @@ if /i "%INSTALL_PY%"=="Y" (
 )
 
 :FOUND_PYTHON
-echo [*] Checking setup dependencies (customtkinter, psutil, requests, pyyaml)...
-%PY_CMD% -c "import customtkinter, psutil, requests, yaml" >nul 2>&1
-if errorlevel 1 (
-    echo [*] Installing missing setup modules...
-    %PY_CMD% -m pip install psutil customtkinter requests pyyaml
+:: 2. Create isolated .venv if not present
+if not exist ".venv\Scripts\python.exe" (
+    echo.
+    echo [*] Creating isolated virtual environment (.venv)...
+    %PY_CMD% -m venv .venv
     if errorlevel 1 (
-        echo [ERROR] Failed to install setup dependencies.
+        echo [ERROR] Failed to create virtual environment.
         pause
         exit /b 1
     )
+    echo [OK] Virtual environment created (.venv)
+) else (
+    echo [OK] Virtual environment found (.venv)
 )
 
-echo [*] Launching Dot Setup GUI...
-%PY_CMD% setup.py
+:: 3. Install all requirements.txt dependencies into .venv
+echo.
+echo [*] Installing/Verifying all dependencies in .venv (this may take a few minutes)...
+.venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+if errorlevel 1 (
+    echo [ERROR] Failed to install dependencies into .venv.
+    pause
+    exit /b 1
+)
+
+:: 4. Ensure Playwright browser binaries
+echo [*] Ensuring Playwright browser binaries...
+.venv\Scripts\python.exe -m playwright install chromium >nul 2>&1
+
+:: 5. Launch Setup GUI using .venv
+echo.
+echo [*] Launching Dot Setup Wizard...
+.venv\Scripts\python.exe setup.py
 if errorlevel 1 (
     echo.
     echo [ERROR] Setup GUI exited with an error. Check error.log for details.
