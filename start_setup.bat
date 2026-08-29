@@ -2,12 +2,15 @@
 setlocal enabledelayedexpansion
 title Dot Assistant Setup Bootstrap
 
+:: Ensure script runs from its own directory
+cd /d "%~dp0"
+
 echo ========================================================
 echo   Dot Setup & Environment Bootstrap
 echo ========================================================
 echo.
 
-:: 1. Check Python 3.12 availability
+:: 1. Locate Python 3.12 interpreter
 set "PY_CMD="
 
 py -3.12 --version >nul 2>&1
@@ -39,8 +42,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
+set "INSTALL_PY=N"
 set /p INSTALL_PY="Would you like to auto-install Python 3.12 using Windows Package Manager (winget)? (Y/N): "
-if /i "%INSTALL_PY%"=="Y" (
+if /i "!INSTALL_PY!"=="Y" (
     echo.
     echo [*] Installing Python 3.12 via winget...
     winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
@@ -62,35 +66,45 @@ if /i "%INSTALL_PY%"=="Y" (
 )
 
 :FOUND_PYTHON
+if "!PY_CMD!"=="" set "PY_CMD=py -3.12"
+
 :: 2. Create isolated .venv if not present
 if not exist ".venv\Scripts\python.exe" (
     echo.
     echo [*] Creating isolated virtual environment (.venv)...
     %PY_CMD% -m venv .venv
     if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment.
+        echo [ERROR] Failed to create virtual environment with %PY_CMD%.
         pause
         exit /b 1
     )
     echo [OK] Virtual environment created (.venv)
 ) else (
-    echo [OK] Virtual environment found (.venv)
+    echo [OK] Existing virtual environment found (.venv)
 )
 
 :: 3. Install all requirements.txt dependencies into .venv
 echo.
-echo [*] Installing/Verifying all dependencies in .venv (this may take a few minutes)...
+echo [*] Upgrading pip in .venv...
 .venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+
+echo [*] Installing all dependencies in .venv from requirements.txt...
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 if errorlevel 1 (
-    echo [ERROR] Failed to install dependencies into .venv.
+    echo.
+    echo [ERROR] Failed to install requirements into .venv.
+    echo Please review the error output above.
     pause
     exit /b 1
 )
 
 :: 4. Ensure Playwright browser binaries
-echo [*] Ensuring Playwright browser binaries...
-.venv\Scripts\python.exe -m playwright install chromium >nul 2>&1
+echo.
+echo [*] Ensuring Playwright browser binaries in .venv...
+.venv\Scripts\python.exe -m playwright install chromium
+if errorlevel 1 (
+    echo [Warning] Playwright chromium install encountered an issue (non-fatal).
+)
 
 :: 5. Launch Setup GUI using .venv
 echo.
@@ -100,4 +114,11 @@ if errorlevel 1 (
     echo.
     echo [ERROR] Setup GUI exited with an error. Check error.log for details.
     pause
+    exit /b 1
 )
+
+echo.
+echo ========================================================
+echo   Setup Wizard process finished.
+echo ========================================================
+pause

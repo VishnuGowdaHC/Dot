@@ -547,9 +547,10 @@ set DOT_CLOUD_MODEL={self.config['cloud']['model']}
 
         bat_content = f"""@echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 {env_block}
 echo ========================================================
-echo   Dot is starting up -- please wait...
+echo   Dot is starting up...
 echo ========================================================
 echo.
 {engine_block}echo [2/3] Starting Python Orchestrator...
