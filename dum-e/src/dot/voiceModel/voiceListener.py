@@ -1,5 +1,6 @@
 import sounddevice as sd
 import numpy as np
+import openwakeword
 from openwakeword.model import Model
 from src.dot.voiceModel.voiceProcess import transcribe
 import time

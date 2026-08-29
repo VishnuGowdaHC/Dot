@@ -508,7 +508,7 @@ class DotInstaller(ctk.CTk):
             except Exception as e:
                 log_error(f"Warning: Failed to write {env_path}: {e}")
 
-        # Build start_dot.bat - activates venv then runs everything inside it
+        # Build start_dot.bat
         orchestrator_cmd = "cd dum-e && python -m uvicorn server:app --port 3000"
         frontend_cmd = "cd dum-e && npx @neutralinojs/neu run"
 
@@ -521,7 +521,7 @@ class DotInstaller(ctk.CTk):
 
             engine_block = f"""echo [1/3] Starting Local Inference Engine ({backend.upper()})...
 cd bin
-start "" /min cmd /c "{llama_cmd}"
+start "Dot Inference Engine" cmd /c "{llama_cmd}"
 cd ..
 
 <nul set /p =[1/3] Waiting for engine on port {port} 
@@ -569,7 +569,7 @@ echo   Dot is starting up...
 echo ========================================================
 echo.
 {engine_block}echo [2/3] Starting Python Orchestrator...
-start "Dot Backend" /min cmd /c "call .venv\\Scripts\\activate.bat && {orchestrator_cmd} || pause"
+start "Dot Backend" cmd /k "call .venv\\Scripts\\activate.bat && cd dum-e && python -m uvicorn server:app --port 3000"
 
 <nul set /p =[2/3] Waiting for orchestrator on port 3000 
 set ORCH_RETRIES=0
@@ -592,7 +592,7 @@ if errorlevel 1 (
 echo  [DONE]
 echo.
 echo [3/3] Launching Dot UI...
-start "" /min cmd /c "{frontend_cmd}"
+start "Dot Frontend" cmd /c "{frontend_cmd}"
 echo.
 echo ========================================================
 echo   All systems go. Dot is ready.
