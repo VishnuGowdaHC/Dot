@@ -7,7 +7,7 @@ cd /d "%~dp0"
 set "LOG_FILE=%~dp0error.log"
 
 echo ========================================================
-echo   Dot Setup & Environment Bootstrap
+echo   Dot Setup and Environment Bootstrap
 echo ========================================================
 echo.
 
