@@ -127,7 +127,7 @@ echo [OK] Virtual environment activated.
 
 :: Verify python is now the venv python
 python --version
-echo     (Running from: %VENV_DIR%\Scripts\python.exe)
+echo     Running from: %VENV_DIR%\Scripts\python.exe
 
 :: ============================================================
 :: STEP 5: Install all dependencies inside the activated venv
@@ -137,20 +137,22 @@ echo [*] Upgrading pip, setuptools, and wheel...
 python -m pip install --upgrade pip setuptools wheel --quiet
 
 echo [*] Installing project dependencies from requirements.txt...
-echo     (This may take several minutes for PyTorch, audio, and ML packages)
+echo     This may take several minutes for PyTorch, audio, and ML packages.
 python -m pip install -r "%~dp0requirements.txt" > "%~dp0pip_install.log" 2>&1
-if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed. See pip_install.log >> "%LOG_FILE%"
-    type "%~dp0pip_install.log" >> "%LOG_FILE%" 2>nul
-    echo.
-    echo [ERROR] Dependency installation failed.
-    echo --------------------------------------------------------
-    powershell -Command "if (Test-Path '%~dp0pip_install.log') { Get-Content '%~dp0pip_install.log' -Tail 20 } else { Write-Host 'pip_install.log not found' }"
-    echo --------------------------------------------------------
-    echo Details saved to error.log and pip_install.log.
-    pause
-    exit /b 1
-)
+if not errorlevel 1 goto PIP_OK
+
+echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed. See pip_install.log >> "%LOG_FILE%"
+type "%~dp0pip_install.log" >> "%LOG_FILE%" 2>nul
+echo.
+echo [ERROR] Dependency installation failed.
+echo --------------------------------------------------------
+powershell -Command "if (Test-Path '%~dp0pip_install.log') { Get-Content '%~dp0pip_install.log' -Tail 20 } else { Write-Host 'pip_install.log not found' }"
+echo --------------------------------------------------------
+echo Details saved to error.log and pip_install.log.
+pause
+exit /b 1
+
+:PIP_OK
 echo [OK] All dependencies installed.
 
 :: ============================================================
@@ -159,13 +161,11 @@ echo [OK] All dependencies installed.
 echo.
 echo [*] Installing Playwright Chromium browser...
 python -m playwright install chromium >nul 2>&1
-if errorlevel 1 (
-    echo [%DATE% %TIME%] [WARNING] Playwright chromium install returned non-zero. >> "%LOG_FILE%"
-    echo [Warning] Playwright chromium install issue (non-fatal).
-)
+if errorlevel 1 echo [%DATE% %TIME%] [WARNING] Playwright chromium install had an issue. >> "%LOG_FILE%"
+if errorlevel 1 echo [Warning] Playwright chromium install had an issue, but setup can continue.
 
 :: ============================================================
-:: STEP 7: Launch Setup Wizard (still inside activated venv)
+:: STEP 7: Launch Setup Wizard - still inside activated venv
 :: ============================================================
 echo.
 echo [*] Launching Dot Setup Wizard...
