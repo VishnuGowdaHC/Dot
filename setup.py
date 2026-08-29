@@ -9,17 +9,53 @@ import sys
 import threading
 import webbrowser
 import zipfile
-import customtkinter as ctk
-import psutil
-import requests
 
 # ==========================================
-# 1. CONSTANTS & THEME
+# 1. IMMEDIATE LOGGING & EXCEPTION HOOKS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "appConfig.json")
 LOG_FILE = os.path.join(BASE_DIR, "error.log")
 
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.ERROR,
+    format="[%(asctime)s] %(levelname)s [%(filename)s:%(lineno)d] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+
+
+def log_error(msg, exc_info=True):
+    logging.error(msg, exc_info=exc_info)
+
+
+def global_exception_handler(exc_type, exc_value, exc_traceback):
+    logging.error("Unhandled main thread exception", exc_info=(exc_type, exc_value, exc_traceback))
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+
+def thread_exception_handler(args):
+    logging.error("Unhandled worker thread exception", exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+
+sys.excepthook = global_exception_handler
+threading.excepthook = thread_exception_handler
+
+# Safe import of third-party libraries with error logging
+try:
+    import customtkinter as ctk
+    import psutil
+    import requests
+except ImportError as err:
+    log_error(f"Missing required setup dependency: {err}", exc_info=True)
+    print(f"\n[ERROR] Setup initialization failed: {err}")
+    print(f"Please run 'start_setup.bat' to install dependencies automatically.")
+    print(f"Log written to: {LOG_FILE}\n")
+    sys.exit(1)
+
+# ==========================================
+# 2. THEME & PROVIDER CONSTANTS
+# ==========================================
 COLOR_BG = "#000000"
 COLOR_PANEL = "#141414"
 COLOR_PANEL_ALT = "#1a0d0d"
@@ -41,12 +77,6 @@ CLOUD_PROVIDERS = {
     "custom": {"label": "Custom / Other (OpenAI-compatible)", "base_url": "", "default_model": ""}
 }
 
-logging.basicConfig(filename=LOG_FILE, level=logging.ERROR, format="[%(asctime)s] %(levelname)s - %(message)s")
-
-
-def log_error(msg, exc_info=True):
-    logging.error(msg, exc_info=exc_info)
-
 
 def get_python_exe():
     venv_py = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
@@ -54,7 +84,7 @@ def get_python_exe():
 
 
 # ==========================================
-# 2. MAIN INSTALLER APPLICATION
+# 3. MAIN INSTALLER APPLICATION
 # ==========================================
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -76,7 +106,7 @@ class DotInstaller(ctk.CTk):
         self.tier_var = ctk.StringVar(value=self.get_recommended_tier())
         self.user_name_var = ctk.StringVar(value=self.config.get("active_settings", {}).get("user_name", "User"))
         self.layers_var = ctk.IntVar(value=self.config.get("active_settings", {}).get("gpu_layers", 99))
-        
+
         # Discover existing GitHub Token from .env if present
         existing_gh_token = ""
         for ep in [os.path.join(BASE_DIR, "dum-e", "src", "dot", ".env"), os.path.join(BASE_DIR, "dum-e", ".env"), os.path.join(BASE_DIR, ".env")]:
@@ -118,14 +148,18 @@ class DotInstaller(ctk.CTk):
                 cfg["cloud"] = {"provider": "openai", "base_url": CLOUD_PROVIDERS["openai"]["base_url"], "model": CLOUD_PROVIDERS["openai"]["default_model"], "api_key": ""}
             return cfg
         except Exception as e:
-            log_error("Failed to load appConfig.json")
+            log_error(f"Failed to load appConfig.json: {e}")
             self.after(100, lambda: self.show_fatal_error_screen(f"Could not load appConfig.json: {e}"))
             return {}
 
     def probe_hardware(self):
-        ram = round(psutil.virtual_memory().total / (1024**3), 1)
-        vram, cuda_ver, has_cuda = 0.0, 0.0, False
+        ram = 8.0
+        try:
+            ram = round(psutil.virtual_memory().total / (1024**3), 1)
+        except Exception as e:
+            log_error(f"RAM probing warning: {e}")
 
+        vram, cuda_ver, has_cuda = 0.0, 0.0, False
         try:
             vram_out = subprocess.check_output(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
@@ -138,7 +172,7 @@ class DotInstaller(ctk.CTk):
             match = re.search(r"CUDA\s+(?:UMD\s+)?Version:\s*(\d+(?:\.\d+)?)", full_out, re.IGNORECASE)
             cuda_ver = float(match.group(1)) if match else 11.0
         except Exception:
-            pass
+            has_cuda = False
 
         return ram, vram, cuda_ver, has_cuda
 
@@ -222,7 +256,11 @@ class DotInstaller(ctk.CTk):
         self.make_header("Model Files", "Download Model Files")
 
         tier = self.tier_var.get()
-        model_info = self.config["models"][tier]
+        model_info = self.config.get("models", {}).get(tier, {})
+        if not model_info:
+            self.show_fatal_error_screen(f"Configuration missing model specs for tier '{tier}'")
+            return
+
         model_fn, mmproj_fn = model_info["filename"], model_info["mmproj"]
         page_url = f"https://huggingface.co/{model_info['repo_id']}"
 
@@ -305,17 +343,17 @@ class DotInstaller(ctk.CTk):
             ctk.CTkOptionMenu(
                 self.container, values=[p["label"] for p in CLOUD_PROVIDERS.values()], variable=self.provider_var,
                 command=on_provider_change, width=340, fg_color=COLOR_PANEL_ALT, button_color=COLOR_ACCENT, button_hover_color=COLOR_ACCENT_HOVER, dropdown_fg_color=COLOR_PANEL, text_color=COLOR_TEXT
-            ).pack(padx=40, pady=(0, 10))
+            ).pack(padx=40, pady=(0, 8))
 
             ctk.CTkLabel(self.container, text="Base URL:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-            ctk.CTkEntry(self.container, textvariable=self.base_url_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 10))
+            ctk.CTkEntry(self.container, textvariable=self.base_url_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 8))
 
             ctk.CTkLabel(self.container, text="Model:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-            ctk.CTkEntry(self.container, textvariable=self.model_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 10))
+            ctk.CTkEntry(self.container, textvariable=self.model_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 8))
 
             ctk.CTkLabel(self.container, text="API Key:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
             self.api_entry = ctk.CTkEntry(self.container, textvariable=self.api_key_var, show="*", width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT)
-            self.api_entry.pack(padx=40, pady=(0, 15))
+            self.api_entry.pack(padx=40, pady=(0, 10))
 
         elif self.backend_var.get() == "cuda":
             ctk.CTkLabel(self.container, text="GPU Offload Layers (Advanced):", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
@@ -390,7 +428,7 @@ class DotInstaller(ctk.CTk):
             self.after(0, self.show_success_screen)
 
         except Exception as e:
-            log_error("Installation worker failed")
+            log_error(f"Installation worker failed: {e}")
             self.after(0, lambda: self.show_fatal_error_screen(f"Installation failed: {e}"))
 
     def resolve_release_zips(self, releases, backend):
@@ -449,8 +487,8 @@ class DotInstaller(ctk.CTk):
                 os.makedirs(os.path.dirname(env_path), exist_ok=True)
                 with open(env_path, "w", encoding="utf-8") as f:
                     f.write(env_content)
-            except Exception:
-                pass
+            except Exception as e:
+                log_error(f"Warning: Failed to write {env_path}: {e}")
 
         # Build start_dot.bat
         venv_py = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
@@ -544,6 +582,6 @@ if __name__ == "__main__":
     try:
         app = DotInstaller()
         app.mainloop()
-    except Exception:
-        log_error("Fatal crash during setup mainloop")
+    except Exception as e:
+        log_error(f"Fatal crash during setup mainloop: {e}")
         sys.exit(1)

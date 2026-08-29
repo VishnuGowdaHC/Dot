@@ -1,43 +1,52 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 title Dot Assistant Setup Launcher
 
 echo ========================================================
-echo   Dot Setup & Virtual Environment Bootstrap
+echo   Dot Setup Wizard Bootstrap
 echo ========================================================
 echo.
 
-:: 1. Check if .venv already exists
-if exist ".venv\Scripts\python.exe" (
-    echo [OK] Virtual environment found (.venv)
-    goto LAUNCH
-)
+:: 1. Locate Python 3.12 interpreter
+set "PY_CMD="
 
-:: 2. Check if Python 3.12 is available on the system
 py -3.12 --version >nul 2>&1
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     set "PY_CMD=py -3.12"
-    goto CREATE_VENV
+    goto FOUND_PYTHON
 )
 
-:: Fallback check if default 'python' is 3.12
 python --version 2>&1 | findstr "3.12" >nul
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     set "PY_CMD=python"
-    goto CREATE_VENV
+    goto FOUND_PYTHON
 )
 
-:: 3. Python 3.12 is missing - Prompt user to auto-install via winget
-echo [!] Python 3.12 is required (for PyTorch, ONNX, and faster-whisper compatibility).
+:: Python 3.12 not found -> Check if winget is installed
+echo [!] Python 3.12 is required for local inference, PyTorch CUDA, and audio models.
 echo [!] Python 3.12 was not detected on your system.
 echo.
+
+winget --version >nul 2>&1
+if errorlevel 1 (
+    echo [!] Windows Package Manager (winget) was not found on this device.
+    echo Please download and install Python 3.12 manually from:
+    echo https://www.python.org/downloads/release/python-3128/
+    echo.
+    echo (Be sure to check "Add Python 3.12 to PATH" during installation)
+    echo.
+    pause
+    exit /b 1
+)
+
+:: winget is available on this device -> Prompt user
 set /p INSTALL_PY="Would you like to auto-install Python 3.12 using Windows Package Manager (winget)? (Y/N): "
 
 if /i "%INSTALL_PY%"=="Y" (
     echo.
-    echo Installing Python 3.12...
+    echo [*] Installing Python 3.12 via winget...
     winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo.
         echo [ERROR] Automatic installation failed. Please install Python 3.12 manually from:
         echo https://www.python.org/downloads/release/python-3128/
@@ -49,39 +58,28 @@ if /i "%INSTALL_PY%"=="Y" (
     set "PY_CMD=py -3.12"
 ) else (
     echo.
-    echo Setup aborted. Please install Python 3.12 manually and restart this script.
+    echo Setup cancelled. Please install Python 3.12 and restart start_setup.bat.
     pause
     exit /b 1
 )
 
-:: 4. Create .venv
-:CREATE_VENV
-echo.
-echo [*] Creating isolated virtual environment (.venv)...
-%PY_CMD% -m venv .venv
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to create virtual environment.
-    pause
-    exit /b 1
+:FOUND_PYTHON
+echo [*] Checking setup dependencies (customtkinter, psutil, requests, pyyaml)...
+%PY_CMD% -c "import customtkinter, psutil, requests, yaml" >nul 2>&1
+if errorlevel 1 (
+    echo [*] Installing missing setup modules...
+    %PY_CMD% -m pip install psutil customtkinter requests pyyaml
+    if errorlevel 1 (
+        echo [ERROR] Failed to install setup dependencies.
+        pause
+        exit /b 1
+    )
 )
 
-:: 5. Install requirements in .venv
-echo [*] Installing requirements into .venv (this may take a few minutes)...
-.venv\Scripts\python.exe -m pip install --upgrade pip --quiet
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-if %errorlevel% neq 0 (
-    echo [ERROR] Dependency installation encountered errors.
-    pause
-    exit /b 1
-)
-
-:: 6. Launch Setup GUI using .venv
-:LAUNCH
-echo.
-echo [*] Starting Dot Setup Wizard...
-.venv\Scripts\python.exe setup.py
-if %errorlevel% neq 0 (
+echo [*] Launching Dot Setup GUI...
+%PY_CMD% setup.py
+if errorlevel 1 (
     echo.
-    echo [ERROR] Setup script exited with an error. Check error.log for details.
+    echo [ERROR] Setup GUI exited with an error. Check error.log for details.
     pause
 )
