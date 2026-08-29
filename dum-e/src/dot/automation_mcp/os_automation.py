@@ -12,9 +12,15 @@ import sys
 _original_stdout = sys.stdout
 sys.stdout = sys.stderr
 
-import easyocr
-
-reader = easyocr.Reader(['en'], gpu=True, verbose=False)
+try:
+    import easyocr
+    try:
+        reader = easyocr.Reader(['en'], gpu=True, verbose=False)
+    except Exception:
+        reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+except Exception as ocr_err:
+    print(f"[Warning] EasyOCR failed to load: {ocr_err}", file=sys.stderr)
+    reader = None
 
 sys.stdout = _original_stdout
 

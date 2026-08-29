@@ -37,10 +37,14 @@ async def _ensure_browser():
             print("[System] Successfully connected to active browser session.")
             
         except Exception as e:
-            # Fallback: If port 9222 isn't open, just launch a new browser so the agent doesn't crash
+            # Fallback: If port 9222 isn't open, launch a new browser
             print(f"[System] CDP connection failed ({e}). Falling back to a new browser instance.")
-            _browser = await _playwright.chromium.launch(headless=False)
-            _page = await _browser.new_page()
+            try:
+                _browser = await _playwright.chromium.launch(headless=False)
+                _page = await _browser.new_page()
+            except Exception as launch_err:
+                print(f"[Error] Playwright browser launch failed: {launch_err}. Please run 'playwright install chromium'.")
+                raise RuntimeError(f"Playwright chromium browser not found or failed to launch ({launch_err}). Run 'playwright install chromium'.")
             
     return _page
 

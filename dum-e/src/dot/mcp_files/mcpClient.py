@@ -33,13 +33,40 @@ def get_multi_server_client() -> Client:
 
 
 async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: str, tool_args):
-    result = await active_client.call_tool(tool_name, tool_args)
+    # Determine candidate tool names (prefixed and unprefixed)
+    raw_name = tool_name
+    if tool_service and tool_name.startswith(f"{tool_service}_"):
+        raw_name = tool_name[len(tool_service) + 1:]
 
-    if result.content:
-        text = result.content[0].text
+    prefixed_name = f"{tool_service}_{raw_name}" if tool_service else tool_name
+    candidates = [tool_name, raw_name, prefixed_name]
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_candidates = [c for c in candidates if not (c in seen or seen.add(c))]
+
+    last_error = None
+    result = None
+
+    for name in unique_candidates:
         try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return text
+            result = await active_client.call_tool(name, tool_args or {})
+            break
+        except Exception as err:
+            last_error = err
 
-    return None
+    if result is None:
+        raise RuntimeError(f"Tool '{tool_name}' failed to execute on server '{tool_service}': {last_error}")
+
+    if hasattr(result, "content") and result.content:
+        first_item = result.content[0]
+        if hasattr(first_item, "text"):
+            text = first_item.text
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                return text
+        elif hasattr(first_item, "data"):
+            return f"[Binary/Image Content received: {getattr(first_item, 'mimeType', 'unknown')}]"
+        return str(first_item)
+
+    return result

@@ -12,6 +12,7 @@ from src.dot.core.router import intentRouter
 from src.dot.memory.session_memory.manager import SessionStorage
 from src.dot.memory.collections.session_collection import embed_session_to_chroma
 from src.dot.mcp_files.mcpClient import get_multi_server_client
+from src.dot.mcp_files.registry import sync_registry
 
 
 # Global state to hold the MCP client so all sockets share it
@@ -20,11 +21,20 @@ transcription_queue = asyncio.Queue()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Boot the voice listener
+    # 1. Sync all MCP and native tools into ChromaDB vector store
+    print("Syncing tools to ChromaDB...")
+    try:
+        await sync_registry()
+        print("All tools registered in ChromaDB successfully!")
+    except Exception as reg_err:
+        print(f"[Warning] Tool registration encountered an error: {reg_err}")
+        traceback.print_exc()
+
+    # 2. Boot the background voice listener
     print("Starting background voice listener...")
     threading.Thread(target=startVoiceListener, daemon=True).start()
     
-    # Boot the MCP servers EXACTLY ONCE for the whole app
+    # 3. Boot the MCP servers EXACTLY ONCE for the whole app
     multi_server_client = get_multi_server_client()
     async with multi_server_client as active_client:
         print("MCP Servers initialized and ready globally!")
