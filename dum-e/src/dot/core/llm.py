@@ -5,15 +5,17 @@ from src.dot.core.prompts import systemPrompt
 
 
 def _load_client():
-    config_path = os.path.join(
-        os.path.dirname(__file__),   # current file dir: Dot/dum-e/src/dot/core
-        "..", "..", "..",            
-        "appConfig.json"             
-    )
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "appConfig.json"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "appConfig.json"),
+        os.path.abspath("appConfig.json"),
+        os.path.abspath("../appConfig.json")
+    ]
+    config_path = next((os.path.abspath(p) for p in possible_paths if os.path.exists(p)), None)
     backend = "cuda"
     cloud_cfg = {}
 
-    if os.path.exists(config_path):
+    if config_path and os.path.exists(config_path):
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
         backend = cfg.get("active_settings", {}).get("backend", "cuda")

@@ -1,12 +1,25 @@
 import sounddevice as sd
 import numpy as np
+import os
+import openwakeword
+import openwakeword.utils
 from openwakeword.model import Model
 from src.dot.voiceModel.voiceProcess import transcribe
 import time
 last_trigger = 0
 COOLDOWN = 3
 
-model = Model(wakeword_models=["./hey_Dott.onnx"])
+openwakeword.utils.download_models()
+
+_model_candidates = [
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "hey_Dott.onnx"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "hey_Dott.onnx"),
+    "hey_Dott.onnx",
+    "./hey_Dott.onnx"
+]
+_model_path = next((os.path.abspath(p) for p in _model_candidates if os.path.exists(p)), "./hey_Dott.onnx")
+
+model = Model(wakeword_models=[_model_path])
 
 def record_command(fs=16000, silence_ms=3000, threshold=2, timeout=5):
     

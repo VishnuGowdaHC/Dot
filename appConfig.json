@@ -16,7 +16,7 @@
     },
     "models": {
         "2B": {
-            "repo_id": "google/gemma-4-2b-it-qat-q4_0-gguf",
+            "repo_id": "google/gemma-4-E2B-it-qat-q4_0-gguf",
             "filename": "gemma-4-E2B_q4_0-it.gguf",
             "mmproj": "gemma-4-E2B-it-mmproj.gguf",
             "context_size": 8192
@@ -28,17 +28,17 @@
             "context_size": 8192
         },
         "12B": {
-            "repo_id": "google/gemma-4-12b-it-qat-q4_0-gguf",
-            "filename": "gemma-4-12b-it-qat-q4_0.gguf",
-            "mmproj": "mmproj-gemma-4-12b-it-qat-q4_0.gguf",
+            "repo_id": "google/gemma-4-E12B-it-qat-q4_0-gguf",
+            "filename": "gemma-4-E12B_q4_0-it.gguf",
+            "mmproj": "gemma-4-E12B-it-mmproj.gguf",
             "context_size": 4096
         }
     },
     "launcher_templates": {
         "cuda": "llama-server.exe -m {model_file} --mmproj {mmproj_file} --port {port} -c {context_size} -fa on -ctk q8_0 -ctv q8_0 -ngl {gpu_layers} --temp {temperature} --alias dot-engine",
         "cpu": "llama-server.exe -m {model_file} --mmproj {mmproj_file} --port {port} -c {context_size} -fa on -ctk q8_0 -ctv q8_0 --temp {temperature} --alias dot-engine",
-        "orchestrator": "cd dum-e && py -m uvicorn server:app --port 3000",
-        "frontend": "cd dum-e && neu run"
+        "orchestrator": "cd dum-e && py -3.12 -m uvicorn server:app --port 3000",
+        "frontend": "cd dum-e && npx @neutralinojs/neu run"
     },
     "active_settings": {
         "backend": "cuda",

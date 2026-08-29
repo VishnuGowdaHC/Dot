@@ -2,3 +2,14 @@
 /dot-engine-2b
 /dot-engine-4b
 /dot-engine-12b
+/context.md
+/implementation_plan.md
+.venv/
+__pycache__/
+*.pyc
+*.log
+bin/
+.env
+*.env
+
+
