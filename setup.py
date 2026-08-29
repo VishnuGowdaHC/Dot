@@ -508,10 +508,8 @@ class DotInstaller(ctk.CTk):
             except Exception as e:
                 log_error(f"Warning: Failed to write {env_path}: {e}")
 
-        # Build start_dot.bat
-        venv_py = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
-        py_cmd = f"..\\.venv\\Scripts\\python.exe" if os.path.exists(venv_py) else "py -3.12"
-        orchestrator_cmd = f"cd dum-e && {py_cmd} -m uvicorn server:app --port 3000"
+        # Build start_dot.bat - activates venv then runs everything inside it
+        orchestrator_cmd = "cd dum-e && python -m uvicorn server:app --port 3000"
         frontend_cmd = "cd dum-e && npx @neutralinojs/neu run"
 
         engine_block = ""
@@ -527,9 +525,18 @@ start "" /min cmd /c "{llama_cmd}"
 cd ..
 
 <nul set /p =[1/3] Waiting for engine on port {port} 
+set ENGINE_RETRIES=0
 :WAIT_ENGINE
 powershell -Command "try {{ $null = (New-Object Net.Sockets.TcpClient('127.0.0.1', {port})).Close(); exit 0 }} catch {{ exit 1 }}" >nul 2>&1
 if errorlevel 1 (
+    set /a ENGINE_RETRIES+=1
+    if !ENGINE_RETRIES! geq 30 (
+        echo  [FAILED]
+        echo.
+        echo [ERROR] Inference engine failed to start on port {port} within 60 seconds.
+        pause
+        exit /b 1
+    )
     <nul set /p =.
     timeout /t 2 /nobreak >nul
     goto WAIT_ENGINE
@@ -549,12 +556,20 @@ set DOT_CLOUD_MODEL={self.config['cloud']['model']}
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 {env_block}
+:: Activate the virtual environment
+call .venv\\Scripts\\activate.bat
+if errorlevel 1 (
+    echo [ERROR] Could not activate .venv. Run start_setup.bat first.
+    pause
+    exit /b 1
+)
+
 echo ========================================================
 echo   Dot is starting up...
 echo ========================================================
 echo.
 {engine_block}echo [2/3] Starting Python Orchestrator...
-start "Dot Backend" /min cmd /c "{orchestrator_cmd} || pause"
+start "Dot Backend" /min cmd /c "call .venv\\Scripts\\activate.bat && {orchestrator_cmd} || pause"
 
 <nul set /p =[2/3] Waiting for orchestrator on port 3000 
 set ORCH_RETRIES=0
@@ -565,8 +580,8 @@ if errorlevel 1 (
     if !ORCH_RETRIES! geq 30 (
         echo  [FAILED]
         echo.
-        echo [ERROR] Python Orchestrator failed to start on port 3000 within 60 seconds.
-        echo Please check the Dot Backend terminal or logs for error messages.
+        echo [ERROR] Orchestrator failed to start on port 3000 within 60 seconds.
+        echo Check the Dot Backend window for error messages.
         pause
         exit /b 1
     )
@@ -580,7 +595,7 @@ echo [3/3] Launching Dot UI...
 start "" /min cmd /c "{frontend_cmd}"
 echo.
 echo ========================================================
-echo   All systems go! Dot is ready.
+echo   All systems go. Dot is ready.
 echo ========================================================
 echo   (You can close this window)
 """

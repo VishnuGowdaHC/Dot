@@ -2,163 +2,184 @@
 setlocal
 title Dot Assistant Setup Bootstrap
 
-:: Ensure script runs from its own directory
+:: Pin working directory to script location
 cd /d "%~dp0"
 set "LOG_FILE=%~dp0error.log"
+set "VENV_DIR=%~dp0.venv"
 
 echo ========================================================
 echo   Dot Setup and Environment Bootstrap
 echo ========================================================
 echo.
 
-:: 1. Check if .venv ALREADY exists
-if exist ".venv\Scripts\python.exe" (
-    echo [OK] Virtual environment found (.venv)
-    goto VENV_READY
+:: ============================================================
+:: STEP 1: .venv existence check - skip Python discovery if ready
+:: ============================================================
+if exist "%VENV_DIR%\Scripts\activate.bat" (
+    echo [OK] Virtual environment found at %VENV_DIR%
+    goto ACTIVATE_VENV
 )
 
-:: 2. .venv does not exist -> find Python to create it
-echo [*] Initializing virtual environment (.venv)...
+:: ============================================================
+:: STEP 2: Find a Python interpreter to create the venv
+:: ============================================================
+echo [*] No virtual environment found. Setting one up...
 set "PY_CMD="
 
 py -3.12 --version >nul 2>&1
 if not errorlevel 1 (
     set "PY_CMD=py -3.12"
-    goto MAKE_VENV
+    goto CREATE_VENV
 )
 
 python --version 2>&1 | findstr "3.12" >nul
 if not errorlevel 1 (
     set "PY_CMD=python"
-    goto MAKE_VENV
+    goto CREATE_VENV
 )
 
 py --version >nul 2>&1
 if not errorlevel 1 (
     set "PY_CMD=py"
-    goto MAKE_VENV
+    goto CREATE_VENV
 )
 
 python --version >nul 2>&1
 if not errorlevel 1 (
     set "PY_CMD=python"
-    goto MAKE_VENV
+    goto CREATE_VENV
 )
 
-:: Python is missing -> check winget
-echo [-] Python is required to build the virtual environment.
-echo [-] Python was not detected on your system.
+:: No Python at all -> offer winget or manual install
+echo [-] Python is required but was not detected on your system.
 echo.
 
 winget --version >nul 2>&1
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] Python is not installed and winget is not available on this system. >> "%LOG_FILE%"
-    echo [-] Windows Package Manager (winget) was not found on this device.
-    echo Please download and install Python 3.12 manually from:
+    echo [%DATE% %TIME%] [ERROR] No Python found and winget unavailable. >> "%LOG_FILE%"
+    echo [-] winget is not available on this device.
+    echo Please install Python 3.12 manually from:
     echo https://www.python.org/downloads/release/python-3128/
     echo.
-    echo (Be sure to check "Add Python to PATH" during installation)
+    echo Make sure to check "Add Python to PATH" during installation.
     echo.
     pause
     exit /b 1
 )
 
 set "INSTALL_PY=N"
-set /p INSTALL_PY="Would you like to auto-install Python 3.12 using Windows Package Manager (winget)? (Y/N): "
-if /i "%INSTALL_PY%"=="Y" goto DO_WINGET_INSTALL
+set /p INSTALL_PY="Auto-install Python 3.12 via winget? (Y/N): "
+if /i "%INSTALL_PY%"=="Y" goto DO_WINGET
 
-echo [%DATE% %TIME%] [INFO] Setup aborted by user: declined auto-install of Python. >> "%LOG_FILE%"
-echo.
-echo Setup cancelled. Please install Python and restart start_setup.bat.
+echo [%DATE% %TIME%] [INFO] User declined Python auto-install. >> "%LOG_FILE%"
+echo Setup cancelled. Install Python 3.12 and re-run start_setup.bat.
 pause
 exit /b 1
 
-:DO_WINGET_INSTALL
+:DO_WINGET
 echo.
 echo [*] Installing Python 3.12 via winget...
 winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] Automatic installation of Python 3.12 via winget failed. >> "%LOG_FILE%"
-    echo.
-    echo [ERROR] Automatic installation failed. Please install Python 3.12 manually from:
+    echo [%DATE% %TIME%] [ERROR] winget Python install failed. >> "%LOG_FILE%"
+    echo [ERROR] Auto-install failed. Get Python 3.12 from:
     echo https://www.python.org/downloads/release/python-3128/
     pause
     exit /b 1
 )
-echo.
-echo [OK] Python 3.12 installed!
+echo [OK] Python 3.12 installed.
 set "PY_CMD=py -3.12"
 
-set "VENV_DIR=%~dp0.venv"
-set "VENV_PY=%~dp0.venv\Scripts\python.exe"
-set "REQ_FILE=%~dp0requirements.txt"
-set "SETUP_PY=%~dp0setup.py"
-set "PIP_LOG=%~dp0pip_install.log"
-
-:MAKE_VENV
+:: ============================================================
+:: STEP 3: Create the .venv folder and venv inside it
+:: ============================================================
+:CREATE_VENV
 if "%PY_CMD%"=="" set "PY_CMD=py -3.12"
-echo [*] Creating isolated virtual environment (.venv) using %PY_CMD%...
+
+echo.
+echo [*] Creating .venv directory...
+if not exist "%VENV_DIR%" mkdir "%VENV_DIR%"
+
+echo [*] Building virtual environment using %PY_CMD%...
 %PY_CMD% -m venv "%VENV_DIR%"
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] Failed to create virtual environment using command '%PY_CMD% -m venv "%VENV_DIR%"'. >> "%LOG_FILE%"
-    echo [ERROR] Failed to create virtual environment with %PY_CMD%.
+    echo [%DATE% %TIME%] [ERROR] venv creation failed: %PY_CMD% -m venv "%VENV_DIR%" >> "%LOG_FILE%"
+    echo [ERROR] Could not create virtual environment.
     pause
     exit /b 1
 )
-echo [OK] Virtual environment created (.venv)
+echo [OK] Virtual environment created.
 
-:VENV_READY
-if not exist "%VENV_PY%" (
-    echo [-] Virtual environment executable was not found at: "%VENV_PY%"
-    echo [*] Attempting to re-create virtual environment...
-    goto MAKE_VENV
-)
-
-:: 3. Install all requirements.txt dependencies into .venv
+:: ============================================================
+:: STEP 4: Activate the venv
+:: ============================================================
+:ACTIVATE_VENV
 echo.
-echo [*] Preparing pip, setuptools, and wheel in .venv...
-"%VENV_PY%" -m pip install --upgrade pip setuptools wheel --quiet
-
-echo [*] Installing all dependencies in .venv from requirements.txt...
-echo     (This may take a few minutes for PyTorch and audio dependencies)
-"%VENV_PY%" -m pip install -r "%REQ_FILE%" > "%PIP_LOG%" 2>&1
+echo [*] Activating virtual environment...
+call "%VENV_DIR%\Scripts\activate.bat"
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed in .venv. See pip_install.log. >> "%LOG_FILE%"
-    type "%PIP_LOG%" >> "%LOG_FILE%" 2>nul
+    echo [%DATE% %TIME%] [ERROR] Failed to activate venv at "%VENV_DIR%\Scripts\activate.bat" >> "%LOG_FILE%"
+    echo [ERROR] Could not activate .venv. Try deleting .venv and re-running.
+    pause
+    exit /b 1
+)
+echo [OK] Virtual environment activated.
+
+:: Verify python is now the venv python
+python --version
+echo     (Running from: %VENV_DIR%\Scripts\python.exe)
+
+:: ============================================================
+:: STEP 5: Install all dependencies inside the activated venv
+:: ============================================================
+echo.
+echo [*] Upgrading pip, setuptools, and wheel...
+python -m pip install --upgrade pip setuptools wheel --quiet
+
+echo [*] Installing project dependencies from requirements.txt...
+echo     (This may take several minutes for PyTorch, audio, and ML packages)
+python -m pip install -r "%~dp0requirements.txt" > "%~dp0pip_install.log" 2>&1
+if errorlevel 1 (
+    echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed. See pip_install.log >> "%LOG_FILE%"
+    type "%~dp0pip_install.log" >> "%LOG_FILE%" 2>nul
     echo.
-    echo [ERROR] Dependency installation encountered an issue.
+    echo [ERROR] Dependency installation failed.
     echo --------------------------------------------------------
-    echo Last error output:
-    powershell -Command "if (Test-Path '%PIP_LOG%') { Get-Content '%PIP_LOG%' -Tail 20 } else { Write-Host 'Log file not found' }"
+    powershell -Command "if (Test-Path '%~dp0pip_install.log') { Get-Content '%~dp0pip_install.log' -Tail 20 } else { Write-Host 'pip_install.log not found' }"
     echo --------------------------------------------------------
-    echo Full details saved to error.log and pip_install.log.
+    echo Details saved to error.log and pip_install.log.
     pause
     exit /b 1
 )
+echo [OK] All dependencies installed.
 
-:: 4. Ensure Playwright browser binaries
+:: ============================================================
+:: STEP 6: Playwright browser binaries
+:: ============================================================
 echo.
-echo [*] Ensuring Playwright browser binaries in .venv...
-"%VENV_PY%" -m playwright install chromium >nul 2>&1
+echo [*] Installing Playwright Chromium browser...
+python -m playwright install chromium >nul 2>&1
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [WARNING] Playwright chromium browser binary installation returned non-zero code. >> "%LOG_FILE%"
-    echo [Warning] Playwright chromium install encountered an issue (non-fatal).
+    echo [%DATE% %TIME%] [WARNING] Playwright chromium install returned non-zero. >> "%LOG_FILE%"
+    echo [Warning] Playwright chromium install issue (non-fatal).
 )
 
-:: 5. Launch Setup GUI using .venv
+:: ============================================================
+:: STEP 7: Launch Setup Wizard (still inside activated venv)
+:: ============================================================
 echo.
 echo [*] Launching Dot Setup Wizard...
-"%VENV_PY%" "%SETUP_PY%"
+python "%~dp0setup.py"
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] setup.py terminated unexpectedly. >> "%LOG_FILE%"
+    echo [%DATE% %TIME%] [ERROR] setup.py crashed. >> "%LOG_FILE%"
     echo.
-    echo [ERROR] Setup GUI exited with an error. Check error.log for details.
+    echo [ERROR] Setup GUI exited with an error. Check error.log.
     pause
     exit /b 1
 )
 
 echo.
 echo ========================================================
-echo   Setup Wizard process finished.
+echo   Setup complete.
 echo ========================================================
 pause
