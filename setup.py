@@ -197,7 +197,7 @@ class DotInstaller(ctk.CTk):
         self.clear_container()
         steps = self.get_step_sequence()
         idx = (steps.index(step_name) + 1) if step_name in steps else 1
-        ctk.CTkLabel(self.container, text=f"STEP {idx} OF {len(steps)}  ·  {step_name.upper()}", font=("Arial", 11, "bold"), text_color=COLOR_ACCENT).pack(pady=(15, 0))
+        ctk.CTkLabel(self.container, text=f"STEP {idx} OF {len(steps)} | {step_name.upper()}", font=("Arial", 11, "bold"), text_color=COLOR_ACCENT).pack(pady=(15, 0))
         ctk.CTkLabel(self.container, text=title, font=("Arial", 22, "bold"), text_color=COLOR_TEXT).pack(pady=(5, 10))
 
     def make_nav_row(self, back_cmd, next_text, next_cmd):
@@ -217,19 +217,19 @@ class DotInstaller(ctk.CTk):
         info_frame.pack(fill="x", padx=30, pady=10)
 
         gpu_txt = f"NVIDIA GPU ({self.vram_gb} GB VRAM) - CUDA v{self.cuda_version}" if self.has_cuda else "No NVIDIA GPU Detected (CPU Mode)"
-        ctk.CTkLabel(info_frame, text=f"• System Memory: {self.ram_gb} GB RAM", font=("Arial", 14), text_color=COLOR_TEXT).pack(anchor="w", padx=20, pady=(10, 4))
-        ctk.CTkLabel(info_frame, text=f"• Graphics Backend: {gpu_txt}", font=("Arial", 14), text_color=COLOR_TEXT).pack(anchor="w", padx=20, pady=(0, 10))
+        ctk.CTkLabel(info_frame, text=f"* System Memory: {self.ram_gb} GB RAM", font=("Arial", 14), text_color=COLOR_TEXT).pack(anchor="w", padx=20, pady=(10, 4))
+        ctk.CTkLabel(info_frame, text=f"* Graphics Backend: {gpu_txt}", font=("Arial", 14), text_color=COLOR_TEXT).pack(anchor="w", padx=20, pady=(0, 10))
 
-        ctk.CTkLabel(self.container, text="Select Compute Engine:", font=("Arial", 14, "bold"), text_color=COLOR_TEXT).pack(pady=(10, 5))
+        ctk.CTkLabel(self.container, text="Select Compute Engine:", font=("Arial", 14, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(12, 6))
 
         r_opts = [
-            ("cuda", "CUDA (NVIDIA GPU Acceleration — Recommended)", self.has_cuda),
-            ("cpu", "AVX2 (CPU Only — Standard Fallback)", True),
-            ("cloud", "Cloud API (Fully Remote — Zero Local Downloads)", True)
+            ("cuda", "CUDA (NVIDIA GPU Acceleration - Recommended)", self.has_cuda),
+            ("cpu", "AVX2 (CPU Only - Standard Fallback)", True),
+            ("cloud", "Cloud API (Fully Remote - Zero Local Downloads)", True)
         ]
         for val, label, enabled in r_opts:
             r = ctk.CTkRadioButton(self.container, text=label, variable=self.backend_var, value=val, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color=COLOR_TEXT, border_color=COLOR_TEXT_MUTED)
-            r.pack(pady=4, anchor="w", padx=40)
+            r.pack(pady=5, anchor="w", padx=30)
             if not enabled:
                 r.configure(state="disabled")
 
@@ -242,10 +242,10 @@ class DotInstaller(ctk.CTk):
         self.make_header("Compute Tier", "Select Model")
 
         recommended = self.get_recommended_tier()
-        ctk.CTkLabel(self.container, text=f"Recommended for your setup: Gemma 4 ({recommended})", font=("Arial", 13, "bold"), text_color=COLOR_ACCENT).pack(pady=(0, 15))
+        ctk.CTkLabel(self.container, text=f"Recommended for your setup: Gemma 4 ({recommended})", font=("Arial", 13, "bold"), text_color=COLOR_ACCENT).pack(anchor="w", padx=30, pady=(0, 15))
 
         for tier in self.config.get("models", {}).keys():
-            ctk.CTkRadioButton(self.container, text=f"Gemma 4 ({tier})", variable=self.tier_var, value=tier, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color=COLOR_TEXT, border_color=COLOR_TEXT_MUTED).pack(pady=8, anchor="w", padx=60)
+            ctk.CTkRadioButton(self.container, text=f"Gemma 4 ({tier})", variable=self.tier_var, value=tier, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color=COLOR_TEXT, border_color=COLOR_TEXT_MUTED).pack(pady=8, anchor="w", padx=30)
 
         self.make_nav_row(self.show_rig_analysis, "Next: Model Files", self.show_model_files)
 
@@ -325,11 +325,11 @@ class DotInstaller(ctk.CTk):
         self.make_header("Personalize", "Personalize Assistant")
         is_cloud = self.backend_var.get() == "cloud"
 
-        ctk.CTkLabel(self.container, text="User Name / Call Sign:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-        ctk.CTkEntry(self.container, textvariable=self.user_name_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self.container, text="User Name / Call Sign:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
+        ctk.CTkEntry(self.container, textvariable=self.user_name_var, width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(0, 8))
 
-        ctk.CTkLabel(self.container, text="GitHub Personal Access Token (Optional for GitHub MCP):", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-        ctk.CTkEntry(self.container, textvariable=self.github_token_var, placeholder_text="ghp_... (Optional)", show="*", width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self.container, text="GitHub Personal Access Token (Optional for GitHub MCP):", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
+        ctk.CTkEntry(self.container, textvariable=self.github_token_var, placeholder_text="ghp_... (Optional)", show="*", width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(0, 8))
 
         if is_cloud:
             def on_provider_change(val):
@@ -339,32 +339,32 @@ class DotInstaller(ctk.CTk):
                         self.model_var.set(p_info["default_model"])
                         break
 
-            ctk.CTkLabel(self.container, text="Cloud Provider:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
+            ctk.CTkLabel(self.container, text="Cloud Provider:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
             ctk.CTkOptionMenu(
                 self.container, values=[p["label"] for p in CLOUD_PROVIDERS.values()], variable=self.provider_var,
-                command=on_provider_change, width=340, fg_color=COLOR_PANEL_ALT, button_color=COLOR_ACCENT, button_hover_color=COLOR_ACCENT_HOVER, dropdown_fg_color=COLOR_PANEL, text_color=COLOR_TEXT
-            ).pack(padx=40, pady=(0, 8))
+                command=on_provider_change, width=520, fg_color=COLOR_PANEL_ALT, button_color=COLOR_ACCENT, button_hover_color=COLOR_ACCENT_HOVER, dropdown_fg_color=COLOR_PANEL, text_color=COLOR_TEXT
+            ).pack(anchor="w", padx=30, pady=(0, 8))
 
-            ctk.CTkLabel(self.container, text="Base URL:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-            ctk.CTkEntry(self.container, textvariable=self.base_url_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 8))
+            ctk.CTkLabel(self.container, text="Base URL:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
+            ctk.CTkEntry(self.container, textvariable=self.base_url_var, width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(0, 8))
 
-            ctk.CTkLabel(self.container, text="Model:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-            ctk.CTkEntry(self.container, textvariable=self.model_var, width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(padx=40, pady=(0, 8))
+            ctk.CTkLabel(self.container, text="Model:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
+            ctk.CTkEntry(self.container, textvariable=self.model_var, width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(0, 8))
 
-            ctk.CTkLabel(self.container, text="API Key:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
-            self.api_entry = ctk.CTkEntry(self.container, textvariable=self.api_key_var, show="*", width=340, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT)
-            self.api_entry.pack(padx=40, pady=(0, 10))
+            ctk.CTkLabel(self.container, text="API Key:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
+            self.api_entry = ctk.CTkEntry(self.container, textvariable=self.api_key_var, show="*", width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT)
+            self.api_entry.pack(anchor="w", padx=30, pady=(0, 10))
 
         elif self.backend_var.get() == "cuda":
-            ctk.CTkLabel(self.container, text="GPU Offload Layers (Advanced):", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=40, pady=(5, 2))
+            ctk.CTkLabel(self.container, text="GPU Offload Layers (Advanced):", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
             layer_lbl = ctk.CTkLabel(self.container, text=f"{self.layers_var.get()} Layers", font=("Arial", 12), text_color=COLOR_TEXT_MUTED)
             slider = ctk.CTkSlider(
                 self.container, from_=0, to=99, number_of_steps=99, variable=self.layers_var,
                 command=lambda v: layer_lbl.configure(text=f"{int(v)} Layers (Max Offload)" if int(v) == 99 else f"{int(v)} Layers"),
-                width=340, progress_color=COLOR_ACCENT, button_color=COLOR_ACCENT, button_hover_color=COLOR_ACCENT_HOVER
+                width=520, progress_color=COLOR_ACCENT, button_color=COLOR_ACCENT, button_hover_color=COLOR_ACCENT_HOVER
             )
-            slider.pack(padx=40, pady=(0, 5))
-            layer_lbl.pack(pady=(0, 10))
+            slider.pack(anchor="w", padx=30, pady=(0, 5))
+            layer_lbl.pack(anchor="w", padx=30, pady=(0, 10))
 
         back_cmd = self.show_rig_analysis if is_cloud else self.show_model_files
         self.make_nav_row(back_cmd, "Start Installation", self.start_installation)
@@ -378,7 +378,7 @@ class DotInstaller(ctk.CTk):
             return
 
         self.make_header("Install", "Installing Components...")
-        self.progress = ctk.CTkProgressBar(self.container, width=420, progress_color=COLOR_ACCENT)
+        self.progress = ctk.CTkProgressBar(self.container, width=520, progress_color=COLOR_ACCENT)
         self.progress.pack(pady=20)
         self.progress.set(0)
 
