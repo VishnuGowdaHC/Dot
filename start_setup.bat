@@ -11,34 +11,53 @@ echo   Dot Setup and Environment Bootstrap
 echo ========================================================
 echo.
 
-:: 1. Locate Python 3.12 interpreter
+:: 1. Check if .venv ALREADY exists
+if exist ".venv\Scripts\python.exe" (
+    echo [OK] Virtual environment found (.venv)
+    goto VENV_READY
+)
+
+:: 2. .venv does not exist -> find Python to create it
+echo [*] Initializing virtual environment (.venv)...
 set "PY_CMD="
 
 py -3.12 --version >nul 2>&1
 if not errorlevel 1 (
     set "PY_CMD=py -3.12"
-    goto FOUND_PYTHON
+    goto MAKE_VENV
 )
 
 python --version 2>&1 | findstr "3.12" >nul
 if not errorlevel 1 (
     set "PY_CMD=python"
-    goto FOUND_PYTHON
+    goto MAKE_VENV
 )
 
-:: Python 3.12 not found -> check winget
-echo [-] Python 3.12 is required for local inference, PyTorch CUDA, and audio models.
-echo [-] Python 3.12 was not detected on your system.
+py --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=py"
+    goto MAKE_VENV
+)
+
+python --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=python"
+    goto MAKE_VENV
+)
+
+:: Python is missing -> check winget
+echo [-] Python is required to build the virtual environment.
+echo [-] Python was not detected on your system.
 echo.
 
 winget --version >nul 2>&1
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] Python 3.12 is not installed and winget is not available on this system. >> "%LOG_FILE%"
+    echo [%DATE% %TIME%] [ERROR] Python is not installed and winget is not available on this system. >> "%LOG_FILE%"
     echo [-] Windows Package Manager (winget) was not found on this device.
     echo Please download and install Python 3.12 manually from:
     echo https://www.python.org/downloads/release/python-3128/
     echo.
-    echo (Be sure to check "Add Python 3.12 to PATH" during installation)
+    echo (Be sure to check "Add Python to PATH" during installation)
     echo.
     pause
     exit /b 1
@@ -48,9 +67,9 @@ set "INSTALL_PY=N"
 set /p INSTALL_PY="Would you like to auto-install Python 3.12 using Windows Package Manager (winget)? (Y/N): "
 if /i "%INSTALL_PY%"=="Y" goto DO_WINGET_INSTALL
 
-echo [%DATE% %TIME%] [INFO] Setup aborted by user: declined auto-install of Python 3.12. >> "%LOG_FILE%"
+echo [%DATE% %TIME%] [INFO] Setup aborted by user: declined auto-install of Python. >> "%LOG_FILE%"
 echo.
-echo Setup cancelled. Please install Python 3.12 and restart start_setup.bat.
+echo Setup cancelled. Please install Python and restart start_setup.bat.
 pause
 exit /b 1
 
@@ -70,17 +89,9 @@ echo.
 echo [OK] Python 3.12 installed!
 set "PY_CMD=py -3.12"
 
-:FOUND_PYTHON
+:MAKE_VENV
 if "%PY_CMD%"=="" set "PY_CMD=py -3.12"
-
-:: 2. Create isolated .venv if not present
-if exist ".venv\Scripts\python.exe" (
-    echo [OK] Existing virtual environment found (.venv)
-    goto INSTALL_DEPS
-)
-
-echo.
-echo [*] Creating isolated virtual environment (.venv)...
+echo [*] Creating isolated virtual environment (.venv) using %PY_CMD%...
 %PY_CMD% -m venv .venv
 if errorlevel 1 (
     echo [%DATE% %TIME%] [ERROR] Failed to create virtual environment using command '%PY_CMD% -m venv .venv'. >> "%LOG_FILE%"
@@ -90,7 +101,7 @@ if errorlevel 1 (
 )
 echo [OK] Virtual environment created (.venv)
 
-:INSTALL_DEPS
+:VENV_READY
 :: 3. Install all requirements.txt dependencies into .venv
 echo.
 echo [*] Preparing pip, setuptools, and wheel in .venv...
