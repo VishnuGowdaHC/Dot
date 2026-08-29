@@ -89,12 +89,18 @@ echo.
 echo [OK] Python 3.12 installed!
 set "PY_CMD=py -3.12"
 
+set "VENV_DIR=%~dp0.venv"
+set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+set "REQ_FILE=%~dp0requirements.txt"
+set "SETUP_PY=%~dp0setup.py"
+set "PIP_LOG=%~dp0pip_install.log"
+
 :MAKE_VENV
 if "%PY_CMD%"=="" set "PY_CMD=py -3.12"
 echo [*] Creating isolated virtual environment (.venv) using %PY_CMD%...
-%PY_CMD% -m venv .venv
+%PY_CMD% -m venv "%VENV_DIR%"
 if errorlevel 1 (
-    echo [%DATE% %TIME%] [ERROR] Failed to create virtual environment using command '%PY_CMD% -m venv .venv'. >> "%LOG_FILE%"
+    echo [%DATE% %TIME%] [ERROR] Failed to create virtual environment using command '%PY_CMD% -m venv "%VENV_DIR%"'. >> "%LOG_FILE%"
     echo [ERROR] Failed to create virtual environment with %PY_CMD%.
     pause
     exit /b 1
@@ -102,22 +108,28 @@ if errorlevel 1 (
 echo [OK] Virtual environment created (.venv)
 
 :VENV_READY
+if not exist "%VENV_PY%" (
+    echo [-] Virtual environment executable was not found at: "%VENV_PY%"
+    echo [*] Attempting to re-create virtual environment...
+    goto MAKE_VENV
+)
+
 :: 3. Install all requirements.txt dependencies into .venv
 echo.
 echo [*] Preparing pip, setuptools, and wheel in .venv...
-.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel --quiet
+"%VENV_PY%" -m pip install --upgrade pip setuptools wheel --quiet
 
 echo [*] Installing all dependencies in .venv from requirements.txt...
 echo     (This may take a few minutes for PyTorch and audio dependencies)
-.venv\Scripts\python.exe -m pip install -r requirements.txt > "%~dp0pip_install.log" 2>&1
+"%VENV_PY%" -m pip install -r "%REQ_FILE%" > "%PIP_LOG%" 2>&1
 if errorlevel 1 (
     echo [%DATE% %TIME%] [ERROR] pip install -r requirements.txt failed in .venv. See pip_install.log. >> "%LOG_FILE%"
-    type "%~dp0pip_install.log" >> "%LOG_FILE%"
+    type "%PIP_LOG%" >> "%LOG_FILE%" 2>nul
     echo.
     echo [ERROR] Dependency installation encountered an issue.
     echo --------------------------------------------------------
     echo Last error output:
-    powershell -Command "Get-Content '%~dp0pip_install.log' -Tail 20"
+    powershell -Command "if (Test-Path '%PIP_LOG%') { Get-Content '%PIP_LOG%' -Tail 20 } else { Write-Host 'Log file not found' }"
     echo --------------------------------------------------------
     echo Full details saved to error.log and pip_install.log.
     pause
@@ -127,7 +139,7 @@ if errorlevel 1 (
 :: 4. Ensure Playwright browser binaries
 echo.
 echo [*] Ensuring Playwright browser binaries in .venv...
-.venv\Scripts\python.exe -m playwright install chromium >nul 2>&1
+"%VENV_PY%" -m playwright install chromium >nul 2>&1
 if errorlevel 1 (
     echo [%DATE% %TIME%] [WARNING] Playwright chromium browser binary installation returned non-zero code. >> "%LOG_FILE%"
     echo [Warning] Playwright chromium install encountered an issue (non-fatal).
@@ -136,7 +148,7 @@ if errorlevel 1 (
 :: 5. Launch Setup GUI using .venv
 echo.
 echo [*] Launching Dot Setup Wizard...
-.venv\Scripts\python.exe setup.py
+"%VENV_PY%" "%SETUP_PY%"
 if errorlevel 1 (
     echo [%DATE% %TIME%] [ERROR] setup.py terminated unexpectedly. >> "%LOG_FILE%"
     echo.
