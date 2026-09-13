@@ -54,5 +54,19 @@
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
         "api_key": ""
-    }
+    },
+    "allowed_processes": [
+        "chrome.exe",
+        "msedge.exe",
+        "firefox.exe",
+        "code.exe",
+        "discord.exe",
+        "spotify.exe",
+        "notepad.exe",
+        "cmd.exe",
+        "powershell.exe",
+        "wt.exe",
+        "calc.exe",
+        "explorer.exe"
+    ]
 }

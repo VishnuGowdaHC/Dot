@@ -85,7 +85,7 @@ def auto_format_observation(obs, max_fields=4, max_items=25) -> str:
 
     return json.dumps(data)
 
-def trim_observation(obs, session, max_tokens=700):
+def trim_observation(obs, session, max_tokens=450):
     text = auto_format_observation(obs)
     tokens = session.tokenizer.encode(text)
     if len(tokens) <= max_tokens:

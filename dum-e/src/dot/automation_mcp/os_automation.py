@@ -6,6 +6,7 @@ import pyautogui
 import time
 from datetime import datetime
 import yaml
+import json
 from typing import Optional
 import sys
 
@@ -27,23 +28,38 @@ sys.stdout = _original_stdout
 mcp = FastMCP(name="Dot OS Automation")
 
 def load_allowed_processes():
-    config_path = os.path.join(os.path.dirname(__file__), "..",  "config", "allowed_apps.yml")
+    allowed = set()
+    # 1. Try loading from appConfig.json (primary source)
+    possible_json_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "appConfig.json"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "appConfig.json"),
+        os.path.abspath("appConfig.json"),
+        os.path.abspath("../appConfig.json")
+    ]
+    for p in possible_json_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                procs = cfg.get("allowed_processes", [])
+                if procs:
+                    allowed.update(p_name.lower() for p_name in procs)
+                    break
+            except Exception as e:
+                print(f"[Warning] Failed to parse appConfig.json for allowed processes: {e}", file=sys.stderr)
 
-    try:
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-           
-            processes = config.get("os_automation", {}).get("allowed_processes", [])
+    # 2. Also merge with legacy/fallback allowed_apps.yml
+    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "allowed_apps.yml")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+                processes = config.get("os_automation", {}).get("allowed_processes", [])
+                allowed.update(p.lower() for p in processes)
+        except Exception as e:
+            print(f"[Error] Failed to parse allowed_apps.yml: {e}", file=sys.stderr)
 
-            return {p.lower() for p in processes}
-    except FileNotFoundError:
-        print(f"[Warning] {config_path} not found. OS Process Manager is locked down.", file=sys.stderr)
-        return set()
-    except Exception as e:
-        print(f"[Error] Failed to parse config.yml: {e}", file=sys.stderr)
-        return set()
-
-    return allowed_processes
+    return allowed
 
 ALLOWED_PROCESSES = load_allowed_processes()
 

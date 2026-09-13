@@ -17,7 +17,48 @@ from src.dot.mcp_files.registry import sync_registry
 
 # Global state to hold the MCP client so all sockets share it
 app_state = {}
-transcription_queue = asyncio.Queue()
+
+def handle_voice_transcription(text: str):
+    if not text:
+        return
+    print(f"[Voice Callback] Spoken command: '{text}'")
+    ws = app_state.get("active_websocket")
+    session = app_state.get("active_session")
+    client = app_state.get("active_mcp_client")
+    main_loop = app_state.get("main_loop")
+
+    if ws and main_loop and main_loop.is_running():
+        async def dispatch():
+            try:
+                # 1. Send the user's spoken words to the UI
+                await ws.send_text(json.dumps({"type": "voice_input", "text": text}))
+                # 2. Route through intentRouter (runs ReAct loop or fast app opener)
+                data = await intentRouter(ws, text, session, client)
+                if data:
+                    print(f"Received from dot: {data}")
+                    await ws.send_text(json.dumps({"type": "result", "data": data}))
+            except Exception as err:
+                print(f"[Voice Dispatch Error]: {err}")
+                traceback.print_exc()
+
+        asyncio.run_coroutine_threadsafe(dispatch(), main_loop)
+    else:
+        from src.dot.core.intentOpener import routeAppOpener
+        try:
+            asyncio.run(routeAppOpener(text))
+        except Exception as err:
+            print(f"[Voice Fallback Error]: {err}")
+
+def handle_voice_status(status: str):
+    ws = app_state.get("active_websocket")
+    main_loop = app_state.get("main_loop")
+    if ws and main_loop and main_loop.is_running():
+        async def notify():
+            try:
+                await ws.send_text(json.dumps({"type": "voice_status", "status": status}))
+            except Exception:
+                pass
+        asyncio.run_coroutine_threadsafe(notify(), main_loop)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,11 +71,18 @@ async def lifespan(app: FastAPI):
         print(f"[Warning] Tool registration encountered an error: {reg_err}")
         traceback.print_exc()
 
-    # 2. Boot the background voice listener
-    print("Starting background voice listener...")
-    threading.Thread(target=startVoiceListener, daemon=True).start()
+    # 2. Store the main asyncio event loop for thread-safe dispatch
+    app_state["main_loop"] = asyncio.get_running_loop()
+
+    # 3. Boot the Hold-Q background voice listener
+    print("Starting Hold-Q background voice listener...")
+    threading.Thread(
+        target=startVoiceListener,
+        args=(handle_voice_transcription, handle_voice_status),
+        daemon=True
+    ).start()
     
-    # 3. Boot the MCP servers EXACTLY ONCE for the whole app
+    # 4. Boot the MCP servers EXACTLY ONCE for the whole app
     multi_server_client = get_multi_server_client()
     async with multi_server_client as active_client:
         print("MCP Servers initialized and ready globally!")
@@ -56,18 +104,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def sendToWebsocket(text):
-    # Requires main_loop to be defined or passed, but keeping your original logic
-    loop = asyncio.get_event_loop()
-    asyncio.run_coroutine_threadsafe(transcription_queue.put(text), loop)
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     active_session = SessionStorage(session_id=str(uuid.uuid4()))
     print(f"WebSocket client connected! Session: {active_session.session_id}")
     
-    # Fetch the globally running MCP client
+    app_state["active_websocket"] = websocket
+    app_state["active_session"] = active_session
     active_client = app_state.get("active_mcp_client")
     
     try:
@@ -92,6 +136,8 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"[WEBSOCKET CRASH]: {e}")
         traceback.print_exc()
     finally:
+        if app_state.get("active_websocket") == websocket:
+            app_state["active_websocket"] = None
         try:
             print(f"Embedding session {active_session.session_id} to Chroma...")
             embed_session_to_chroma(active_session.session_id, active_session.filepath)

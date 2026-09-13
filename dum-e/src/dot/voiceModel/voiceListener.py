@@ -1,86 +1,150 @@
 import sounddevice as sd
 import numpy as np
-import openwakeword
-from openwakeword.model import Model
-from src.dot.voiceModel.voiceProcess import transcribe
 import time
-last_trigger = 0
-COOLDOWN = 3
+import threading
+from pynput import keyboard
+from src.dot.voiceModel.voiceProcess import transcribe
 
-openwakeword.utils.download_models()
+# Hold-Alt Voice Mode Parameters
+HOLD_DURATION_SECONDS = 1.0  # Hold Alt for 1 second to trigger voice mode
+SAMPLE_RATE = 16000
+CHUNK_SIZE = 1024
 
-model = Model(wakeword_models=["./hey_Dott.onnx"])
+_is_alt_down = False
+_press_start_time = 0.0
+_is_recording = False
+_recording_thread = None
+_lock = threading.Lock()
 
-def record_command(fs=16000, silence_ms=3000, threshold=2, timeout=5):
+
+def _is_alt_key(key):
+    return key in (
+        keyboard.Key.alt,
+        keyboard.Key.alt_l,
+        keyboard.Key.alt_r,
+        getattr(keyboard.Key, 'alt_gr', None)
+    )
+
+
+def _record_audio_worker(on_transcription_callback, on_status_callback):
+    global _is_recording, _is_alt_down
     
-    print("\nwakeup detected\n")
-    buffer = []
-    silence_samples = int((silence_ms / 1000) * fs)
-
-    stream = sd.InputStream(samplerate=fs, channels=1)
-    stream.start()
-
-    while True:
-        audio_chunk, _ = stream.read(1024)  # grab small slices
-        buffer.extend(audio_chunk.flatten())
+    print("\n[Voice Mode] Alt held! Recording speech... (Keep holding Alt while speaking, release when done)")
+    if on_status_callback:
+        on_status_callback("recording")
         
-        # check last N samples for silence
-        if len(buffer) > silence_samples:
-            recent = np.abs(buffer[-silence_samples:])
+    buffer = []
+    stream = None
+    try:
+        stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32')
+        stream.start()
+        
+        max_chunks = int(25.0 * (SAMPLE_RATE / CHUNK_SIZE))
+        chunk_count = 0
+        
+        while _is_recording and chunk_count < max_chunks:
+            audio_chunk, _ = stream.read(CHUNK_SIZE)
+            buffer.extend(audio_chunk.flatten())
+            chunk_count += 1
             
-            if np.max(recent) < threshold:
-                print("Silence detected. Processing...\n")
+    except Exception as stream_err:
+        print(f"[Voice Mode Error] Audio stream failed: {stream_err}")
+    finally:
+        if stream:
+            try:
                 stream.stop()
                 stream.close()
-                return np.array(buffer)
-   
+            except Exception:
+                pass
 
-def startVoiceListener(on_transcription_callback=None):
-    print("Listening for 'Dot'...")
-    
-    # We use a standard while loop instead of a callback so we can safely stop it
-    stream = sd.InputStream(samplerate=16000, channels=1, dtype='int16')
-    stream.start()
+    if on_status_callback:
+        on_status_callback("transcribing")
 
-    model_key = list(model.models.keys())[0]
-    print(f"Loaded model internal name: '{model_key}'")
-    
-    loop_count = 0
-    
-    while True:
-        # openwakeword needs chunks of exactly 1280 samples
-        audio_chunk, _ = stream.read(1280) 
-        flat_chunk = audio_chunk.flatten()
-
-        # Predict
-        prediction = model.predict(flat_chunk)
-        score = prediction[model_key]
+    # Check if we captured valid speech (at least 0.4s)
+    if len(buffer) >= int(0.4 * SAMPLE_RATE):
+        audio_data = np.array(buffer, dtype=np.float32)
+        print(f"[Voice Mode] Recording finished ({len(audio_data) / SAMPLE_RATE:.2f}s). Transcribing...")
         
-       
-        loop_count += 1 
-        if loop_count % 12 == 0:  
-            max_vol = np.max(np.abs(flat_chunk))
-            print(f"  [Mic Check] Max Volume: {max_vol} | Wake word score: {score:.3f}", end="\r ")
-        if score > 0.03:
-            # 1. CRITICAL: Stop the wake word stream so we don't crash the microphone
-            stream.stop()
-            stream.close()
-            
-            # 2. Record the user's command
-            audio = record_command()
-            
-            # 3. Transcribe it using your function
-            text = transcribe(audio)
-            print(f"Transcription: {text}")
-            
-            # 4. Send it to the WebSocket!
-            if on_transcription_callback and text:
-                on_transcription_callback(text)
-            
-            print("mic is on cooldown for 2 seconds")
-            time.sleep(2.0)
-            # 5. Restart the listening stream
-            print("Resuming wake word listener...")
-            stream = sd.InputStream(samplerate=16000, channels=1, dtype='int16')
-            stream.start()
+        try:
+            text = transcribe(audio_data)
+            if text:
+                print(f"[Voice Mode] Recognized: '{text}'")
+                if on_transcription_callback:
+                    on_transcription_callback(text)
+                else:
+                    from src.dot.core.intentOpener import routeAppOpener
+                    import asyncio
+                    asyncio.run(routeAppOpener(text))
+            else:
+                print("[Voice Mode] No audible speech detected in recording.")
+        except Exception as trans_err:
+            print(f"[Voice Mode Error] Transcription error: {trans_err}")
+    else:
+        print("[Voice Mode] Recording was too short (< 0.4s). Ignored.")
 
+    if on_status_callback:
+        on_status_callback("idle")
+
+
+def _monitor_hold_trigger(on_transcription_callback, on_status_callback):
+    global _is_alt_down, _is_recording, _press_start_time, _recording_thread
+
+    while True:
+        with _lock:
+            if not _is_alt_down:
+                # Alt was released before hold threshold — normal tap, ignore
+                return
+            elapsed = time.time() - _press_start_time
+            if elapsed >= HOLD_DURATION_SECONDS:
+                _is_recording = True
+                break
+        time.sleep(0.03)
+
+    # Launch recording thread
+    _recording_thread = threading.Thread(
+        target=_record_audio_worker,
+        args=(on_transcription_callback, on_status_callback),
+        daemon=True
+    )
+    _recording_thread.start()
+
+
+def startVoiceListener(on_transcription_callback=None, on_status_callback=None):
+    """
+    Starts the Hold-Alt voice mode listener.
+    Holding 'Alt' for 1.0s anywhere triggers voice mode.
+    Release 'Alt' to stop recording and transcribe immediately.
+    """
+    print(f"Hold-Alt Voice Listener active! Hold 'Alt' for {HOLD_DURATION_SECONDS}s anywhere to speak.")
+
+    def on_press(key):
+        global _is_alt_down, _press_start_time
+        try:
+            if _is_alt_key(key):
+                with _lock:
+                    if not _is_alt_down:
+                        _is_alt_down = True
+                        _press_start_time = time.time()
+                        threading.Thread(
+                            target=_monitor_hold_trigger,
+                            args=(on_transcription_callback, on_status_callback),
+                            daemon=True
+                        ).start()
+        except Exception as e:
+            print(f"[Key Press Error]: {e}")
+
+    def on_release(key):
+        global _is_alt_down, _is_recording
+        try:
+            if _is_alt_key(key):
+                with _lock:
+                    _is_alt_down = False
+                    if _is_recording:
+                        _is_recording = False
+                        print("\n[Voice Mode] Alt released. Stopping recording and processing speech...")
+        except Exception as e:
+            print(f"[Key Release Error]: {e}")
+
+    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    listener.start()
+    listener.join()

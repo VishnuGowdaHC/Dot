@@ -4,6 +4,9 @@ from mcp.types import ImageContent, TextContent
 from playwright.async_api import async_playwright
 import webbrowser
 import urllib.parse
+import re
+import httpx
+from bs4 import BeautifulSoup
 from typing import Optional
 
 mcp = FastMCP(name="Dot Browser Automation")
@@ -22,7 +25,32 @@ TOOL_DEPENDENCIES = {
 
 async def _ensure_browser():
     global _playwright, _browser, _page
-    if _page is None:
+
+    # Verify if existing browser and page instances are still open and connected
+    is_alive = False
+    if _page is not None and _browser is not None:
+        try:
+            if not _page.is_closed() and _browser.is_connected():
+                is_alive = True
+        except Exception:
+            is_alive = False
+
+    if not is_alive:
+        # Clean up any stale handles
+        try:
+            if _page: await _page.close()
+        except Exception: pass
+        try:
+            if _browser: await _browser.close()
+        except Exception: pass
+        try:
+            if _playwright: await _playwright.stop()
+        except Exception: pass
+
+        _page = None
+        _browser = None
+        _playwright = None
+
         _playwright = await async_playwright().start()
         
         try:
@@ -30,8 +58,9 @@ async def _ensure_browser():
             _browser = await _playwright.chromium.connect_over_cdp("http://127.0.0.1:9222")
             context = _browser.contexts[0]
             
-            if context.pages:
-                _page = context.pages[0] 
+            open_pages = [p for p in context.pages if not p.is_closed()]
+            if open_pages:
+                _page = open_pages[0] 
             else:
                 _page = await context.new_page()
             print("[System] Successfully connected to active browser session.")
@@ -41,7 +70,9 @@ async def _ensure_browser():
             print(f"[System] CDP connection failed ({e}). Falling back to a new browser instance.")
             try:
                 _browser = await _playwright.chromium.launch(headless=False)
-                _page = await _browser.new_page()
+                _page = await _browser.new_page(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                )
             except Exception as launch_err:
                 print(f"[Error] Playwright browser launch failed: {launch_err}. Please run 'playwright install chromium'.")
                 raise RuntimeError(f"Playwright chromium browser not found or failed to launch ({launch_err}). Run 'playwright install chromium'.")
@@ -81,11 +112,10 @@ async def _prune_snapshot(node, max_depth=6, depth=0):
 @mcp.tool
 async def ai_background_load_page(url: str) -> dict:
     """
-    USE ONLY FOR COMPLEX PLANS
-    Navigate the active browser session to a specified URL.
+    Navigate the browser to a specified URL to read, extract, or summarize its content.
     
     Args:
-        url (str): The complete web address to navigate to (e.g., 'https://github.com').
+        url (str): The complete web address to navigate to (e.g., 'https://github.com' or 'https://www.deeplearning.ai/courses/agentic-ai').
         
     Returns:
         dict: A status dictionary containing 'success', 'detail', and 'error' keys.
@@ -98,14 +128,103 @@ async def ai_background_load_page(url: str) -> dict:
         return {"success": False, "detail": f"navigation to {url} failed", "error": str(e)}
 
 @mcp.tool
-def open_desktop_tab_for_user(target: str) -> dict:
+async def search_web(query: str, max_results: int = 4) -> dict:
     """
-    Open a quick web search or jump directly to a site in the user's
-    default browser using DuckDuckGo bangs. This is a FIRE-AND-FORGET
-    action — once it succeeds, the task is complete, no follow-up needed.
+    Search the web for a given query when a direct URL is NOT provided.
+    Returns the top organic search results containing their titles, snippets, and clean destination URLs.
+    Use this to find relevant links, then use 'browser_ai_background_load_page' with the chosen URL.
     
     Args:
-        target (str): The search query or website name (e.g., 'Shape of You', 'Python documentation').
+        query (str): The search query to look up (e.g. 'Andrew Ng latest news' or 'deeplearning ai agentic course').
+        max_results (int, optional): The maximum number of search results to return. Defaults to 4.
+        
+    Returns:
+        dict: A dictionary containing 'success', 'results' (list of {title, url, snippet}), and 'instruction'.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
+    
+    # 1. Fast, reliable organic HTML search (avoids connection drops and CAPTCHAs)
+    try:
+        from bs4 import BeautifulSoup
+        resp = httpx.post(
+            "https://html.duckduckgo.com/html/",
+            data={"q": query},
+            headers=headers,
+            timeout=8.0
+        )
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            items = []
+            for div in soup.select("div.result"):
+                title_a = div.select_one("a.result__a")
+                snippet_a = div.select_one("a.result__snippet")
+                if title_a:
+                    href = title_a.get("href", "")
+                    if "uddg=" in href:
+                        href = urllib.parse.unquote(href.split("uddg=")[1].split("&")[0])
+                    title = title_a.get_text(strip=True)
+                    snippet = snippet_a.get_text(strip=True) if snippet_a else ""
+                    if href and title and not href.startswith("/"):
+                        items.append({"title": title, "url": href, "snippet": snippet[:250]})
+            if items:
+                return {
+                    "success": True,
+                    "query": query,
+                    "results": items[:max_results],
+                    "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_ai_background_load_page' to navigate to it, or use the snippets to answer.",
+                    "error": None
+                }
+    except Exception as e:
+        print(f"[Warning] Fast search failed ({e}), falling back to Playwright...")
+
+    # 2. Playwright Fallback via Bing
+    try:
+        page = await _ensure_browser()
+        q = urllib.parse.quote_plus(query)
+        await page.goto(f"https://www.bing.com/search?q={q}", wait_until="domcontentloaded", timeout=12000)
+        await page.wait_for_timeout(1000)
+        
+        results = await page.evaluate('''() => {
+            const items = [];
+            for (const li of document.querySelectorAll('li.b_algo')) {
+                const a = li.querySelector('h2 a');
+                const p = li.querySelector('div.b_caption p, p');
+                if (a && a.innerText.trim()) {
+                    items.push({
+                        title: a.innerText.trim(),
+                        url: a.href,
+                        snippet: p ? p.innerText.trim().slice(0, 250) : ''
+                    });
+                }
+            }
+            return items;
+        }''')
+        
+        return {
+            "success": True,
+            "query": query,
+            "results": results[:max_results],
+            "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_ai_background_load_page' to navigate to it, or use the snippets to answer.",
+            "error": None
+        }
+    except Exception as e:
+        return {"success": False, "query": query, "results": [], "error": str(e)}
+
+@mcp.tool
+def open_desktop_tab_for_user(target: str) -> dict:
+    """
+    Launch an external browser window on the user's desktop to display a URL or search query to the human user.
+    CRITICAL: This is a FIRE-AND-FORGET action that opens the user's OS browser!
+    DO NOT USE THIS TOOL IF:
+    - You need to read, inspect, extract, or summarize content from a web page.
+    - The user asked a question, requested code examples, or needs an explanation.
+    - For reading web pages, ALWAYS use 'browser_ai_background_load_page' followed by 'browser_extract_text'.
+    ONLY use this tool when the user EXPLICITLY asks to open a site or search for them to view in their own desktop browser (e.g., 'open youtube in my browser', 'launch reddit for me').
+    
+    Args:
+        target (str): The search query or website name to open for the user.
         
     Returns:
         dict: A status dictionary indicating if the local browser successfully opened.
@@ -257,8 +376,8 @@ async def fill(role: str, name: str, text: str) -> dict:
 async def extract_text(role: str = None, name: str = None) -> dict:
     """
     Read and extract the visible text content from the active webpage.
-    If role and name are provided, it extracts text from that specific element.
-    If no arguments are provided, it extracts all visible text from the entire page body.
+    To read the full article or page, call this with NO arguments.
+    Only provide role and name if targeting a specific heading/link found in snapshot.
     
     Args:
         role (str, optional): The HTML tag or role of a specific element to extract from. Defaults to None.
@@ -269,13 +388,61 @@ async def extract_text(role: str = None, name: str = None) -> dict:
     """
     try:
         page = await _ensure_browser()
+        text = None
         if role and name:
-            locator = page.get_by_role(role, name=name)
-            text = await locator.inner_text(timeout=5000)
-        else:
+            try:
+                locator = page.get_by_role(role, name=name)
+                text = await locator.inner_text(timeout=3000)
+            except Exception:
+                # If specific locator timed out or role doesn't exist, fall back to page body
+                pass
+
+        if not text:
             text = await page.inner_text("body", timeout=5000)
-        return {"success": True, "detail": text, "error": None}
+
+        current_url = page.url or "unknown"
+        try:
+            page_title = await page.title()
+        except Exception:
+            page_title = "Untitled Page"
+
+        header = f"[Active Webpage: '{page_title}' | URL: {current_url}]\n"
+        return {
+            "success": True,
+            "url": current_url,
+            "title": page_title,
+            "detail": f"{header}{text}",
+            "error": None
+        }
     except Exception as e:
+        return {"success": False, "detail": None, "error": str(e)}
+
+
+@mcp.tool
+async def close_browser() -> dict:
+    """
+    Close the active browser window and shut down the Playwright session once the task is finished.
+    Call this when you have finished your browsing task or extracted the necessary data.
+    """
+    global _playwright, _browser, _page
+    try:
+        if _page:
+            try: await _page.close()
+            except Exception: pass
+        if _browser:
+            try: await _browser.close()
+            except Exception: pass
+        if _playwright:
+            try: await _playwright.stop()
+            except Exception: pass
+        _page = None
+        _browser = None
+        _playwright = None
+        return {"success": True, "detail": "Browser closed successfully.", "error": None}
+    except Exception as e:
+        _page = None
+        _browser = None
+        _playwright = None
         return {"success": False, "detail": None, "error": str(e)}
 
 

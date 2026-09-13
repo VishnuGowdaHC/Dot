@@ -1,26 +1,45 @@
 from faster_whisper import WhisperModel
-import asyncio
-from src.dot.core.intentOpener import routeAppOpener
+import numpy as np
 
+# Optimized with int8 compute on CPU
 whisper = WhisperModel("small.en", device="cpu", compute_type="int8")
 
-hallucinations = [
-                "thank you", "thank you.", "thanks for watching", 
-                "subscribe", "thank you for watching.", "thanks.","Thank you.","Thanks for watching!"
-            ] 
+hallucinations = {
+    "thank you", "thank you.", "thanks for watching", 
+    "subscribe", "thank you for watching.", "thanks.", "thank you!",
+    "thanks for watching!"
+}
 
 def transcribe(audio):
-    
-    segments, _ = whisper.transcribe(audio, beam_size=5)
-    text = " ".join([s.text for s in segments])
+    if audio is None or len(audio) == 0:
+        return ""
 
-    print("In transcribe function: \n", text)
-    text_norm = text.strip().lower()
-    if not text_norm or text_norm in [h.lower() for h in hallucinations]:
-        print("Hallucination detected. Routing to LLM...")
-        return
+    if isinstance(audio, list):
+        audio = np.array(audio, dtype=np.float32)
+    elif audio.dtype != np.float32:
+        audio = audio.astype(np.float32)
+
+    max_val = np.max(np.abs(audio))
+    if max_val > 1.0:
+        audio = audio / 32768.0
+
+    # vad_filter=True runs Silero VAD to strip silence and prevent hallucinations
+    # beam_size=1 (greedy) is 4x faster on CPU than beam_size=5
+    segments, _ = whisper.transcribe(
+        audio,
+        beam_size=1,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=250, threshold=0.35)
+    )
     
-    asyncio.run(routeAppOpener(text))
+    text = " ".join([s.text for s in segments]).strip()
+
+    print("In transcribe function:\n", text)
+    text_norm = text.lower().strip()
+    if not text_norm or text_norm in hallucinations:
+        print("[Voice] Silence/Hallucination filtered out.")
+        return ""
+    
     return text
 
     

@@ -7,8 +7,10 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 import zipfile
+from tkinter import filedialog
 
 # ==========================================
 # 1. IMMEDIATE LOGGING & EXCEPTION HOOKS
@@ -94,7 +96,7 @@ class DotInstaller(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Dot Setup & Rig Analyzer")
-        self.geometry("620x580")
+        self.geometry("620x750")
         self.resizable(False, False)
         self.configure(fg_color=COLOR_BG)
 
@@ -146,6 +148,12 @@ class DotInstaller(ctk.CTk):
                 cfg = json.load(f)
             if "cloud" not in cfg:
                 cfg["cloud"] = {"provider": "openai", "base_url": CLOUD_PROVIDERS["openai"]["base_url"], "model": CLOUD_PROVIDERS["openai"]["default_model"], "api_key": ""}
+            if "allowed_processes" not in cfg:
+                cfg["allowed_processes"] = [
+                    "chrome.exe", "msedge.exe", "firefox.exe", "code.exe",
+                    "discord.exe", "spotify.exe", "notepad.exe", "cmd.exe",
+                    "powershell.exe", "wt.exe", "calc.exe", "explorer.exe"
+                ]
             return cfg
         except Exception as e:
             log_error(f"Failed to load appConfig.json: {e}")
@@ -250,10 +258,57 @@ class DotInstaller(ctk.CTk):
         self.make_nav_row(self.show_rig_analysis, "Next: Model Files", self.show_model_files)
 
     # ----------------------------------------------------
-    # STEP 3: MODEL FILES VERIFICATION
+    # STEP 3: MODEL FILES VERIFICATION & SMART DOWNLOAD
     # ----------------------------------------------------
+    def find_existing_model_dir(self, tier, model_fn):
+        candidates = [
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+            os.path.join(os.path.dirname(BASE_DIR), f"dot-engine-{tier.lower()}"),
+            os.path.join(os.path.dirname(BASE_DIR), "dot-engine"),
+            os.path.join("E:", os.sep, "dot-engine", f"dot-engine-{tier.lower()}"),
+            os.path.join("E:", os.sep, "dot-engine"),
+            os.path.join("D:", os.sep, "dot-engine", f"dot-engine-{tier.lower()}"),
+            os.path.join("C:", os.sep, "dot-engine", f"dot-engine-{tier.lower()}"),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                p = os.path.join(c, model_fn)
+                if os.path.exists(p) and os.path.getsize(p) > 1024 * 1024:
+                    return c
+        return None
+
+    def import_from_source(self, src_path, bin_dir, model_fn, mmproj_fn):
+        os.makedirs(bin_dir, exist_ok=True)
+        count = 0
+        if os.path.isdir(src_path):
+            for item in os.listdir(src_path):
+                if item in (model_fn, mmproj_fn) or item.endswith((".gguf", ".dll")) or item == "llama-server.exe":
+                    s = os.path.join(src_path, item)
+                    d = os.path.join(bin_dir, item)
+                    if not os.path.exists(d):
+                        try:
+                            os.link(s, d)
+                            count += 1
+                        except Exception:
+                            try:
+                                shutil.copy2(s, d)
+                                count += 1
+                            except Exception as err:
+                                log_error(f"Failed to copy {s} to {d}: {err}")
+        elif os.path.isfile(src_path):
+            fn = os.path.basename(src_path)
+            d = os.path.join(bin_dir, fn)
+            if not os.path.exists(d):
+                try:
+                    os.link(src_path, d)
+                    count += 1
+                except Exception:
+                    shutil.copy2(src_path, d)
+                    count += 1
+        return count
+
     def show_model_files(self):
-        self.make_header("Model Files", "Download Model Files")
+        self.make_header("Model Files", "Model Files Setup")
 
         tier = self.tier_var.get()
         model_info = self.config.get("models", {}).get(tier, {})
@@ -262,7 +317,7 @@ class DotInstaller(ctk.CTk):
             return
 
         model_fn, mmproj_fn = model_info["filename"], model_info["mmproj"]
-        page_url = f"https://huggingface.co/{model_info['repo_id']}"
+        repo_id = model_info["repo_id"]
 
         bin_dir = os.path.join(BASE_DIR, "bin")
         os.makedirs(bin_dir, exist_ok=True)
@@ -270,29 +325,26 @@ class DotInstaller(ctk.CTk):
         ctk.CTkLabel(
             self.container,
             text=(
-                f"Gemma 4 ({tier}) is gated on Hugging Face and requires manual license acceptance.\n"
-                "1. Click 'Open Model Page' and accept the license.\n"
-                "2. Download both files below and place them in the 'bin' folder."
+                f"Dot uses Gemma 4 ({tier}) for local multimodal intelligence.\n"
+                "Download automatically below, auto-import if already on your PC, or select a file."
             ),
             font=("Arial", 12), text_color=COLOR_TEXT_MUTED, justify="left", wraplength=520
-        ).pack(anchor="w", padx=30, pady=(0, 8))
-
-        ctk.CTkButton(self.container, text="Open Model Page", width=200, command=lambda: webbrowser.open(page_url), fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(0, 12))
+        ).pack(anchor="w", padx=30, pady=(0, 6))
 
         status_box = ctk.CTkFrame(self.container, fg_color=COLOR_PANEL_ALT)
-        status_box.pack(fill="x", padx=30, pady=(0, 10))
+        status_box.pack(fill="x", padx=30, pady=(0, 6))
 
         labels = {}
         for title, fn in [("Main Model (GGUF)", model_fn), ("Vision Projector (mmproj)", mmproj_fn)]:
             row = ctk.CTkFrame(status_box, fg_color="transparent")
-            row.pack(fill="x", padx=15, pady=6)
-            ctk.CTkLabel(row, text=f"{title}: {fn}", font=("Arial", 12), text_color=COLOR_TEXT).pack(side="left")
-            lbl = ctk.CTkLabel(row, text="Checking...", font=("Arial", 12, "bold"))
+            row.pack(fill="x", padx=15, pady=4)
+            ctk.CTkLabel(row, text=f"{title}: {fn}", font=("Arial", 11), text_color=COLOR_TEXT).pack(side="left")
+            lbl = ctk.CTkLabel(row, text="Checking...", font=("Arial", 11, "bold"))
             lbl.pack(side="right")
             labels[fn] = lbl
 
-        err_lbl = ctk.CTkLabel(self.container, text="", font=("Arial", 12), text_color=COLOR_ERROR)
-        err_lbl.pack(pady=4)
+        err_lbl = ctk.CTkLabel(self.container, text="", font=("Arial", 11), text_color=COLOR_ERROR)
+        err_lbl.pack(pady=2)
 
         def refresh_status():
             all_ok = True
@@ -303,12 +355,123 @@ class DotInstaller(ctk.CTk):
                 all_ok = all_ok and exists
             return all_ok
 
-        refresh_status()
+        dl_status_lbl = ctk.CTkLabel(self.container, text="", font=("Arial", 11), text_color=COLOR_TEXT)
+        dl_status_lbl.pack(pady=(0, 2))
 
-        path_row = ctk.CTkFrame(self.container, fg_color="transparent")
-        path_row.pack(fill="x", padx=30, pady=5)
-        ctk.CTkLabel(path_row, text="Target Folder: bin/", font=("Arial", 12), text_color=COLOR_TEXT).pack(side="left")
-        ctk.CTkButton(path_row, text="Open Folder", width=110, command=lambda: os.startfile(bin_dir), fg_color=COLOR_BACK_BTN, hover_color=COLOR_BACK_BTN_HOVER, text_color=COLOR_TEXT).pack(side="right")
+        dl_progress = ctk.CTkProgressBar(self.container, width=520, progress_color=COLOR_ACCENT)
+        dl_progress.set(0)
+
+        # Download Worker
+        downloading = [False]
+
+        def start_auto_download():
+            if downloading[0]:
+                return
+            downloading[0] = True
+            dl_btn.configure(state="disabled", text="Downloading...")
+            dl_progress.pack(pady=4)
+
+            def dl_worker():
+                try:
+                    targets = [
+                        (model_fn, f"https://huggingface.co/{repo_id}/resolve/main/{model_fn}"),
+                        (mmproj_fn, f"https://huggingface.co/{repo_id}/resolve/main/{mmproj_fn}")
+                    ]
+                    for idx, (fn, url) in enumerate(targets):
+                        target_file = os.path.join(bin_dir, fn)
+                        if os.path.exists(target_file) and os.path.getsize(target_file) > 1024 * 1024:
+                            continue
+
+                        part_file = target_file + ".part"
+                        self.after(0, lambda f=fn: dl_status_lbl.configure(text=f"Connecting to download {f}..."))
+                        res = requests.get(url, stream=True, timeout=30)
+                        res.raise_for_status()
+
+                        total_bytes = int(res.headers.get("content-length", 0))
+                        downloaded = 0
+                        start_t = time.time()
+                        last_update_t = start_t
+
+                        with open(part_file, "wb") as f:
+                            for chunk in res.iter_content(chunk_size=1024 * 512):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    now = time.time()
+                                    if now - last_update_t > 0.4:
+                                        last_update_t = now
+                                        elapsed = max(now - start_t, 0.1)
+                                        speed_mb = (downloaded / (1024 * 1024)) / elapsed
+                                        pct = (downloaded / total_bytes) if total_bytes > 0 else 0
+                                        msg = f"Downloading {fn}: {round(downloaded/(1024**3), 2)}/{round(total_bytes/(1024**3), 2)} GB ({int(pct*100)}%) - {round(speed_mb, 1)} MB/s"
+                                        self.after(0, lambda m=msg, p=pct: (dl_status_lbl.configure(text=m), dl_progress.set(p)))
+
+                        if os.path.exists(target_file):
+                            os.remove(target_file)
+                        os.rename(part_file, target_file)
+
+                    self.after(0, lambda: (
+                        dl_status_lbl.configure(text="Download Complete! Models ready.", text_color=COLOR_SUCCESS),
+                        dl_btn.configure(state="normal", text="Downloaded"),
+                        refresh_status()
+                    ))
+                except Exception as ex:
+                    log_error(f"Auto-download failed: {ex}")
+                    self.after(0, lambda m=str(ex): (
+                        dl_status_lbl.configure(text=f"Download error: {m[:100]}", text_color=COLOR_ERROR),
+                        dl_btn.configure(state="normal", text="Retry Download")
+                    ))
+                finally:
+                    downloading[0] = False
+
+            threading.Thread(target=dl_worker, daemon=True).start()
+
+        # Action Buttons Area
+        actions_frame = ctk.CTkFrame(self.container, fg_color="transparent")
+        actions_frame.pack(fill="x", padx=30, pady=4)
+
+        dl_btn = ctk.CTkButton(
+            actions_frame, text="Download Automatically (1-Click)", command=start_auto_download,
+            fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color=COLOR_TEXT, height=34
+        )
+        dl_btn.pack(fill="x", pady=(0, 6))
+
+        # Check for auto-detected local files
+        detected_dir = self.find_existing_model_dir(tier, model_fn)
+        if detected_dir and not refresh_status():
+            det_frame = ctk.CTkFrame(self.container, fg_color=COLOR_PANEL_ALT)
+            det_frame.pack(fill="x", padx=30, pady=(2, 6))
+            folder_display = os.path.basename(detected_dir) or detected_dir
+            ctk.CTkLabel(det_frame, text=f"Found on PC in: {folder_display}", font=("Arial", 11, "bold"), text_color=COLOR_SUCCESS).pack(side="left", padx=10, pady=4)
+
+            def do_import():
+                self.import_from_source(detected_dir, bin_dir, model_fn, mmproj_fn)
+                refresh_status()
+                det_frame.destroy()
+
+            ctk.CTkButton(det_frame, text="Import (Instant)", width=120, command=do_import, fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER).pack(side="right", padx=10, pady=4)
+
+        # File Chooser Buttons
+        chooser_row = ctk.CTkFrame(self.container, fg_color="transparent")
+        chooser_row.pack(fill="x", padx=30, pady=2)
+
+        def pick_file():
+            f = filedialog.askopenfilename(title="Select GGUF Model File", filetypes=[("GGUF Model Files", "*.gguf"), ("All files", "*.*")])
+            if f:
+                self.import_from_source(f, bin_dir, model_fn, mmproj_fn)
+                refresh_status()
+
+        def pick_folder():
+            d = filedialog.askdirectory(title="Select Folder Containing Models")
+            if d:
+                self.import_from_source(d, bin_dir, model_fn, mmproj_fn)
+                refresh_status()
+
+        ctk.CTkButton(chooser_row, text="Select File...", command=pick_file, width=120, fg_color=COLOR_BACK_BTN, hover_color=COLOR_BACK_BTN_HOVER, text_color=COLOR_TEXT).pack(side="left", padx=(0, 5))
+        ctk.CTkButton(chooser_row, text="Select Folder...", command=pick_folder, width=120, fg_color=COLOR_BACK_BTN, hover_color=COLOR_BACK_BTN_HOVER, text_color=COLOR_TEXT).pack(side="left", padx=5)
+        ctk.CTkButton(chooser_row, text="Open bin Folder", command=lambda: os.startfile(bin_dir), width=120, fg_color=COLOR_BACK_BTN, hover_color=COLOR_BACK_BTN_HOVER, text_color=COLOR_TEXT).pack(side="right")
+
+        refresh_status()
 
         def on_next():
             if refresh_status():
@@ -396,48 +559,90 @@ class DotInstaller(ctk.CTk):
         try:
             py_exe = get_python_exe()
 
-            # 1. Install all Python project requirements
+            # 1. Verify / Install Python project requirements
+            self.update_status("Checking Python dependencies...", 0.1)
+            needs_pip = False
+            try:
+                check_res = subprocess.run(
+                    [py_exe, "-c", "import torch, fastapi, uvicorn, fastmcp, playwright"],
+                    capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                )
+                if check_res.returncode != 0:
+                    needs_pip = True
+            except Exception:
+                needs_pip = True
+
             req_path = os.path.join(BASE_DIR, "requirements.txt")
-            if os.path.exists(req_path):
-                self.update_status("Installing Python dependencies (PyTorch, MCP, audio models)...", 0.05)
-                res = subprocess.run([py_exe, "-m", "pip", "install", "-r", req_path], capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if needs_pip and os.path.exists(req_path):
+                self.update_status("Installing Python dependencies (PyTorch, MCP, audio models)...", 0.15)
+                res = subprocess.run([py_exe, "-m", "pip", "install", "-r", req_path, "--disable-pip-version-check"], capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 if res.returncode != 0:
                     log_error(f"pip install failed: {res.stderr}")
                     raise RuntimeError(f"pip install failed: {res.stderr[:200] if res.stderr else 'unknown error'}")
 
             # 2. Install Playwright browser
-            self.update_status("Ensuring Playwright browser binaries...", 0.2)
+            self.update_status("Ensuring Playwright browser binaries...", 0.25)
             try:
                 subprocess.run([py_exe, "-m", "playwright", "install", "chromium"], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             except Exception as pw_err:
                 log_error(f"Playwright browser install warning: {pw_err}")
 
-            # 3. Frontend npm install
+            # 3. Frontend npm install (skip if node_modules already exists)
             dume_dir = os.path.join(BASE_DIR, "dum-e")
+            nm_dir = os.path.join(dume_dir, "node_modules")
             if os.path.exists(os.path.join(dume_dir, "package.json")):
-                self.update_status("Installing frontend dependencies (npm install)...", 0.35)
-                npm_cmd = shutil.which("npm") or "npm"
-                subprocess.run([npm_cmd, "install"], cwd=dume_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                if not os.path.exists(nm_dir) or len(os.listdir(nm_dir)) < 5:
+                    self.update_status("Installing frontend dependencies (npm install)...", 0.35)
+                    npm_cmd = shutil.which("npm") or "npm"
+                    subprocess.run([npm_cmd, "install"], cwd=dume_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                else:
+                    self.update_status("Frontend dependencies verified...", 0.35)
 
             backend = self.backend_var.get()
 
             # 4. Local Engine Downloads
             if backend != "cloud":
-                self.update_status("Fetching llama.cpp binaries from GitHub...", 0.5)
                 bin_dir = os.path.join(BASE_DIR, "bin")
                 os.makedirs(bin_dir, exist_ok=True)
 
-                headers = {"User-Agent": "Dot-Setup-Wizard/1.0"}
-                res = requests.get("https://api.github.com/repos/ggml-org/llama.cpp/releases", headers=headers, params={"per_page": 8}, timeout=15)
-                res.raise_for_status()
+                server_exe = os.path.join(bin_dir, "llama-server.exe")
+                cuda_dll = os.path.join(bin_dir, "ggml-cuda.dll")
 
-                zip_urls = self.resolve_release_zips(res.json(), backend)
-                for i, url in enumerate(zip_urls):
-                    self.update_status(f"Downloading engine archive ({i+1}/{len(zip_urls)})...", 0.6 + (i * 0.15))
-                    z_res = requests.get(url, stream=True, timeout=30)
-                    z_res.raise_for_status()
-                    with zipfile.ZipFile(io.BytesIO(z_res.content)) as zf:
-                        zf.extractall(bin_dir)
+                engine_already_ready = False
+                if backend == "cuda" and os.path.exists(server_exe) and os.path.exists(cuda_dll):
+                    engine_already_ready = True
+                elif backend == "cpu" and os.path.exists(server_exe):
+                    engine_already_ready = True
+
+                if engine_already_ready:
+                    self.update_status("Verified local inference engine binaries in bin/...", 0.75)
+                else:
+                    self.update_status("Fetching llama.cpp binaries from GitHub...", 0.5)
+                    headers = {"User-Agent": "Dot-Setup-Wizard/1.0"}
+                    res = requests.get("https://api.github.com/repos/ggml-org/llama.cpp/releases", headers=headers, params={"per_page": 8}, timeout=15)
+                    res.raise_for_status()
+
+                    zip_urls = self.resolve_release_zips(res.json(), backend)
+                    for i, url in enumerate(zip_urls):
+                        self.update_status(f"Downloading engine archive ({i+1}/{len(zip_urls)})...", 0.55 + (i * 0.15))
+                        z_res = requests.get(url, stream=True, timeout=60)
+                        z_res.raise_for_status()
+                        with zipfile.ZipFile(io.BytesIO(z_res.content)) as zf:
+                            zf.extractall(bin_dir)
+
+                # Post-install engine verification
+                if not os.path.exists(server_exe):
+                    raise RuntimeError("llama-server.exe was not found in bin/ after installation.")
+                if backend == "cuda" and not os.path.exists(cuda_dll):
+                    raise RuntimeError("CUDA Acceleration Error: ggml-cuda.dll was not found in bin/. GPU offload requires CUDA binaries.")
+
+                # Quick pre-flight test to verify DLL linkage
+                try:
+                    t_res = subprocess.run([server_exe, "--version"], cwd=bin_dir, capture_output=True, text=True, timeout=10)
+                    if t_res.returncode != 0:
+                        log_error(f"llama-server test returned code {t_res.returncode}: {t_res.stderr}")
+                except Exception as test_err:
+                    log_error(f"llama-server preflight test warning: {test_err}")
 
             # 5. Finalize
             self.update_status("Writing configuration and generating launcher...", 0.9)
@@ -452,24 +657,47 @@ class DotInstaller(ctk.CTk):
     def resolve_release_zips(self, releases, backend):
         for release in releases:
             assets = release.get("assets", [])
-            cpu_url = next((a["browser_download_url"] for a in assets if "win" in a["name"].lower() and "x64.zip" in a["name"].lower() and "cpu" in a["name"].lower()), None)
-            if not cpu_url:
-                continue
             if backend == "cpu":
-                return [cpu_url]
+                cpu_url = next(
+                    (a["browser_download_url"] for a in assets
+                     if "win" in a["name"].lower() and "x64.zip" in a["name"].lower() and ("cpu" in a["name"].lower() or "avx2" in a["name"].lower())),
+                    None
+                )
+                if cpu_url:
+                    return [cpu_url]
+                continue
 
-            # CUDA matching
-            cuda_url, highest_v = None, 0.0
+            # CUDA backend matching:
+            # Pair the main CUDA server binary (llama-b*-bin-win-cuda-*.zip)
+            # with the CUDA runtime library archive (cudart-llama-bin-win-cuda-*.zip)
+            candidates = {}
             for a in assets:
                 name = a["name"].lower()
                 if "cuda" in name and "win" in name and "x64.zip" in name:
-                    m = re.search(r"cuda-?(\d+(?:\.\d+)?)", name)
-                    if m and float(m.group(1)) <= self.cuda_version and float(m.group(1)) > highest_v:
-                        highest_v, cuda_url = float(m.group(1)), a["browser_download_url"]
+                    m = re.search(r"cuda-?(?:cu)?(\d+(?:\.\d+)*)", name)
+                    if not m:
+                        continue
+                    parts = m.group(1).split(".")
+                    ver = float(f"{parts[0]}.{parts[1]}") if len(parts) > 1 else float(parts[0])
+                    if ver > self.cuda_version:
+                        continue
+                    if ver not in candidates:
+                        candidates[ver] = {}
+                    if name.startswith("cudart"):
+                        candidates[ver]["cudart"] = a["browser_download_url"]
+                    else:
+                        candidates[ver]["bin"] = a["browser_download_url"]
 
-            if cuda_url:
-                return [cpu_url, cuda_url]
-        raise ValueError("Could not find compatible llama.cpp Windows binaries in recent releases.")
+            sorted_vers = sorted(candidates.keys(), reverse=True)
+            for ver in sorted_vers:
+                c = candidates[ver]
+                if "bin" in c:
+                    res = [c["bin"]]
+                    if "cudart" in c:
+                        res.append(c["cudart"])
+                    return res
+
+        raise ValueError(f"Could not find compatible llama.cpp Windows binaries for {backend.upper()} (CUDA max {self.cuda_version}) in recent releases.")
 
     # ----------------------------------------------------
     # STEP 6: FINALIZE & LAUNCHER SCRIPT
@@ -520,8 +748,13 @@ class DotInstaller(ctk.CTk):
             llama_cmd = f"llama-server.exe -m {active_model['filename']} --mmproj {active_model['mmproj']} --port {port} -c {active_model.get('context_size', 8192)} -fa on {gpu_flag} --temp 0.0 --alias dot-engine"
 
             engine_block = f"""echo [1/3] Starting Local Inference Engine ({backend.upper()})...
+if not exist "bin\\llama-server.exe" (
+    echo [ERROR] bin\\llama-server.exe was not found! Please run setup.py first.
+    pause
+    exit /b 1
+)
 cd bin
-start "Dot Inference Engine" cmd /c "{llama_cmd}"
+start "Dot Inference Engine" cmd /k "{llama_cmd}"
 cd ..
 
 <nul set /p =[1/3] Waiting for engine on port {port} 
@@ -534,6 +767,7 @@ if errorlevel 1 (
         echo  [FAILED]
         echo.
         echo [ERROR] Inference engine failed to start on port {port} within 60 seconds.
+        echo Please inspect the "Dot Inference Engine" window for error details.
         pause
         exit /b 1
     )

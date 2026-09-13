@@ -1,73 +1,72 @@
 @import "tailwindcss";
 
-/* Reset default margins and prevent horizontal scroll */
 html, body, #root {
   height: 100%;
   margin: 0;
-  
 }
 
-/* Background wallpaper for the app */
 body {
-  
-  @apply text-white;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  @apply text-zinc-100 bg-[#0e0e11];
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
-/* Frosted glass card */
-.card {
-
-  
-  background: rgba(0, 0, 0, 0.884);          /* semi-transparent */
-  border-radius: 16px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(12px);             /* ✅ blur behind */
-  -webkit-backdrop-filter: blur(12px);     /* Safari support */
-  border: 1px solid rgba(141, 139, 139, 0);
+.font-roboto-italic {
+  font-family: 'Roboto', sans-serif;
+  font-style: italic;
 }
 
+.font-roboto {
+  font-family: 'Roboto', sans-serif;
+}
 
+/* Generic Clean Dark Mode Surfaces */
+.generic-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+}
 
-/* Target the scrollbar track */
+.generic-card-subtle {
+  background: rgba(24, 24, 27, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.generic-user-bubble {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #f4f4f5;
+}
+
+.generic-input {
+  background: #18181b;
+  border: 1px solid #27272a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.generic-input:focus-within {
+  border-color: #3f3f46;
+}
+
+/* Generic Clean Scrollbar */
 ::-webkit-scrollbar {
-  width: 2px;
-  
+  width: 5px;
 }
 
-/* Track background */
 ::-webkit-scrollbar-track {
-  background: #29292938;
- 
+  background: transparent;
 }
 
-/* Scrollbar thumb */
 ::-webkit-scrollbar-thumb {
-  background: #47464692;
-  border-radius: 6px;
+  background: #27272a;
+  border-radius: 9999px;
 }
 
-/* Hover effect */
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #3f3f46;
 }
 
-#webmAnim {
-  width: 300px;
-  height: auto;
-  opacity: 0;
-  transition: opacity 0.6s ease;
-  display: none;
-}
-
-#webmAnim.show {
-  display: block;
-  opacity: 1;
-}
-
-#hideDiv {
-  transition: opacity 0.6s ease;
-}
-
-#hideDiv.hide {
-  opacity: 0;
-}
 
