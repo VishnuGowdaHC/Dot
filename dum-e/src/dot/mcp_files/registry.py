@@ -13,6 +13,8 @@ from src.dot.memory.vector_store import get_all_services
 for env_path in [
     os.path.join(os.path.dirname(__file__), "..", ".env"),
     os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".env"),
     ".env"
 ]:
     if os.path.exists(env_path):
@@ -32,7 +34,7 @@ def load_server_config() -> dict:
     config_dict = json.loads(config_data)
 
     # Normalize commands: resolve python interpreter and absolute binary paths
-    base_dume = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    base_dume = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     for server_name, server_cfg in config_dict.get("mcpServers", {}).items():
         cmd = server_cfg.get("command", "")
         if cmd in ("py", "python", "python3"):
@@ -42,6 +44,15 @@ def load_server_config() -> dict:
             cand = os.path.join(base_dume, cmd)
             if os.path.exists(cand):
                 server_cfg["command"] = cand
+
+        # Ensure working directory is set to dum-e
+        if "cwd" not in server_cfg:
+            server_cfg["cwd"] = base_dume
+
+        # Ensure PYTHONPATH includes base_dume so module imports succeed
+        env = server_cfg.setdefault("env", {})
+        existing_pythonpath = env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
+        env["PYTHONPATH"] = f"{base_dume}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else base_dume
 
     return config_dict
 

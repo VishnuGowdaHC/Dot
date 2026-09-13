@@ -9,6 +9,10 @@ import yaml
 import json
 from typing import Optional
 import sys
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.ao.nn.quantized")
+warnings.filterwarnings("ignore", message=".*quantized tensor creation functions.*")
 
 _original_stdout = sys.stdout
 sys.stdout = sys.stderr

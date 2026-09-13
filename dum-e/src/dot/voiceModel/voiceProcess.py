@@ -1,3 +1,11 @@
+import os
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.ao.nn.quantized")
+warnings.filterwarnings("ignore", message=".*unauthenticated requests to the HF Hub.*")
+warnings.filterwarnings("ignore", message=".*quantized tensor creation functions.*")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
 from faster_whisper import WhisperModel
 import numpy as np
 

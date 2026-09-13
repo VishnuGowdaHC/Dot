@@ -21,11 +21,12 @@ async def fetch_server_tools(server: str, server_settings: dict) -> list:
 
             server_tools = []
             for tool in tools_arr:
+                schema = tool.input_schema if hasattr(tool, "input_schema") else getattr(tool, "inputSchema", {})
                 server_tools.append({
                     "service": server,
                     "toolName": f"{server}_{tool.name}",
                     "description": tool.description,
-                    "inputSchema": tool.inputSchema
+                    "inputSchema": schema
                 })
 
             return server_tools

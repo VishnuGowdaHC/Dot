@@ -1,3 +1,15 @@
+import os
+import sys
+import warnings
+import logging
+
+# Suppress harmless upstream PyTorch and HuggingFace Hub startup warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.ao.nn.quantized")
+warnings.filterwarnings("ignore", message=".*unauthenticated requests to the HF Hub.*")
+warnings.filterwarnings("ignore", message=".*quantized tensor creation functions.*")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
