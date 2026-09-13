@@ -121,10 +121,21 @@ All MCP servers (GitHub stdio, Playwright browser automation, and OS automation)
 
 ```text
 Dot/
-├── appConfig.json              # Model tiers, context sizes, launcher templates, active settings
-├── setup.py                    # Rig Analyzer + Setup Wizard GUI (CustomTkinter)
+├── Dot.exe                     # Standalone silent desktop launcher (zero black terminal windows)
+├── launcher.pyw                # Windowless background supervisor (manages server lifecycles & logging)
+├── setup.py                    # Rig Analyzer + Setup Wizard GUI (hardware probing & model manager)
 ├── start_setup.bat             # Setup bootstrap & virtual environment creator
-├── requirements.txt            # Python dependencies (Torch, Transformers, MCP, FastAPI)
+├── start_dot.bat               # Diagnostic launcher (keeps terminal windows open for inspection)
+├── appConfig.json              # Model tiers, context sizes, allowed processes & active settings
+├── requirements.txt            # Python dependencies (Torch, Transformers, FastMCP, FastAPI)
+├── icon.ico                    # Windows application icon
+├── bin/                        # Local inference runtime (llama-server.exe, CUDA DLLs, GGUF models)
+│   ├── llama-server.exe        # llama.cpp HTTP server
+│   ├── ggml-cuda.dll           # CUDA backend acceleration runtime
+│   ├── cublas64_*.dll          # NVIDIA cuBLAS libraries
+│   ├── gemma-4-E4B_q4_0-it.gguf# Quantized Gemma 4 multimodal model weights
+│   └── gemma-4-E4B-it-mmproj.gguf # Vision projector
+├── logs/                       # Server & inference logs (engine.log, backend.log)
 │
 └── dum-e/                      # Core application directory
     ├── server.py               # FastAPI/Uvicorn WebSocket server + MCP lifespan
@@ -141,9 +152,13 @@ Dot/
             │   ├── router.py       # Semantic intent router (MiniLM cosine similarity)
             │   ├── llm.py          # Local llama.cpp / Cloud OpenAI-compatible client wrapper
             │   ├── prompts.py      # System prompt, browsing protocol & schema definitions
-            │   ├── gaurdrails.py   # Placeholder detection & action validation
+            │   ├── gaurdrails.py   # Action validation & dependency guardrails
             │   ├── intentOpener.py # Direct OS app launching
             │   └── utils.py        # Token counting, observation trimming & history compression
+            │
+            ├── config/
+            │   ├── allowed_apps.yml# Whitelist of allowed OS automation processes
+            │   └── mcp_servers.json# MCP server startup configurations
             │
             ├── mcp_files/
             │   ├── mcpClient.py    # Multi-server MCP client pool + sampling handler
@@ -180,20 +195,35 @@ Scaffolded components currently in active development:
 
 ## Installation & Setup
 
-1. **Run `start_setup.bat`** — boots the Dot Setup Bootstrap:
-   - Sets up the Python virtual environment (`.venv`)
-   - Installs all PyTorch, ML, MCP, and audio dependencies
-   - Installs Playwright Chromium browser binaries
-   - Launches the **Dot Setup Wizard GUI**
-2. **Setup Wizard Configuration**:
-   - Analyzes your hardware (GPU VRAM, System RAM, CUDA availability)
-   - Downloads the recommended quantized Gemma 4 GGUF model tier
-   - Generates the launcher scripts tailored to your hardware
-   - Installs frontend dependencies via `npm install`
-3. **Launch Dot**:
-   - Start the inference engine (`llama-server.exe` on port `11434`).
-   - Start the backend: `py -m uvicorn server:app --port 3000` (inside `dum-e`).
-   - Run the frontend: `neu run` (inside `dum-e`).
+### 1. Initial Environment Setup
+Run **`start_setup.bat`** to bootstrap the environment:
+- Creates the Python virtual environment (`.venv`)
+- Installs project dependencies (PyTorch, FastMCP, Uvicorn, Whisper)
+- Installs Playwright Chromium browser binaries
+- Boots the **Dot Setup Wizard GUI**
+
+### 2. Setup Wizard Configuration
+The GUI automatically adapts to your hardware and guides you through setup:
+- **Hardware Detection**: Probes GPU VRAM, CUDA runtime version, and system RAM (supports NVIDIA CUDA, CPU AVX2, or Cloud API mode).
+- **Effortless Model Setup (Non-Tech Friendly)**:
+  - **1-Click Automatic Download**: Directly streams model weights and vision projector from HuggingFace to `bin/` with a live progress bar, speed tracker, and percentage.
+  - **Smart Local Discovery**: Automatically scans your `Downloads` directory and local folders for existing models and offers a 1-click **Import (Instant)** button.
+  - **File / Folder Picker**: Select downloaded `.gguf` files from anywhere on your PC without needing to find or copy into the `bin/` folder manually.
+- **Engine Resolution**: Automatically downloads and pairs the exact CUDA-compiled `llama-server.exe` binary with matching `cudart` runtime DLLs for 100% GPU layer offloading.
+- **Application Security**: Configures the whitelist of allowed OS automation processes (`appConfig.json`).
+
+### 3. Launching Dot
+You have two ways to run Dot:
+
+- **Option A: Native Desktop App (Recommended)**:
+  Double-click **`Dot.exe`**.
+  - **Zero Terminal Windows**: Spawns all server processes completely hidden in the background.
+  - **Clean Logging**: Streams output to `logs/engine.log` and `logs/backend.log`.
+  - **Lifecycle Management**: Automatically shuts down `llama-server.exe` and background servers when you close the Dot window, releasing GPU VRAM.
+
+- **Option B: Diagnostic / Dev Mode**:
+  Run **`start_dot.bat`**.
+  - Opens command windows showing live CUDA layer offload logs, token generation throughput, and backend traces.
 
 > **Requirements:**
 > - [Python 3.10+](https://www.python.org/downloads/) (must be added to PATH)
