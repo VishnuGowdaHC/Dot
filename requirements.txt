@@ -34,6 +34,10 @@ pygetwindow
 AppOpener
 easyocr
 psutil
+pynput
+beautifulsoup4
+httpx
+pillow
 
 customtkinter
 

@@ -1,8 +1,17 @@
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
 import numpy as np
 import time
 import threading
-from pynput import keyboard
+
+try:
+    from pynput import keyboard
+except ImportError:
+    keyboard = None
+
 from src.dot.voiceModel.voiceProcess import transcribe
 
 # Hold-Alt Voice Mode Parameters
@@ -18,6 +27,8 @@ _lock = threading.Lock()
 
 
 def _is_alt_key(key):
+    if not keyboard:
+        return False
     return key in (
         keyboard.Key.alt,
         keyboard.Key.alt_l,
@@ -144,6 +155,13 @@ def startVoiceListener(on_transcription_callback=None, on_status_callback=None):
                         print("\n[Voice Mode] Alt released. Stopping recording and processing speech...")
         except Exception as e:
             print(f"[Key Release Error]: {e}")
+
+    if not keyboard or not sd:
+        missing = []
+        if not keyboard: missing.append("pynput")
+        if not sd: missing.append("sounddevice")
+        print(f"[Voice Mode Warning] Missing audio/keyboard dependencies ({', '.join(missing)}). Voice hold-key listener is disabled.")
+        return
 
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()

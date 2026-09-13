@@ -37,6 +37,7 @@ export default function App() {
     initConfig();
     console.log("In App.js initWS initiated");
     initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -183,7 +184,7 @@ export default function App() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code({ node, inline, className, children, ...props }) {
+                        code({ inline, className, children, ...props }) {
                           const match = /language-(\w+)/.exec(className || '');
                           return !inline && match ? (
                             <div className="overflow-x-auto w-full my-3 rounded-xl bg-[#0c0c0e] border border-zinc-800">

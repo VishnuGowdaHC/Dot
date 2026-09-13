@@ -564,7 +564,7 @@ class DotInstaller(ctk.CTk):
             needs_pip = False
             try:
                 check_res = subprocess.run(
-                    [py_exe, "-c", "import torch, fastapi, uvicorn, fastmcp, playwright"],
+                    [py_exe, "-c", "import torch, fastapi, uvicorn, fastmcp, playwright, pynput, bs4, httpx"],
                     capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 )
                 if check_res.returncode != 0:

@@ -8,7 +8,11 @@
 __pycache__/
 *.pyc
 *.log
+logs/
 bin/
+build/
+dist/
+*.spec
 .env
 *.env
 

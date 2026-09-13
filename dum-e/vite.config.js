@@ -15,7 +15,9 @@ export default defineConfig({
           const auth = JSON.parse(fs.readFileSync('.tmp/auth_info.json', 'utf8'))
           port = auth.nlPort
           token = auth.nlToken
-        } catch(e) {}
+        } catch {
+          // auth_info not generated yet during dev
+        }
         
         return [
           {
