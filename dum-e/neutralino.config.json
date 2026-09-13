@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
-  "applicationId": "js.neutralino.sample",
+  "applicationId": "ai.dot.assistant",
   "version": "1.0.0",
   "defaultMode": "window",
   "port": 0,
@@ -35,7 +35,7 @@
   },
   "modes": {
     "window": {
-      "title": "dum-e-desktop",
+      "title": "Dot",
       "width": 600,
       "height": 1200,
       "minWidth": 600,
@@ -77,7 +77,7 @@
     }
   },
   "cli": {
-    "binaryName": "dum-e-desktop",
+    "binaryName": "Dot",
     "resourcesPath": "/dist/",
     "extensionsPath": "/extensions/",
     "clientLibrary": "/dist/neutralino.js",

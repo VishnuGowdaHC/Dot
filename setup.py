@@ -598,6 +598,24 @@ class DotInstaller(ctk.CTk):
                 else:
                     self.update_status("Frontend dependencies verified...", 0.35)
 
+                # Ensure frontend is built and bundled for Neutralino desktop
+                dume_res = os.path.join(dume_dir, "bin", "resources.neu")
+                out_res = os.path.join(dume_dir, "out", "Dot", "resources.neu")
+                dist_index = os.path.join(dume_dir, "dist", "index.html")
+                if not os.path.exists(dume_res) or not os.path.exists(out_res) or not os.path.exists(dist_index):
+                    self.update_status("Building Dot desktop application bundle...", 0.4)
+                    try:
+                        npx_cmd = shutil.which("npx") or "npx"
+                        subprocess.run([npx_cmd, "-y", "@neutralinojs/neu", "build"], cwd=dume_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                        if os.path.exists(out_res):
+                            shutil.copy2(out_res, dume_res)
+                            shutil.copy2(out_res, os.path.join(dume_dir, "resources.neu"))
+                            built_exe = os.path.join(dume_dir, "out", "Dot", "Dot-win_x64.exe")
+                            if os.path.exists(built_exe):
+                                shutil.copy2(built_exe, os.path.join(dume_dir, "bin", "Dot-win_x64.exe"))
+                    except Exception as neu_err:
+                        log_error(f"Neutralino build warning: {neu_err}")
+
             backend = self.backend_var.get()
 
             # 4. Local Engine Downloads
