@@ -152,7 +152,7 @@ Dot/
             │   ├── router.py       # Semantic intent router (MiniLM cosine similarity)
             │   ├── llm.py          # Local llama.cpp / Cloud OpenAI-compatible client wrapper
             │   ├── prompts.py      # System prompt, browsing protocol & schema definitions
-            │   ├── gaurdrails.py   # Action validation & dependency guardrails
+            │   ├── guardrails.py   # Action validation & dependency guardrails
             │   ├── intentOpener.py # Direct OS app launching
             │   └── utils.py        # Token counting, observation trimming & history compression
             │
@@ -170,6 +170,8 @@ Dot/
             │   └── browser_automation.py  # FastMCP server: Playwright browser control & organic web search
             │
             ├── memory/
+            │   ├── client.py              # Shared ChromaDB client singleton
+            │   ├── tokenizer.py           # Shared HuggingFace AutoTokenizer singleton
             │   ├── vector_store.py        # ChromaDB tool schema discovery
             │   ├── session_memory/        # Session turn storage & sliding window context
             │   └── collections/           # ChromaDB collection handlers

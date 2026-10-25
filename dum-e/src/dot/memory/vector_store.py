@@ -1,10 +1,8 @@
 import json
-import chromadb
 import os
+from src.dot.memory.client import get_collection
 
-path = os.path.join(os.path.dirname(__file__), "storage", "chroma_db")
-chroma_client = chromadb.PersistentClient(path=path)
-tools_collection = chroma_client.get_or_create_collection(name='mcp_tools')
+tools_collection = get_collection('mcp_tools')
 
 def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=0.8 ):
     selected_tool = []

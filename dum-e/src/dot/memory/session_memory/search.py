@@ -1,23 +1,15 @@
 import os
 import mmap
-import time
-import json
-import chromadb
+from src.dot.memory.client import get_collection
 
-path = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "storage",
-    "chroma_db"
-)
-chroma_client = chromadb.PersistentClient(path=path)
-session_collection = chroma_client.get_or_create_collection(name='sessions_memory')
+session_collection = get_collection('sessions_memory')
 
 def search_active_session(keyword: str, session_id: str) -> str:
+    """Searches the current session memory log for a keyword.
+    
+    Use this function when the user asks about previous turn details.
     """
-    Searches the current session's evicted .md memory log for a keyword. 
-    Use this when the user references past information not in your immediate context.
-    """
-    filepath = os.path.join(os.path.dirname(__file__), "memory", "session_logs", f"{session_id}.md")
+    filepath = os.path.join(os.path.dirname(__file__), "session_logs", f"{session_id}.md")
     
     if not os.path.exists(filepath):
         return f"Session log {session_id} does not exist yet."

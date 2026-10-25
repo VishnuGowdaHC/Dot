@@ -6,9 +6,6 @@ from src.dot.memory.session_memory.search import search_past_sessions
 NATIVE_TOOLS = {
     "search_active_session": search_active_session,
     "search_past_sessions": search_past_sessions,
-    
-    # "query_user_profile": query_user_profile,
-    # "query_sqlite": query_sqlite,
 }
 
 NATIVE_TOOL_SCHEMAS = {
@@ -31,14 +28,13 @@ NATIVE_TOOL_SCHEMAS = {
             "required": ["query"],
         },
     },
-    
-    # add more native tool schemas here as you build them
 }
+
 def sync_native_tools():
-    """Registers native (non-MCP) tools into the same tool registry
-    used for MCP discovery, so get_relevant_tools finds both via the
-    identical path. Reuses upsert_tools so ID scheme and document
-    format always stay consistent with MCP-sourced tools."""
+    """Registers native tools into the ChromaDB tool catalog.
+    
+    Uses upsert_tools to keep the identifier scheme consistent.
+    """
     native_tools = [
         {
             "service": "native",

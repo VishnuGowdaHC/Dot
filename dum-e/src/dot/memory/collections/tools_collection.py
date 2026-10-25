@@ -1,14 +1,8 @@
 import json
 import os
-import chromadb
+from src.dot.memory.client import get_collection
 
-path = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "storage",
-    "chroma_db"
-)
-chroma_client = chromadb.PersistentClient(path=path)
-collection = chroma_client.get_or_create_collection(name='mcp_tools')
+collection = get_collection('mcp_tools')
 
 def upsert_tools(all_tools: list):
     if not all_tools:

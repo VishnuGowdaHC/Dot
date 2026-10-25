@@ -8,11 +8,11 @@ import json
 import re
 
 from src.dot.memory.vector_store import get_relevant_tools, get_all_services
-from src.dot.core.gaurdrails import check_guardrails, _is_real_value 
+from src.dot.core.guardrails import check_guardrails, is_real_value
 from src.dot.mcp_files.mcpClient import execute_mcp_tool
 from src.dot.memory.session_memory.manager import SessionStorage
 from src.dot.memory.collections.native_tools_collection import NATIVE_TOOLS
-from src.dot.core.llm import llm
+from src.dot.core.llm import async_llm, async_llm_stream
 from src.dot.core.utils import (
     OBS_LOG_DIR,
     extract_json,
@@ -109,20 +109,21 @@ def append_or_update_error(history_parts: list, error_msg: str):
 
 MAX_LOOP_TOKENS = 3500
 
-# Streaming: For the final answer we split the already-generated text into
-# small chunks and send them as WebSocket `stream` messages so the UI can
-# animate token-by-token growth instead of only showing a loading state.
-STREAM_CHUNK_SIZE = 4
-STREAM_DELAY = 0.015
+# Streaming: Stream final text in fast, smooth chunks over WebSocket.
+STREAM_CHUNK_SIZE = 16
+STREAM_DELAY = 0.002
 
 async def stream_response(websocket, text: str):
-    """Sends a final answer as a sequence of tiny WebSocket chunks to simulate
-    token-by-token generation. Emits stream_start / stream / stream_end events."""
+    """Sends the response as a sequence of small WebSocket chunks.
+    
+    Emits stream_start, stream, and stream_end events.
+    """
     await websocket.send_text(json.dumps({"type": "stream_start"}))
     for i in range(0, len(text), STREAM_CHUNK_SIZE):
         chunk = text[i:i+STREAM_CHUNK_SIZE]
         await websocket.send_text(json.dumps({"type": "stream", "data": chunk}))
-        await asyncio.sleep(STREAM_DELAY)
+        if STREAM_DELAY > 0:
+            await asyncio.sleep(STREAM_DELAY)
     await websocket.send_text(json.dumps({"type": "stream_end"}))
 
 INSPECTION_TOOLS = {
@@ -147,7 +148,7 @@ STATE_CHANGING_TOOLS = {
     "os_click_at"
 }
 
-async def reAct_loop(websocket, query, llm, session: SessionStorage, active_client, max_steps=12):
+async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None, active_client=None, max_steps=12):
     run_id = f"{int(time.time())}_{uuid.uuid4().hex[:6]}"
     run_log_path = os.path.join(OBS_LOG_DIR, f"run_{run_id}.json")
     run_log = {"query": query, "steps": []}
@@ -156,7 +157,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
 
     schema = AgentStep.model_json_schema()
     
-    # Leverages your robust sliding window for past context
+    # Retrieve conversational history from the sliding window.
     active_history_context = session.get_context_string() 
     available_services = get_all_services()
 
@@ -195,7 +196,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
     for step in range(max_steps):
         log_debug(f"\n--- LOOP STEP {step} ---")
 
-        # Fallback compression only if loop observations explode
+        # Compress history if token count exceeds the loop limit.
         current_tokens = session.count_tokens(render_history(history_parts))
         if current_tokens > MAX_LOOP_TOKENS:
             log_debug(f"[WARNING] Token limit exceeded ({current_tokens} > {MAX_LOOP_TOKENS}). Compressing history...")
@@ -206,7 +207,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
       
         log_debug("Waiting for LLM generation...")
         try:
-            raw = llm(prompt, schema=schema)
+            raw = await async_llm(prompt, schema=schema)
         except Exception as llm_err:
             log_debug(f"[CRITICAL LLM ERROR]: {llm_err}")
             fallback_msg = (
@@ -236,9 +237,9 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
             append_or_update_error(history_parts, error_msg)
             continue
         
-        # Self-heal mislabeled actions
-        if step_obj.action == 'Tool' and step_obj.payload and _is_real_value(step_obj.payload.get("name")):
-            log_debug("[SELF-HEAL]: Action was 'Tool' but 'name' found in payload. Changing to 'Tool-exec'.")
+        # Correct the action type when payload contains a tool name.
+        if step_obj.action == 'Tool' and step_obj.payload and is_real_value(step_obj.payload.get("name")):
+            log_debug("[CORRECTION]: Action was 'Tool' but 'name' found in payload. Changing to 'Tool-exec'.")
             step_obj.action = 'Tool-exec'
 
         history_parts.append({"role": "model", "text": extracted, "pinned": False})
@@ -286,7 +287,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
                 lines = []
                 for t in results:
                     schema_dict = t.get('schema', {})
-                    # FULL SCHEMA PRESERVATION: We never strip arguments, types, or descriptions.
+                    # Retain all schema arguments, types, and descriptions.
                     preserved_schema = {
                         "properties": schema_dict.get('properties', {}),
                         "required": schema_dict.get('required', [])
@@ -296,7 +297,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
                 new_tools_text = "\n".join(lines)
                 log_debug(f"[TOOLS FOUND]:\n{new_tools_text}")
                 
-                # UPDATE ROLE INSTEAD OF APPENDING
+                # Update existing tool block instead of appending a new block.
                 existing_tools_role = next((h for h in history_parts if h.get("role") == "tool_found"), None)
                 rule_text = "[If the exact tool you need is listed above, use action='Tool-exec'. If the tool you need is MISSING, use action='Tool' to search again with a DIFFERENT query.]"
                 
@@ -334,19 +335,17 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
 
             clean_args = {k: v for k, v in (step_obj.tool_args or {}).items() if v}
             
-            # Simple placeholder check
+            # Check for placeholder values in tool arguments.
             if any(isinstance(v, str) and re.search(r"<\w+>", v) for v in clean_args.values()):
                 log_debug("[GUARDRAIL]: Placeholder detected in arguments.")
                 append_or_update_error(history_parts, "[Error: You used a placeholder like '<username>'. Use the actual values from the user's query.]")
                 continue
 
-            # Anti-Loop with Context-Aware Circuit Breaker
+            # Prevent duplicate execution loops with a circuit breaker.
             current_sig = f"{step_obj.tool_name}_{sorted(clean_args.items())}"
             is_inspection = step_obj.tool_name in INSPECTION_TOOLS
             
-            # A true loop is:
-            # 1. Calling the exact same inspection tool consecutively without any navigation/state change
-            # 2. Or calling any other non-inspection tool with identical args already executed
+            # Check for repeated inspection calls or duplicate non-inspection actions.
             is_duplicate = False
             if is_inspection:
                 if current_sig == last_tool_sig:
@@ -390,7 +389,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
                             "pinned": False
                         })
                         try:
-                            synth_raw = llm(render_history(synth_history), schema=schema)
+                            synth_raw = await async_llm(render_history(synth_history), schema=schema)
                             synth_extracted = extract_json(synth_raw)
                             if synth_extracted:
                                 synth_step = AgentStep.model_validate_json(synth_extracted)
@@ -428,7 +427,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
 
             log_debug(f"[OBSERVATION RECEIVED]: {str(observation)[:200]}...") 
 
-            # If environment state changed, reset inspection signatures so new pages can be read
+            # Reset inspection signatures when state changes occur.
             if step_obj.tool_name in STATE_CHANGING_TOOLS:
                 executed_signatures = {s for s in executed_signatures if not any(s.startswith(t + "_") for t in INSPECTION_TOOLS)}
                 last_tool_sig = None
@@ -467,7 +466,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
             log_path = dump_observation(observation, step, step_obj.tool_name)
             trimmed = trim_observation(observation, session)
             
-            # Append Observation naturally, maintaining chronological flow of actions
+            # Append observation to history while preserving chronological sequence.
             history_parts.append({
                 "role": "observation",
                 "text": f"\n[Observation from {step_obj.tool_name}]: {trimmed}\n[Full data saved: {log_path}]", 
@@ -489,7 +488,7 @@ async def reAct_loop(websocket, query, llm, session: SessionStorage, active_clie
             "pinned": False
         })
         try:
-            synth_raw = llm(render_history(synth_history), schema=schema)
+            synth_raw = await async_llm(render_history(synth_history), schema=schema)
             synth_extracted = extract_json(synth_raw)
             if synth_extracted:
                 synth_step = AgentStep.model_validate_json(synth_extracted)

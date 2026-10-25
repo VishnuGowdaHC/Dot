@@ -8,6 +8,15 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
+import socket
+
+def _is_port_open(port: int = 9222, host: str = "127.0.0.1", timeout: float = 0.05) -> bool:
+    """Verifies that the specified port accepts TCP connections."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
 
 mcp = FastMCP(name="Dot Browser Automation")
 
@@ -53,31 +62,27 @@ async def _ensure_browser():
 
         _playwright = await async_playwright().start()
         
-        try:
-            # First, try to connect to your active daily browser
-            _browser = await _playwright.chromium.connect_over_cdp("http://127.0.0.1:9222")
-            context = _browser.contexts[0]
-            
-            open_pages = [p for p in context.pages if not p.is_closed()]
-            if open_pages:
-                _page = open_pages[0] 
-            else:
-                _page = await context.new_page()
-            print("[System] Successfully connected to active browser session.")
-            
-        except Exception as e:
-            # Fallback: If port 9222 isn't open, launch a new browser
-            print(f"[System] CDP connection failed ({e}). Falling back to a new browser instance.")
+        connected_cdp = False
+        if _is_port_open(9222):
+            try:
+                _browser = await _playwright.chromium.connect_over_cdp("http://127.0.0.1:9222")
+                context = _browser.contexts[0]
+                open_pages = [p for p in context.pages if not p.is_closed()]
+                _page = open_pages[0] if open_pages else await context.new_page()
+                connected_cdp = True
+                print("[System] Connected to active daily browser session.")
+            except Exception as e:
+                print(f"[System] CDP connection attempt failed: {e}")
+
+        if not connected_cdp:
             try:
                 _browser = await _playwright.chromium.launch(headless=False)
                 _page = await _browser.new_page(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
                 )
             except Exception as launch_err:
-                print(f"[Error] Playwright browser launch failed: {launch_err}. Please run 'playwright install chromium'.")
-                raise RuntimeError(f"Playwright chromium browser not found or failed to launch ({launch_err}). Run 'playwright install chromium'.")
-            
-    return _page
+                print(f"[Error] Playwright launch failed: {launch_err}. Run 'playwright install chromium'.")
+                raise RuntimeError(f"Playwright chromium failed to launch: {launch_err}")
 
 
 async def _prune_snapshot(node, max_depth=6, depth=0):
@@ -145,15 +150,15 @@ async def search_web(query: str, max_results: int = 4) -> dict:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     }
     
-    # 1. Fast, reliable organic HTML search (avoids connection drops and CAPTCHAs)
+    # Fast organic search via DuckDuckGo HTML endpoint.
     try:
         from bs4 import BeautifulSoup
-        resp = httpx.post(
-            "https://html.duckduckgo.com/html/",
-            data={"q": query},
-            headers=headers,
-            timeout=8.0
-        )
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(
+                "https://html.duckduckgo.com/html/",
+                data={"q": query},
+                headers=headers
+            )
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             items = []

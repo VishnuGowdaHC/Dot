@@ -17,15 +17,20 @@ warnings.filterwarnings("ignore", message=".*quantized tensor creation functions
 _original_stdout = sys.stdout
 sys.stdout = sys.stderr
 
-try:
-    import easyocr
-    try:
-        reader = easyocr.Reader(['en'], gpu=True, verbose=False)
-    except Exception:
-        reader = easyocr.Reader(['en'], gpu=False, verbose=False)
-except Exception as ocr_err:
-    print(f"[Warning] EasyOCR failed to load: {ocr_err}", file=sys.stderr)
-    reader = None
+_OCR_READER = None
+
+def _get_ocr_reader():
+    """Lazily loads the EasyOCR reader on CPU to prevent GPU VRAM competition."""
+    global _OCR_READER
+    if _OCR_READER is None:
+        try:
+            import easyocr
+            # Run EasyOCR on CPU to preserve VRAM for local llama-server.
+            _OCR_READER = easyocr.Reader(['en'], gpu=False, verbose=False)
+        except Exception as ocr_err:
+            print(f"[Warning] EasyOCR failed to load: {ocr_err}", file=sys.stderr)
+            _OCR_READER = None
+    return _OCR_READER
 
 sys.stdout = _original_stdout
 
@@ -245,10 +250,14 @@ def os_find_text_coordinates(text: str) -> str:
         text (str): The text or word to search for on the screen.
     """
     try:
+        reader = _get_ocr_reader()
+        if not reader:
+            return "OCR reader is not available."
+
         screenshot = pyautogui.screenshot()
 
         import numpy as np
-        # Read the text bounding boxes
+        # Read the text bounding boxes using the lazy reader.
         results = reader.readtext(np.array(screenshot))
         
         for (bbox, recognized_text, prob) in results:

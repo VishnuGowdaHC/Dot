@@ -21,7 +21,7 @@ if not exist "bin\llama-server.exe" (
     exit /b 1
 )
 cd bin
-start "Dot Inference Engine" cmd /k "llama-server.exe -m gemma-4-E4B_q4_0-it.gguf --mmproj gemma-4-E4B-it-mmproj.gguf --port 11434 -c 8192 -fa on -ngl 99 --temp 0.0 --alias dot-engine"
+start "Dot Inference Engine" cmd /k "llama-server.exe -m gemma-4-E4B_q4_0-it.gguf --mmproj gemma-4-E4B-it-mmproj.gguf --port 11434 -c 8192 -fa on -ctk q8_0 -ctv q8_0 -b 512 -ub 256 -ngl 99 --temp 0.0 --alias dot-engine"
 cd ..
 
 <nul set /p =[1/3] Waiting for engine on port 11434 

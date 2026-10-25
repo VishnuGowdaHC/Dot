@@ -1,13 +1,12 @@
 import os
 import time
 from collections import deque
-from transformers import AutoTokenizer
+from src.dot.memory.tokenizer import get_tokenizer, count_tokens
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 SESSION_LOG_DIR = os.path.join(current_dir, "session_logs")
 
 os.makedirs(SESSION_LOG_DIR, exist_ok=True)
-tokenizer_path = os.path.join(current_dir, "..", "tokenizer_files")
 
 class SessionStorage:
     def __init__(self, session_id: str, max_tokens: int = 4000):
@@ -17,23 +16,25 @@ class SessionStorage:
         self.window = deque()
         self.current_tokens = 0
         
-        # Use Gemma's fast tokenizer for accurate counting
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-        
-        # Initialize the .md file
+        # Use the shared tokenizer singleton instance.
+        self.tokenizer = get_tokenizer()
+
+    def count_tokens(self, text: str) -> int:
+        """Returns the token count for the specified text string."""
+        return count_tokens(text)
+
+    def _ensure_file(self):
+        """Initializes the session log file if it does not exist."""
         if not os.path.exists(self.filepath):
             with open(self.filepath, "w", encoding="utf-8") as f:
                 f.write(f"# Session {self.session_id}\nStarted at: {time.ctime()}\n\n")
 
-    def count_tokens(self, text: str) -> int:
-        return len(self.tokenizer.encode(text))
-
     def add_turn(self, user_query: str, final_answer: str):
-        """Adds a turn to the sliding window AND persists it immediately."""
+        """Adds a turn to the sliding window and persists it to disk."""
+        self._ensure_file()
         turn_text = f"User: {user_query}\nDot: {final_answer}\n"
         turn_tokens = self.count_tokens(turn_text)
 
-        # Persist immediately — never lose a turn to a crash or short session
         with open(self.filepath, "a", encoding="utf-8") as f:
             f.write(f"{turn_text}\n---\n")
 

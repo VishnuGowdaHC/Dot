@@ -127,6 +127,10 @@ def main():
             "--port", str(port),
             "-c", str(context_size),
             "-fa", "on",
+            "-ctk", "q8_0",
+            "-ctv", "q8_0",
+            "-b", "512",
+            "-ub", "256",
             "--temp", "0.0",
             "--alias", "dot-engine"
         ] + gpu_args

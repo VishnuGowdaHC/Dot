@@ -1,15 +1,9 @@
 import os
 import re
 import time
-import chromadb
+from src.dot.memory.client import get_collection
 
-path = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "storage",
-    "chroma_db"
-)
-chroma_client = chromadb.PersistentClient(path=path)
-collection = chroma_client.get_or_create_collection(name='sessions_memory')
+collection = get_collection('sessions_memory')
 
 def chunk_session_from_md(filepath, turns_per_chunk=4):
     """Reads the full session .md log and groups it into fixed-size

@@ -3,14 +3,12 @@ import os
 import time
 import uuid
 import json
-from src.dot.mcp_files.mcpClient import execute_mcp_tool
-from src.dot.memory.collections.native_tools_collection import NATIVE_TOOLS
-
 
 OBS_LOG_DIR = 'logs/observations'
 os.makedirs(OBS_LOG_DIR, exist_ok=True)
 
 def extract_json(raw):
+    """Extracts a JSON object string from the model output."""
     match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
     if match:
         return match.group(1)
@@ -20,9 +18,11 @@ def extract_json(raw):
     return None 
 
 def render_history(history_parts) -> str:
+    """Concatenates history entries into a single prompt text."""
     return "\n".join(p["text"] for p in history_parts)
 
 def dump_observation(obs, step: int, action: str):
+    """Writes an observation record to disk for debugging."""
     record = {
         'step': step,
         'action': action,
@@ -36,14 +36,10 @@ def dump_observation(obs, step: int, action: str):
     return path
 
 def auto_format_observation(obs, max_fields=4, max_items=25) -> str:
-    """
-    Generic formatter: turns common tool-output shapes into compact,
-    information-dense text before token trimming ever needs to kick in.
-    Falls back to raw JSON for shapes it doesn't recognize.
-    """
+    """Formats tool output into a compact string before token trimming."""
     data = obs
 
-    # unwrap common "results wrapper" shapes: {"items": [...], "total_count": N}
+    # Normalize result dictionaries that contain an items list and total count.
     wrapper_keys = None
     if isinstance(data, dict):
         for list_key in ("items", "results", "repositories", "data"):
@@ -57,7 +53,7 @@ def auto_format_observation(obs, max_fields=4, max_items=25) -> str:
     items = wrapper_keys["list"] if wrapper_keys else (data if isinstance(data, list) else None)
 
     if isinstance(items, list) and items and isinstance(items[0], dict):
-        # pick a small set of high-signal fields, preferring common identifying keys
+        # Select primary identifying fields from the item dictionary.
         priority_fields = ["name", "title", "full_name", "url", "html_url", "language", "description"]
         sample_keys = list(items[0].keys())
         chosen_fields = [f for f in priority_fields if f in sample_keys][:max_fields]
@@ -76,7 +72,7 @@ def auto_format_observation(obs, max_fields=4, max_items=25) -> str:
         return f"{header}:\n" + "\n".join(lines) + omitted
 
     if isinstance(data, dict):
-        # plain dict, no list wrapper — show top-level keys compactly
+        # Format plain dictionary entries as key-value pairs.
         lines = [f"{k}: {v}" for k, v in list(data.items())[:max_fields * 2]]
         return "\n".join(lines)
 
@@ -86,6 +82,7 @@ def auto_format_observation(obs, max_fields=4, max_items=25) -> str:
     return json.dumps(data)
 
 def trim_observation(obs, session, max_tokens=450):
+    """Truncates tool observations that exceed the token limit."""
     text = auto_format_observation(obs)
     tokens = session.tokenizer.encode(text)
     if len(tokens) <= max_tokens:
@@ -95,15 +92,14 @@ def trim_observation(obs, session, max_tokens=450):
     return truncated_text + "...[truncated]"
 
 def compress_history(history_parts, session, target_tokens=4000):
-    """Keeps pinned context + current query + most recent steps verbatim.
-    Collapses everything older into one summary line."""
+    """Retains pinned context and recent steps. Summarizes older history steps."""
     pinned = [p for p in history_parts if p["pinned"]]
     unpinned = [p for p in history_parts if not p["pinned"]]
 
     recent_errors = [p for p in unpinned if p["role"] == "error"]
     unpinned = [p for p in unpinned if p not in recent_errors]
 
-    # Walk backwards, keep recent entries until we'd exceed the budget
+    # Iterate backward to collect recent entries within the token limit.
     kept = []
     running = sum(session.count_tokens(p["text"]) for p in pinned) + \
           sum(session.count_tokens(p["text"]) for p in recent_errors)
@@ -118,13 +114,13 @@ def compress_history(history_parts, session, target_tokens=4000):
 
     if dropped:
         dropped_text = "\n".join(p["text"] for p in dropped)
-        summary = summarize_dropped(dropped_text)  # see below
+        summary = summarize_dropped(dropped_text)
         kept.insert(0, {"role": "summary", "text": f"[Earlier steps summarized: {summary}]", "pinned": False})
 
     return pinned + recent_errors + kept
 
 def summarize_dropped(text: str) -> str:
-    # crude but cheap: pull tool names + outcomes, skip full reasoning text
+    """Extract tool names and outcomes from previous steps. Omit reasoning text."""
     tool_calls = re.findall(r"^- (\w+) via", text, re.MULTILINE)
     observations = re.findall(r"\[Observation from (\w+)\]: (.{0,80})", text)
     parts = []
@@ -135,40 +131,12 @@ def summarize_dropped(text: str) -> str:
     return "; ".join(parts) or "earlier reasoning steps (no tool calls)"
 
 def summarize_plan_log(results_log, aborted_at):
+    """Summarizes execution results for a multi-step plan log."""
     if aborted_at is None:
         return f"All {len(results_log)} steps completed successfully."
     done = aborted_at
     failed_step = results_log[aborted_at]
     return (f"{done}/{len(results_log)} steps completed. "
             f"Failed at step {aborted_at} ({failed_step['tool']}): {failed_step.get('error', 'verification failed')}.")
-
-# async def dispatch_tool(planned_step, active_client) -> dict:
-#     """Executes one tool call (native or MCP) and returns its
-#     self-reported result. Assumes every automation tool follows
-#     the {success, detail, error} contract."""
-#     try:
-#         if planned_step.tool_service == "native":
-#             fn = NATIVE_TOOLS.get(planned_step.tool_name)
-#             if fn is None:
-#                 return {"success": False, "detail": "", "error": f"Unknown native tool: {planned_step.tool_name}"}
-#             result = fn(**(planned_step.tool_args or {}))
-#         else:
-#             result = await execute_mcp_tool(active_client, planned_step.tool_service, planned_step.tool_name, planned_step.tool_args)
-
-#         # guard against tools that don't yet follow the contract
-#         if not isinstance(result, dict) or "success" not in result:
-#             return {"success": True, "detail": str(result), "error": None}  # legacy passthrough, assume ok
-#         return result
-
-#     except Exception as e:
-#         return {"success": False, "detail": "", "error": str(e)}
-
-# async def act_and_verify(planned_step, active_client, max_retries=2):
-#     last_result = None
-#     for attempt in range(max_retries):
-#         last_result = await dispatch_tool(planned_step, active_client)
-#         if last_result["success"]:
-#             return last_result
-#     return last_result  # return the last failure if all retries exhausted
 
 

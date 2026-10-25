@@ -9,8 +9,14 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 from faster_whisper import WhisperModel
 import numpy as np
 
-# Optimized with int8 compute on CPU
-whisper = WhisperModel("small.en", device="cpu", compute_type="int8")
+_WHISPER_MODEL = None
+
+def _get_whisper_model():
+    """Lazily loads the WhisperModel instance on the first transcription call."""
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        _WHISPER_MODEL = WhisperModel("small.en", device="cpu", compute_type="int8")
+    return _WHISPER_MODEL
 
 hallucinations = {
     "thank you", "thank you.", "thanks for watching", 
@@ -31,9 +37,10 @@ def transcribe(audio):
     if max_val > 1.0:
         audio = audio / 32768.0
 
+    model = _get_whisper_model()
     # vad_filter=True runs Silero VAD to strip silence and prevent hallucinations
     # beam_size=1 (greedy) is 4x faster on CPU than beam_size=5
-    segments, _ = whisper.transcribe(
+    segments, _ = model.transcribe(
         audio,
         beam_size=1,
         vad_filter=True,

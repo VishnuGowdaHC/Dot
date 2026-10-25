@@ -27,7 +27,7 @@ from src.dot.mcp_files.mcpClient import get_multi_server_client
 from src.dot.mcp_files.registry import sync_registry
 
 
-# Global state to hold the MCP client so all sockets share it
+# Global application state shared across active WebSocket connections.
 app_state = {}
 
 def handle_voice_transcription(text: str):
@@ -42,9 +42,9 @@ def handle_voice_transcription(text: str):
     if ws and main_loop and main_loop.is_running():
         async def dispatch():
             try:
-                # 1. Send the user's spoken words to the UI
+                # Send transcribed voice input to the client user interface.
                 await ws.send_text(json.dumps({"type": "voice_input", "text": text}))
-                # 2. Route through intentRouter (runs ReAct loop or fast app opener)
+                # Route through intentRouter to execute tools or direct actions.
                 data = await intentRouter(ws, text, session, client)
                 if data:
                     print(f"Received from dot: {data}")
@@ -74,35 +74,35 @@ def handle_voice_status(status: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Sync all MCP and native tools into ChromaDB vector store
-    print("Syncing tools to ChromaDB...")
-    try:
-        await sync_registry()
-        print("All tools registered in ChromaDB successfully!")
-    except Exception as reg_err:
-        print(f"[Warning] Tool registration encountered an error: {reg_err}")
-        traceback.print_exc()
-
-    # 2. Store the main asyncio event loop for thread-safe dispatch
+    # Store the main asyncio event loop for thread-safe operations.
     app_state["main_loop"] = asyncio.get_running_loop()
 
-    # 3. Boot the Hold-Q background voice listener
-    print("Starting Hold-Q background voice listener...")
+    # Start the background voice listener thread.
+    print("Starting background voice listener...")
     threading.Thread(
         target=startVoiceListener,
         args=(handle_voice_transcription, handle_voice_status),
         daemon=True
     ).start()
-    
-    # 4. Boot the MCP servers EXACTLY ONCE for the whole app
+
+    # Start the MCP client session once for the entire application lifecycle.
     multi_server_client = get_multi_server_client()
     async with multi_server_client as active_client:
-        print("MCP Servers initialized and ready globally!")
+        print("MCP servers initialized and ready globally.")
         app_state["active_mcp_client"] = active_client
-        
-        # The app runs while this yields
-        yield 
-        
+
+        # Synchronize tools using the active client session to prevent duplicate process launches.
+        print("Syncing tools to ChromaDB...")
+        try:
+            await sync_registry(active_client=active_client)
+            print("All tools registered in ChromaDB successfully.")
+        except Exception as reg_err:
+            print(f"[Warning] Tool registration encountered an error: {reg_err}")
+            traceback.print_exc()
+
+        # The application runs while this context yields.
+        yield
+
     print("Shutting down MCP servers...")
 
 # Attach the lifespan to the app
@@ -151,8 +151,8 @@ async def websocket_endpoint(websocket: WebSocket):
         if app_state.get("active_websocket") == websocket:
             app_state["active_websocket"] = None
         try:
-            print(f"Embedding session {active_session.session_id} to Chroma...")
-            embed_session_to_chroma(active_session.session_id, active_session.filepath)
-            print("Session embedded successfully.")
+            print(f"[Server] Embedding session {active_session.session_id} to ChromaDB...")
+            await asyncio.to_thread(embed_session_to_chroma, active_session.session_id, active_session.filepath)
+            print("[Server] Session embedded successfully.")
         except Exception as embed_err:
-            print(f"Failed to embed session {active_session.session_id}: {embed_err}")
+            print(f"[Server Warning] Failed to embed session {active_session.session_id}: {embed_err}")
