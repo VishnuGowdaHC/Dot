@@ -10,7 +10,7 @@ import re
 from src.dot.memory.vector_store import get_relevant_tools, get_all_services
 from src.dot.core.guardrails import check_guardrails, is_real_value
 from src.dot.mcp_files.mcpClient import execute_mcp_tool
-from src.dot.memory.session_memory.manager import SessionStorage
+from src.dot.memory.session import SessionStorage
 from src.dot.memory.collections.native_tools_collection import NATIVE_TOOLS
 from src.dot.core.llm import async_llm, async_llm_stream
 from src.dot.core.utils import (
@@ -20,6 +20,7 @@ from src.dot.core.utils import (
     dump_observation,
     trim_observation,
     compress_history,
+    async_compress_history,
 )
 
 # --- Logging Setup ---
@@ -108,6 +109,17 @@ def append_or_update_error(history_parts: list, error_msg: str):
         history_parts.append({"role": "error", "text": error_msg, "pinned": False})
 
 MAX_LOOP_TOKENS = 3500
+
+async def record_session_turn(session: Optional[SessionStorage], query: str, answer: str):
+    """Appends a turn to session storage and awaits compaction when needed."""
+    if session is not None:
+        task = session.add_turn(query, answer)
+        if task is not None:
+            try:
+                await task
+            except Exception as err:
+                log_debug(f"[Compaction Warning]: {err}", to_console=False)
+
 
 # Streaming: Stream final text in fast, smooth chunks over WebSocket.
 STREAM_CHUNK_SIZE = 16
@@ -198,9 +210,10 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
 
         # Compress history if token count exceeds the loop limit.
         current_tokens = session.count_tokens(render_history(history_parts))
-        if current_tokens > MAX_LOOP_TOKENS:
-            log_debug(f"[WARNING] Token limit exceeded ({current_tokens} > {MAX_LOOP_TOKENS}). Compressing history...")
-            history_parts = compress_history(history_parts, session)
+        loop_limit = getattr(session, "compaction_threshold", MAX_LOOP_TOKENS)
+        if current_tokens > loop_limit:
+            log_debug(f"[WARNING] Token limit exceeded ({current_tokens} > {loop_limit}). Compressing history...")
+            history_parts = await async_compress_history(history_parts, session, target_tokens=loop_limit)
 
         prompt = render_history(history_parts)
         context_debug(prompt)
@@ -214,7 +227,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                 f"I lost connection to the local model server: {llm_err}. "
                 "Please make sure your local LLM (llama-server) is running on port 11434 and has sufficient memory."
             )
-            session.add_turn(query, fallback_msg)
+            await record_session_turn(session, query, fallback_msg)
             return await finish_and_stream(fallback_msg)
 
         log_debug(f"RAW LLM OUTPUT:\n{raw}", to_console=False)
@@ -225,7 +238,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
         if extracted is None:
             log_debug("[CRITICAL]: Failed to extract any JSON from LLM output. Aborting.")
             fallback_msg = "I ran into an internal error processing that. Could you try rephrasing?"
-            session.add_turn(query, fallback_msg)
+            await record_session_turn(session, query, fallback_msg)
             return await finish_and_stream(fallback_msg)
 
         try:
@@ -252,7 +265,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
         if step_obj.action == 'Final' and step_obj.final_answer and step_obj.final_answer != "...":
             ans = step_obj.final_answer
             log_debug(f"[FINAL ANSWER TRIGGERED]: {ans}")
-            session.add_turn(query, ans)
+            await record_session_turn(session, query, ans)
             return await finish_and_stream(ans)
 
         # 2. Tool Discovery
@@ -275,7 +288,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                 else:
                     fallback_msg = "I don't seem to have the right tools to handle that request."
                 
-                session.add_turn(query, fallback_msg)
+                await record_session_turn(session, query, fallback_msg)
                 return await finish_and_stream(fallback_msg)
                 
             executed_signatures.add(discovery_sig)
@@ -394,7 +407,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                             if synth_extracted:
                                 synth_step = AgentStep.model_validate_json(synth_extracted)
                                 if synth_step.final_answer and synth_step.final_answer != "...":
-                                    session.add_turn(query, synth_step.final_answer)
+                                    await record_session_turn(session, query, synth_step.final_answer)
                                     return await finish_and_stream(synth_step.final_answer)
                         except Exception as synth_e:
                             log_debug(f"[SYNTHESIS FALLBACK FAILED]: {synth_e}")
@@ -403,7 +416,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                     else:
                         fallback_msg = "I'm having trouble getting the exact data you need right now. Could you clarify or rephrase?"
                     
-                    session.add_turn(query, fallback_msg)
+                    await record_session_turn(session, query, fallback_msg)
                     return await finish_and_stream(fallback_msg)
                 
             loop_strikes = 0
@@ -460,7 +473,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                 else:
                     final_msg = f"Done — {obs_dict.get('detail', 'action completed')}."
                     log_debug("[TERMINAL COMPLETION]: Tool signaled terminal completion. Exiting loop.")
-                    session.add_turn(query, final_msg)
+                    await record_session_turn(session, query, final_msg)
                     return await finish_and_stream(final_msg)
             
             log_path = dump_observation(observation, step, step_obj.tool_name)
@@ -493,12 +506,12 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
             if synth_extracted:
                 synth_step = AgentStep.model_validate_json(synth_extracted)
                 if synth_step.final_answer and synth_step.final_answer != "...":
-                    session.add_turn(query, synth_step.final_answer)
+                    await record_session_turn(session, query, synth_step.final_answer)
                     return await finish_and_stream(synth_step.final_answer)
         except Exception as e:
             log_debug(f"[MAX STEPS SYNTHESIS ERROR]: {e}")
 
     failure_msg = "Agent loop aborted: Max steps reached without a final answer."
     log_debug("[MAX STEPS REACHED]: Aborting loop.")
-    session.add_turn(query, failure_msg)
+    await record_session_turn(session, query, failure_msg)
     return await finish_and_stream(failure_msg)

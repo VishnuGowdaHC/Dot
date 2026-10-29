@@ -1,3 +1,4 @@
+from typing import Optional
 from fastmcp import Client
 from fastmcp.client.sampling import SamplingMessage, SamplingParams, RequestContext
 import json
@@ -8,7 +9,7 @@ from src.dot.core.llm import async_llm
 async def sampling_handler(
     messages: list[SamplingMessage],
     params: SamplingParams,
-    context: RequestContext,
+    context: Optional[RequestContext] = None,
 ) -> str:
     """Handles FastMCP sampling requests using the asynchronous LLM client."""
     text_parts = []
@@ -23,7 +24,7 @@ async def sampling_handler(
             image_url = f"data:{content.mimeType};base64,{content.data}"
 
     query = "\n".join(text_parts) if text_parts else "Describe the image."
-    system_prompt = params.systemPrompt or "Respond in plain text only. No JSON."
+    system_prompt = getattr(params, "system_prompt", None) or getattr(params, "systemPrompt", None) or "Respond in plain text only. No JSON."
 
     return await async_llm(query=query, image_url=image_url, system_prompt=system_prompt)
 

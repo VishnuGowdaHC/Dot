@@ -1,6 +1,6 @@
 from src.dot.memory.collections.tools_collection import upsert_tools
-from src.dot.memory.session_memory.search import search_active_session
-from src.dot.memory.session_memory.search import search_past_sessions
+from src.dot.memory.search import search_active_session
+from src.dot.memory.search import search_past_sessions
 
 
 NATIVE_TOOLS = {

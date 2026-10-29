@@ -91,31 +91,73 @@ def trim_observation(obs, session, max_tokens=450):
     truncated_text = session.tokenizer.decode(truncated_tokens)
     return truncated_text + "...[truncated]"
 
-def compress_history(history_parts, session, target_tokens=4000):
-    """Retains pinned context and recent steps. Summarizes older history steps."""
-    pinned = [p for p in history_parts if p["pinned"]]
-    unpinned = [p for p in history_parts if not p["pinned"]]
+def _split_unpinned_steps(history_parts, session, target_tokens):
+    """Splits unpinned history parts into kept and dropped step lists."""
+    pinned = [p for p in history_parts if p.get("pinned")]
+    unpinned = [p for p in history_parts if not p.get("pinned")]
 
-    recent_errors = [p for p in unpinned if p["role"] == "error"]
+    recent_errors = [p for p in unpinned if p.get("role") == "error"]
     unpinned = [p for p in unpinned if p not in recent_errors]
 
-    # Iterate backward to collect recent entries within the token limit.
-    kept = []
+    # Preserve the last 2 steps verbatim when available.
+    min_verbatim_count = min(2, len(unpinned))
+    guaranteed_recent = unpinned[-min_verbatim_count:] if min_verbatim_count > 0 else []
+    remaining_unpinned = unpinned[:-min_verbatim_count] if min_verbatim_count > 0 else []
+
+    kept = list(guaranteed_recent)
     running = sum(session.count_tokens(p["text"]) for p in pinned) + \
-          sum(session.count_tokens(p["text"]) for p in recent_errors)
-    for part in reversed(unpinned):
+              sum(session.count_tokens(p["text"]) for p in recent_errors) + \
+              sum(session.count_tokens(p["text"]) for p in kept)
+
+    # Collect steps backward within the token budget.
+    for part in reversed(remaining_unpinned):
         cost = session.count_tokens(part["text"])
         if running + cost > target_tokens:
             break
         kept.insert(0, part)
         running += cost
 
-    dropped = unpinned[: len(unpinned) - len(kept)]
+    cutoff = len(remaining_unpinned) - (len(kept) - len(guaranteed_recent))
+    dropped = remaining_unpinned[:cutoff]
+
+    return pinned, recent_errors, kept, dropped
+
+def compress_history(history_parts, session, target_tokens=4000):
+    """Retains pinned context and recent steps. Summarizes older history steps."""
+    pinned, recent_errors, kept, dropped = _split_unpinned_steps(history_parts, session, target_tokens)
 
     if dropped:
+        # Save snapshot of dropped steps to disk before compaction.
+        dump_observation(dropped, step=-1, action="pre_compaction_drop")
         dropped_text = "\n".join(p["text"] for p in dropped)
         summary = summarize_dropped(dropped_text)
         kept.insert(0, {"role": "summary", "text": f"[Earlier steps summarized: {summary}]", "pinned": False})
+
+    return pinned + recent_errors + kept
+
+async def async_compress_history(history_parts, session, target_tokens=4000):
+    """Compacts older ReAct steps into an ASD-STE100 summary asynchronously."""
+    pinned, recent_errors, kept, dropped = _split_unpinned_steps(history_parts, session, target_tokens)
+
+    if dropped:
+        # Save snapshot of dropped steps to disk before compaction.
+        dump_observation(dropped, step=-1, action="pre_compaction_drop")
+        dropped_text = "\n".join(p["text"] for p in dropped)
+
+        # Check for previous summary block in unpinned history.
+        prev_summary = None
+        for p in dropped:
+            if p.get("role") == "summary":
+                prev_summary = p.get("text")
+
+        # Generate summary using the session compactor when available.
+        if hasattr(session, "compactor") and session.compactor:
+            summary = await session.compactor.compact(dropped_text, previous_summary=prev_summary)
+            summary_text = f"[Earlier steps summarized in ASD-STE100:\n{summary}\n]"
+        else:
+            summary_text = f"[Earlier steps summarized: {summarize_dropped(dropped_text)}]"
+
+        kept.insert(0, {"role": "summary", "text": summary_text, "pinned": False})
 
     return pinned + recent_errors + kept
 
@@ -138,5 +180,3 @@ def summarize_plan_log(results_log, aborted_at):
     failed_step = results_log[aborted_at]
     return (f"{done}/{len(results_log)} steps completed. "
             f"Failed at step {aborted_at} ({failed_step['tool']}): {failed_step.get('error', 'verification failed')}.")
-
-

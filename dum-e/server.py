@@ -21,7 +21,7 @@ import uuid
 
 from src.dot.voiceModel.voiceListener import startVoiceListener
 from src.dot.core.router import intentRouter
-from src.dot.memory.session_memory.manager import SessionStorage
+from src.dot.memory.session import SessionStorage
 from src.dot.memory.collections.session_collection import embed_session_to_chroma
 from src.dot.mcp_files.mcpClient import get_multi_server_client
 from src.dot.mcp_files.registry import sync_registry
