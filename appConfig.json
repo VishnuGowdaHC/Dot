@@ -47,7 +47,8 @@
         "context_size": 8192,
         "temperature": 0.0,
         "gpu_layers": 99,
-        "user_name": "User"
+        "user_name": "User",
+        "browser_headless": false
     },
     "cloud": {
         "provider": "openai",
@@ -68,5 +69,6 @@
         "wt.exe",
         "calc.exe",
         "explorer.exe"
-    ]
+    ],
+    "github_token": ""
 }

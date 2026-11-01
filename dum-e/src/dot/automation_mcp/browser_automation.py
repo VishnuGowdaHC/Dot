@@ -9,6 +9,21 @@ import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
 import socket
+import sys
+import os
+import json
+
+# Configure UTF-8 encoding for standard streams to prevent charmap errors on Windows.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 def _is_port_open(port: int = 9222, host: str = "127.0.0.1", timeout: float = 0.05) -> bool:
     """Verifies that the specified port accepts TCP connections."""
@@ -25,6 +40,7 @@ mcp = FastMCP(name="Dot Browser Automation")
 _playwright = None
 _browser = None
 _page = None
+_current_headless = None
 
 TOOL_DEPENDENCIES = {
     "browser_click": ["browser_snapshot"],
@@ -32,57 +48,99 @@ TOOL_DEPENDENCIES = {
    
 }
 
+
+def _is_headless() -> bool:
+    """Reads the headless setting from the configuration file."""
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "appConfig.json"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "appConfig.json"),
+        os.path.abspath("appConfig.json"),
+        os.path.abspath("../appConfig.json"),
+    ]
+    config_path = next((os.path.abspath(p) for p in possible_paths if os.path.exists(p)), None)
+    if config_path:
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return bool(data.get("active_settings", {}).get("browser_headless", False))
+        except Exception:
+            pass
+    return False
+
+
 async def _ensure_browser():
-    global _playwright, _browser, _page
+    global _playwright, _browser, _page, _current_headless
+
+    desired_headless = _is_headless()
 
     # Verify if existing browser and page instances are still open and connected
     is_alive = False
     if _page is not None and _browser is not None:
         try:
             if not _page.is_closed() and _browser.is_connected():
-                is_alive = True
+                if _current_headless is None or _current_headless == desired_headless:
+                    is_alive = True
         except Exception:
             is_alive = False
 
-    if not is_alive:
-        # Clean up any stale handles
-        try:
-            if _page: await _page.close()
-        except Exception: pass
-        try:
-            if _browser: await _browser.close()
-        except Exception: pass
-        try:
-            if _playwright: await _playwright.stop()
-        except Exception: pass
+    if is_alive:
+        return _page
 
-        _page = None
-        _browser = None
-        _playwright = None
+    # Clean up any stale handles
+    try:
+        if _page: await _page.close()
+    except Exception: pass
+    try:
+        if _browser: await _browser.close()
+    except Exception: pass
+    try:
+        if _playwright: await _playwright.stop()
+    except Exception: pass
 
-        _playwright = await async_playwright().start()
-        
-        connected_cdp = False
-        if _is_port_open(9222):
+    _page = None
+    _browser = None
+    _playwright = None
+
+    _playwright = await async_playwright().start()
+    
+    connected_cdp = False
+    if not desired_headless and _is_port_open(9222):
+        try:
+            _browser = await _playwright.chromium.connect_over_cdp("http://127.0.0.1:9222")
+            context = _browser.contexts[0]
+            open_pages = [p for p in context.pages if not p.is_closed()]
+            _page = open_pages[0] if open_pages else await context.new_page()
+            connected_cdp = True
+            _current_headless = False
+            print("[System] Connected to active daily browser session.", file=sys.stderr)
+        except Exception as e:
+            print(f"[System] CDP connection attempt failed: {e}", file=sys.stderr)
+
+    if not connected_cdp:
+        launched = False
+        last_launch_err = None
+        # Try installed Google Chrome first, then Microsoft Edge, then bundled Chromium
+        for channel in ["chrome", "msedge", None]:
             try:
-                _browser = await _playwright.chromium.connect_over_cdp("http://127.0.0.1:9222")
-                context = _browser.contexts[0]
-                open_pages = [p for p in context.pages if not p.is_closed()]
-                _page = open_pages[0] if open_pages else await context.new_page()
-                connected_cdp = True
-                print("[System] Connected to active daily browser session.")
-            except Exception as e:
-                print(f"[System] CDP connection attempt failed: {e}")
-
-        if not connected_cdp:
-            try:
-                _browser = await _playwright.chromium.launch(headless=False)
+                launch_kwargs = {"headless": desired_headless}
+                if channel:
+                    launch_kwargs["channel"] = channel
+                _browser = await _playwright.chromium.launch(**launch_kwargs)
                 _page = await _browser.new_page(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
                 )
-            except Exception as launch_err:
-                print(f"[Error] Playwright launch failed: {launch_err}. Run 'playwright install chromium'.")
-                raise RuntimeError(f"Playwright chromium failed to launch: {launch_err}")
+                launched = True
+                _current_headless = desired_headless
+                break
+            except Exception as err:
+                last_launch_err = err
+                continue
+
+        if not launched:
+            print(f"[Error] Playwright launch failed: {last_launch_err}", file=sys.stderr)
+            raise RuntimeError(f"Playwright chromium failed to launch: {last_launch_err}. Please ensure Google Chrome is installed.")
+
+    return _page
 
 
 async def _prune_snapshot(node, max_depth=6, depth=0):
@@ -115,15 +173,14 @@ async def _prune_snapshot(node, max_depth=6, depth=0):
 
 
 @mcp.tool
-async def ai_background_load_page(url: str) -> dict:
-    """
-    Navigate the browser to a specified URL to read, extract, or summarize its content.
+async def navigate(url: str) -> dict:
+    """Navigate the active browser page to a specified URL.
     
     Args:
-        url (str): The complete web address to navigate to (e.g., 'https://github.com' or 'https://www.deeplearning.ai/courses/agentic-ai').
+        url (str): The complete web address to navigate to.
         
     Returns:
-        dict: A status dictionary containing 'success', 'detail', and 'error' keys.
+        dict: A status dictionary containing success, detail, and error keys.
     """
     try:
         page = await _ensure_browser()
@@ -132,19 +189,67 @@ async def ai_background_load_page(url: str) -> dict:
     except Exception as e:
         return {"success": False, "detail": f"navigation to {url} failed", "error": str(e)}
 
+
 @mcp.tool
-async def search_web(query: str, max_results: int = 4) -> dict:
-    """
-    Search the web for a given query when a direct URL is NOT provided.
-    Returns the top organic search results containing their titles, snippets, and clean destination URLs.
-    Use this to find relevant links, then use 'browser_ai_background_load_page' with the chosen URL.
+async def ai_background_load_page(url: str) -> dict:
+    """Navigate the active browser page to a specified URL (legacy alias)."""
+    return await navigate(url)
+
+
+@mcp.tool
+async def play_video(query: str) -> dict:
+    """Find and play a video or song on YouTube.
     
     Args:
-        query (str): The search query to look up (e.g. 'Andrew Ng latest news' or 'deeplearning ai agentic course').
-        max_results (int, optional): The maximum number of search results to return. Defaults to 4.
+        query (str): The video or song name to find and play.
         
     Returns:
-        dict: A dictionary containing 'success', 'results' (list of {title, url, snippet}), and 'instruction'.
+        dict: A status dictionary indicating if playback succeeded.
+    """
+    clean_query = query.lower()
+    for prefix in ["play", "open", "watch", "listen to", "video of", "song"]:
+        if clean_query.startswith(prefix):
+            clean_query = clean_query[len(prefix):].strip()
+    clean_query = clean_query.replace("on youtube", "").replace("in youtube", "").replace("youtube", "").strip()
+    if not clean_query:
+        clean_query = query.strip()
+
+    target_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(clean_query)}"
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        }
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(target_url, headers=headers)
+            matches = re.findall(r"/watch\?v=([a-zA-Z0-9_-]{11})", resp.text)
+            if matches:
+                target_url = f"https://www.youtube.com/watch?v={matches[0]}"
+    except Exception:
+        pass
+
+    try:
+        webbrowser.open(target_url)
+        return {
+            "success": True,
+            "detail": f"Playing '{clean_query}' on YouTube: {target_url}",
+            "url": target_url,
+            "terminal": True,
+            "error": None
+        }
+    except Exception as e:
+        return {"success": False, "detail": None, "error": str(e), "terminal": False}
+
+
+@mcp.tool
+async def search_web(query: str, max_results: int = 4) -> dict:
+    """Search the web for links and information.
+    
+    Args:
+        query (str): The search keywords or question.
+        max_results (int, optional): Maximum search results to return. Defaults to 4.
+        
+    Returns:
+        dict: A dictionary containing search results with titles, URLs, and snippets.
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -178,11 +283,11 @@ async def search_web(query: str, max_results: int = 4) -> dict:
                     "success": True,
                     "query": query,
                     "results": items[:max_results],
-                    "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_ai_background_load_page' to navigate to it, or use the snippets to answer.",
+                    "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
                     "error": None
                 }
     except Exception as e:
-        print(f"[Warning] Fast search failed ({e}), falling back to Playwright...")
+        print(f"[Warning] Fast search failed ({e}), falling back to Playwright...", file=sys.stderr)
 
     # 2. Playwright Fallback via Bing
     try:
@@ -211,42 +316,44 @@ async def search_web(query: str, max_results: int = 4) -> dict:
             "success": True,
             "query": query,
             "results": results[:max_results],
-            "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_ai_background_load_page' to navigate to it, or use the snippets to answer.",
+            "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
             "error": None
         }
     except Exception as e:
         return {"success": False, "query": query, "results": [], "error": str(e)}
 
+
 @mcp.tool
-def open_desktop_tab_for_user(target: str) -> dict:
-    """
-    Launch an external browser window on the user's desktop to display a URL or search query to the human user.
-    CRITICAL: This is a FIRE-AND-FORGET action that opens the user's OS browser!
-    DO NOT USE THIS TOOL IF:
-    - You need to read, inspect, extract, or summarize content from a web page.
-    - The user asked a question, requested code examples, or needs an explanation.
-    - For reading web pages, ALWAYS use 'browser_ai_background_load_page' followed by 'browser_extract_text'.
-    ONLY use this tool when the user EXPLICITLY asks to open a site or search for them to view in their own desktop browser (e.g., 'open youtube in my browser', 'launch reddit for me').
+def open_in_browser(target: str) -> dict:
+    """Open a URL or search query in the user's default desktop browser window.
     
     Args:
-        target (str): The search query or website name to open for the user.
+        target (str): Web address or search term to show to the human user.
         
     Returns:
-        dict: A status dictionary indicating if the local browser successfully opened.
+        dict: A status dictionary confirming that the desktop browser opened.
     """
-    print(f"Opening quick search for '{target}' via !ducky ")
     try:
-        searchQuery = urllib.parse.quote(f"!ducky {target}")
-        url = f"https://duckduckgo.com/?q={searchQuery}"
+        if target.startswith("http://") or target.startswith("https://"):
+            url = target
+        else:
+            search_query = urllib.parse.quote(f"!ducky {target}")
+            url = f"https://duckduckgo.com/?q={search_query}"
         webbrowser.open(url)
         return {
             "success": True,
-            "detail": f"opened quick search for '{target}'",
+            "detail": f"opened '{target}' in desktop browser",
             "error": None,
             "terminal": True
         }
     except Exception as e:
         return {"success": False, "detail": None, "error": str(e), "terminal": False}
+
+
+@mcp.tool
+def open_desktop_tab_for_user(target: str) -> dict:
+    """Open a URL or search query in the user's default desktop browser (legacy alias)."""
+    return open_in_browser(target)
 
 @mcp.tool
 async def screenshot(ctx: Context, question: str = "Describe what's visible on screen.") -> dict:
@@ -331,17 +438,16 @@ async def snapshot() -> dict:
 
 @mcp.tool
 async def click(role: str, name: str) -> dict:
-    """
-    Click a button, link, or search result on the active webpage. Requires: browser_browser_snapshot.
-    CRITICAL: You MUST use browser_snapshot first to find the exact 'role' (tag) and 'name' (text/aria-label) 
-    of the element. NEVER guess the role or name.
+    """Click a button, link, or element on the active webpage.
+    
+    Use the snapshot tool first to inspect the element role and accessible name.
     
     Args:
-        role (str): The HTML tag or ARIA role of the element to click (e.g., 'a', 'button').
-        name (str): The visible text or accessible name of the element to click.
+        role (str): The HTML tag or ARIA role of the element to click.
+        name (str): The visible text or accessible name of the element.
         
     Returns:
-        dict: A status dictionary confirming the click action or containing error details.
+        dict: A status dictionary confirming the click action or error details.
     """
     try:
         page = await _ensure_browser()
@@ -355,18 +461,17 @@ async def click(role: str, name: str) -> dict:
 
 @mcp.tool
 async def fill(role: str, name: str, text: str) -> dict:
-    """
-    Type text into a search box, form field, or input on the current webpage. 
-    CRITICAL: You MUST use browser_snapshot first to find the exact 'role' and 'name' 
-    of the input element. NEVER guess the role or name.
+    """Type text into an input field on the active webpage.
+    
+    Use the snapshot tool first to inspect the field role and accessible name.
     
     Args:
-        role (str): The HTML tag or ARIA role of the input element (e.g., 'input').
-        name (str): The visible text, placeholder, or accessible name of the input field.
-        text (str): The exact string of text to type into the field.
+        role (str): The HTML tag or ARIA role of the input element.
+        name (str): The visible placeholder or accessible name of the input field.
+        text (str): The exact text string to enter.
         
     Returns:
-        dict: A status dictionary confirming the fill action or containing error details.
+        dict: A status dictionary confirming the fill action or error details.
     """
     try:
         page = await _ensure_browser()

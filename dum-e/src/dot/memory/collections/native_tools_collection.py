@@ -6,6 +6,8 @@ from src.dot.memory.search import search_past_sessions
 NATIVE_TOOLS = {
     "search_active_session": search_active_session,
     "search_past_sessions": search_past_sessions,
+    "native_search_active_session": search_active_session,
+    "native_search_past_sessions": search_past_sessions,
 }
 
 NATIVE_TOOL_SCHEMAS = {

@@ -7,7 +7,8 @@ import asyncio
 import json
 import re
 
-from src.dot.memory.vector_store import get_relevant_tools, get_all_services
+from src.dot.memory.vector_store import get_relevant_tools, get_all_services, get_speculative_tools, format_compact_tool
+from src.dot.core.prompts import get_system_prompt
 from src.dot.core.guardrails import check_guardrails, is_real_value
 from src.dot.mcp_files.mcpClient import execute_mcp_tool
 from src.dot.memory.session import SessionStorage
@@ -138,6 +139,33 @@ async def stream_response(websocket, text: str):
             await asyncio.sleep(STREAM_DELAY)
     await websocket.send_text(json.dumps({"type": "stream_end"}))
 
+
+async def emit_token_telemetry(websocket, session: Optional[SessionStorage], custom_system_prompt: Optional[str], history_parts: list):
+    """Calculates active context tokens including system prompt and emits telemetry."""
+    if not websocket or not session:
+        return
+    try:
+        sys_text = f"<|think|> {custom_system_prompt or get_system_prompt()}"
+        sys_tokens = session.count_tokens(sys_text)
+        prompt_text = render_history(history_parts)
+        prompt_tokens = session.count_tokens(prompt_text)
+        total = sys_tokens + prompt_tokens
+        limit = session.context_size
+        pct = round((total / limit) * 100, 1) if limit > 0 else 0
+        await websocket.send_text(json.dumps({
+            "type": "token_usage",
+            "data": {
+                "total_tokens": total,
+                "context_limit": limit,
+                "system_tokens": sys_tokens,
+                "history_tokens": prompt_tokens,
+                "compaction_threshold": session.compaction_threshold,
+                "percentage": pct
+            }
+        }))
+    except Exception as e:
+        log_debug(f"[Token Telemetry Warning]: {e}", to_console=False)
+
 INSPECTION_TOOLS = {
     "browser_extract_text",
     "browser_snapshot",
@@ -147,7 +175,10 @@ INSPECTION_TOOLS = {
 }
 
 STATE_CHANGING_TOOLS = {
+    "browser_navigate",
     "browser_ai_background_load_page",
+    "browser_open_in_browser",
+    "browser_play_video",
     "browser_search_web",
     "browser_click",
     "browser_fill",
@@ -160,7 +191,7 @@ STATE_CHANGING_TOOLS = {
     "os_click_at"
 }
 
-async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None, active_client=None, max_steps=12):
+async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None, active_client=None, max_steps=12, speculative_tools=None):
     run_id = f"{int(time.time())}_{uuid.uuid4().hex[:6]}"
     run_log_path = os.path.join(OBS_LOG_DIR, f"run_{run_id}.json")
     run_log = {"query": query, "steps": []}
@@ -169,6 +200,17 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
 
     schema = AgentStep.model_json_schema()
     
+    # Pre-retrieve speculative tools if not already supplied by the router.
+    if speculative_tools is None:
+        try:
+            speculative_tools = await asyncio.to_thread(get_speculative_tools, query, 3)
+        except Exception as e:
+            log_debug(f"[Speculative RAG Warning]: {e}", to_console=False)
+            speculative_tools = []
+
+    compact_tool_lines = [format_compact_tool(t) for t in (speculative_tools or [])]
+    tools_context_text = "\n".join(compact_tool_lines)
+
     # Retrieve conversational history from the sliding window.
     active_history_context = session.get_context_string() 
     available_services = get_all_services()
@@ -181,15 +223,22 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
     }
     services_text = "\n".join([f"- {s}: {SERVICE_MAP.get(s, 'additional tools')}" for s in available_services])
 
+    tools_block = f"<CURRENT_CONTEXT_TOOLS>\n{tools_context_text}\n</CURRENT_CONTEXT_TOOLS>\n" if tools_context_text else ""
     history_parts = [{
         "role": "context",
         "text": f"""
             <AVAILABLE_TOOL_SERVICES>\n{services_text or 'None registered.'}\n</AVAILABLE_TOOL_SERVICES>
-            <PREVIOUS_SESSION_CONTEXT>\n{active_history_context or "No previous history."}\n</PREVIOUS_SESSION_CONTEXT>
+            {tools_block}<PREVIOUS_SESSION_CONTEXT>\n{active_history_context or "No previous history."}\n</PREVIOUS_SESSION_CONTEXT>
             <CURRENT_QUERY>\nuser: {query}\n</CURRENT_QUERY>
             """,
         "pinned": True,
     }]
+
+    # Build system prompt with pre-injected tools if any were retrieved.
+    custom_system_prompt = get_system_prompt(tools_context_text) if tools_context_text else None
+
+    # Emit initial token telemetry for Turn 0 (system prompt + context)
+    await emit_token_telemetry(websocket, session, custom_system_prompt, history_parts)
 
     executed_signatures = set()
     last_tool_sig = None
@@ -218,9 +267,12 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
         prompt = render_history(history_parts)
         context_debug(prompt)
       
+        # Emit active token telemetry for this loop step
+        await emit_token_telemetry(websocket, session, custom_system_prompt, history_parts)
+
         log_debug("Waiting for LLM generation...")
         try:
-            raw = await async_llm(prompt, schema=schema)
+            raw = await async_llm(prompt, schema=schema, system_prompt=custom_system_prompt)
         except Exception as llm_err:
             log_debug(f"[CRITICAL LLM ERROR]: {llm_err}")
             fallback_msg = (
@@ -376,7 +428,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                     if is_inspection:
                         error_hint = (
                             f"[Anti-Loop Guard: You are calling '{step_obj.tool_name}' on the same page you already inspected. "
-                            f"The browser only holds one active page at a time. To read a different page, call 'browser_ai_background_load_page' with its URL first. "
+                            f"The browser only holds one active page at a time. To read a different page, call 'browser_navigate' with its URL first. "
                             f"If you have enough information from your observations, use action='Final' now to answer the user.]"
                         )
                     else:
@@ -402,7 +454,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                             "pinned": False
                         })
                         try:
-                            synth_raw = await async_llm(render_history(synth_history), schema=schema)
+                            synth_raw = await async_llm(render_history(synth_history), schema=schema, system_prompt=custom_system_prompt)
                             synth_extracted = extract_json(synth_raw)
                             if synth_extracted:
                                 synth_step = AgentStep.model_validate_json(synth_extracted)
@@ -465,7 +517,7 @@ async def reAct_loop(websocket, query, llm=None, session: SessionStorage = None,
                     log_debug("[TERMINAL IGNORED]: User query requested information/code, continuing loop instead of exiting.")
                     history_parts.append({
                         "role": "observation",
-                        "text": f"\n[Observation from {step_obj.tool_name}]: {obs_dict.get('detail')}\n[Note: You opened an external desktop tab, but the user requested information/code. Use browser_ai_background_load_page and browser_extract_text to read the docs and provide a complete answer.]",
+                        "text": f"\n[Observation from {step_obj.tool_name}]: {obs_dict.get('detail')}\n[Note: You opened an external desktop tab, but the user requested information/code. Use browser_navigate and browser_extract_text to read the docs and provide a complete answer.]",
                         "source_tool": step_obj.tool_name,
                         "pinned": False
                     })

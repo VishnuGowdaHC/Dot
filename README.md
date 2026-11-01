@@ -224,8 +224,16 @@ You have two ways to run Dot:
   - **Lifecycle Management**: Automatically shuts down `llama-server.exe` and background servers when you close the Dot window, releasing GPU VRAM.
 
 - **Option B: Diagnostic / Dev Mode**:
-  Run **`start_dot.bat`**.
-  - Opens command windows showing live CUDA layer offload logs, token generation throughput, and backend traces.
+  Run **`dev`** (or `.\dev.bat` or `python dev.py`).
+  - **Single Unified Terminal**: Multiplexes inference engine, backend (with auto-reload), and frontend logs into a single colored stream.
+  - **Live HMR**: Runs Neutralino connected directly to Vite HMR (`neu run --frontend-lib`) for instant UI hot-reloading.
+  - **Zero Dangling Processes**: Cleanly terminates all child processes (`llama-server`, `uvicorn`, `vite`) and releases GPU VRAM on `Ctrl+C`.
+  - **Modular Flags**:
+    - `dev` — Starts inference engine + backend (auto-reload) + frontend (HMR).
+    - `dev --no-ui` — Headless mode (engine + backend).
+    - `dev --backend-only` — Backend orchestrator only.
+    - `dev --no-engine` — Backend + frontend (when using cloud model or pre-running engine).
+    - `dev --frontend-only` — Frontend UI only.
 
 > **Requirements:**
 > - [Python 3.10+](https://www.python.org/downloads/) (must be added to PATH)

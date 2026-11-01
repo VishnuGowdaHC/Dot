@@ -1,6 +1,6 @@
 let ws;
 
-export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus) {
+export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus, setTokenUsage, setBrowserHeadless) {
   console.log("In IOhandler.js initWS");
   try {
     ws = new WebSocket("ws://localhost:3000/ws");
@@ -24,6 +24,16 @@ export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, ap
         if (appendStreamChunk) appendStreamChunk(payload.data);
       } else if (payload.type === "stream_end") {
         if (setIsStreaming) setIsStreaming(false);
+      } else if (payload.type === "token_usage") {
+        if (setTokenUsage) setTokenUsage(payload.data);
+      } else if (payload.type === "browser_status") {
+        if (setBrowserHeadless && payload.data?.browser_headless !== undefined) {
+          setBrowserHeadless(payload.data.browser_headless);
+        }
+      } else if (payload.type === "settings_updated") {
+        if (setBrowserHeadless && payload.data?.active_settings?.browser_headless !== undefined) {
+          setBrowserHeadless(payload.data.active_settings.browser_headless);
+        }
       }
     };
     ws.onerror = (err) => {

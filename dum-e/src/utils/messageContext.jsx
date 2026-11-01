@@ -6,6 +6,15 @@ export function MessageProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [browserHeadless, setBrowserHeadless] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState({
+    total_tokens: 0,
+    context_limit: 8192,
+    system_tokens: 0,
+    history_tokens: 0,
+    compaction_threshold: 6553,
+    percentage: 0
+  });
 
   const addMessage = (role, content) => {
     setMessages((prev) => [...prev, { role, content }]);
@@ -25,7 +34,12 @@ export function MessageProvider({ children }) {
   };
 
   return (
-    <MessageContext.Provider value={{ messages, addMessage, appendStreamChunk, setMessages, isLoading, setIsLoading, isStreaming, setIsStreaming }}>
+    <MessageContext.Provider value={{
+      messages, addMessage, appendStreamChunk, setMessages,
+      isLoading, setIsLoading, isStreaming, setIsStreaming,
+      tokenUsage, setTokenUsage,
+      browserHeadless, setBrowserHeadless
+    }}>
       {children}
     </MessageContext.Provider>
   );

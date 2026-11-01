@@ -14,11 +14,13 @@ def upsert_tools(all_tools: list):
     ids = []
 
     for tool in all_tools:
-        ids.append(f"{tool['service']}_{tool['toolName']}")
-        documents.append(f"{tool['toolName']}: {tool['description']}")
+        tool_name = tool["toolName"]
+        canonical_name = tool_name if tool_name.startswith(f"{tool['service']}_") else f"{tool['service']}_{tool_name}"
+        ids.append(canonical_name)
+        documents.append(f"{canonical_name}: {tool.get('description', '')}")
         metadata.append({
             "service": tool["service"],
-            "toolName": tool["toolName"],
+            "toolName": canonical_name,
             "inputSchema": json.dumps(tool["inputSchema"])
         })
 

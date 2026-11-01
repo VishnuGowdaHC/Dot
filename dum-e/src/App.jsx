@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import initConfig from "./utils/initConfig";
 import { toDot, initWS } from "./utils/IOhandler";
 import { useMessage } from "./utils/messageContext";
+import TokenMeter from "./components/TokenMeter";
+import SettingsModal from "./components/SettingsModal";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -26,8 +28,22 @@ export default function App() {
   const [value, setValue] = useState("");
   const [typedText, setTypedText] = useState("");
   const [voiceStatus, setVoiceStatus] = useState("idle");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const chatRef = useRef(null);
-  const { messages, addMessage, appendStreamChunk, setMessages, isLoading, setIsLoading, isStreaming, setIsStreaming } = useMessage();
+  const {
+    messages,
+    addMessage,
+    appendStreamChunk,
+    setMessages,
+    isLoading,
+    setIsLoading,
+    isStreaming,
+    setIsStreaming,
+    tokenUsage,
+    setTokenUsage,
+    browserHeadless,
+    setBrowserHeadless
+  } = useMessage();
 
   const now = new Date();
   const day = now.toLocaleDateString('en-US', { weekday: 'long' });
@@ -36,9 +52,21 @@ export default function App() {
   useEffect(() => {
     initConfig();
     console.log("In App.js initWS initiated");
-    initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus);
+    initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus, setTokenUsage, setBrowserHeadless);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleToggleBrowser = async () => {
+    try {
+      const res = await fetch("http://localhost:3000/api/browser/toggle", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setBrowserHeadless(data.browser_headless);
+      }
+    } catch (err) {
+      console.error("Failed to toggle browser mode:", err);
+    }
+  };
 
   useEffect(() => {
     if (!isLoading || isStreaming) {
@@ -140,10 +168,26 @@ export default function App() {
               Dot
             </span>
           </div>
-          <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
-            <span>{day.slice(0, 3)}</span>
-            <span className="text-zinc-600">|</span>
-            <span>{date}</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+              <span>{day.slice(0, 3)}</span>
+              <span className="text-zinc-600">|</span>
+              <span>{date}</span>
+            </div>
+
+            {/* Top-corner 3-dot options menu */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors cursor-pointer"
+              title="Settings (Model, Browser, MCP)"
+            >
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="12" cy="19" r="2" />
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -249,6 +293,14 @@ export default function App() {
             </div>
           )}
 
+          {/* Active Context Token Meter - Docked directly above the input box */}
+          <TokenMeter
+            usage={tokenUsage}
+            inputValue={value}
+            browserHeadless={browserHeadless}
+            onToggleBrowser={handleToggleBrowser}
+          />
+
           {/* Clean Generic Input Pill */}
           <div className="bg-[#161619] border border-zinc-800 rounded-2xl px-3.5 py-2.5 flex items-center gap-3 focus-within:border-zinc-700 transition-colors shadow-sm">
             <button
@@ -302,6 +354,17 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Settings Modal Dialog */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSettingsSaved={(saved) => {
+          if (saved?.browser_headless !== undefined) {
+            setBrowserHeadless(saved.browser_headless);
+          }
+        }}
+      />
 
     </div>
   );

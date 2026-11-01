@@ -29,6 +29,24 @@ async def sampling_handler(
     return await async_llm(query=query, image_url=image_url, system_prompt=system_prompt)
 
 
+# Tool aliases for backward compatibility and model variation tolerance.
+TOOL_ALIASES = {
+    "ai_background_load_page": "browser_navigate",
+    "browser_ai_background_load_page": "browser_navigate",
+    "browser_load_page": "browser_navigate",
+    "load_page": "browser_navigate",
+    "open_desktop_tab_for_user": "browser_open_in_browser",
+    "browser_open_desktop_tab_for_user": "browser_open_in_browser",
+    "browser_open_browser": "browser_open_in_browser",
+    "os_take_screenshot": "os_tools_os_take_screenshot",
+    "take_screenshot": "os_tools_os_take_screenshot",
+    "os_tools_take_screenshot": "os_tools_os_take_screenshot",
+    "manage_process": "os_tools_os_manage_process",
+    "os_manage_process": "os_tools_os_manage_process",
+    "os_tools_manage_process": "os_tools_os_manage_process",
+}
+
+
 def get_multi_server_client() -> Client:
     """Returns a unified FastMCP client configured with all registered servers."""
     config = load_server_config()
@@ -37,13 +55,25 @@ def get_multi_server_client() -> Client:
 
 async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: str, tool_args):
     """Executes a tool on the active FastMCP client instance."""
-    # Build candidate names with and without server prefixes.
-    raw_name = tool_name
-    if tool_service and tool_name.startswith(f"{tool_service}_"):
-        raw_name = tool_name[len(tool_service) + 1:]
+    # Infer service if not provided
+    if not tool_service:
+        if tool_name.startswith("browser_"):
+            tool_service = "browser"
+        elif tool_name.startswith("os_tools_") or tool_name.startswith("os_"):
+            tool_service = "os_tools"
+        elif tool_name.startswith("github_"):
+            tool_service = "github"
 
-    prefixed_name = f"{tool_service}_{raw_name}" if tool_service else tool_name
-    candidates = [tool_name, raw_name, prefixed_name]
+    # Resolve aliases
+    resolved_name = TOOL_ALIASES.get(tool_name, tool_name)
+
+    raw_name = resolved_name
+    if tool_service and resolved_name.startswith(f"{tool_service}_"):
+        raw_name = resolved_name[len(tool_service) + 1:]
+
+    prefixed_name = f"{tool_service}_{raw_name}" if tool_service else resolved_name
+    candidates = [resolved_name, prefixed_name, raw_name, tool_name]
+    
     # Remove duplicates while preserving list order.
     seen = set()
     unique_candidates = [c for c in candidates if not (c in seen or seen.add(c))]

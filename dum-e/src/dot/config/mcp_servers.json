@@ -9,11 +9,19 @@
     },
     "browser": {
       "command": "py",
-      "args": ["-m", "src.dot.automation_mcp.browser_automation"]
+      "args": ["-m", "src.dot.automation_mcp.browser_automation"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1"
+      }
     },
     "os_tools": {
       "command": "py",
-      "args": ["-m", "src.dot.automation_mcp.os_automation"]
+      "args": ["-m", "src.dot.automation_mcp.os_automation"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1"
+      }
     }
   }
 }

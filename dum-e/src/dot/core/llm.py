@@ -47,6 +47,13 @@ def _load_clients() -> Tuple[AsyncOpenAI, OpenAI, str]:
 async_client, client, _model_name = _load_clients()
 
 
+def reload_llm_clients() -> Tuple[AsyncOpenAI, OpenAI, str]:
+    """Reloads configuration and updates initialized OpenAI client instances."""
+    global async_client, client, _model_name
+    async_client, client, _model_name = _load_clients()
+    return async_client, client, _model_name
+
+
 def _build_payload(query: str, schema: Optional[dict] = None, image_url: Optional[str] = None,
                    system_prompt: Optional[str] = None, stream: bool = False) -> dict:
     """Builds the request dictionary for model inference."""
