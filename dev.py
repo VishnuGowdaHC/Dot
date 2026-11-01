@@ -259,9 +259,9 @@ def main():
     if should_start_backend:
         free_port_if_occupied(backend_port)
         py_exe = find_python_exe()
-        backend_cmd = [py_exe, "-m", "uvicorn", "server:app", "--port", str(backend_port)]
+        backend_cmd = [py_exe, "-u", "-m", "uvicorn", "server:app", "--port", str(backend_port)]
         if not args.no_reload:
-            backend_cmd.append("--reload")
+            backend_cmd.extend(["--reload", "--reload-exclude", "*storage*", "--reload-exclude", "*transcripts*"])
 
         print(f"{COLOR_BACKEND}[BACKEND]{COLOR_RESET} Starting backend server on port {backend_port}...")
         back_proc = subprocess.Popen(
@@ -282,7 +282,7 @@ def main():
         )
         t_back.start()
 
-        if not wait_for_port(backend_port, timeout=30.0):
+        if not wait_for_port(backend_port, timeout=90.0):
             print(f"{COLOR_SYSTEM}[SYSTEM]{COLOR_RESET} Error: Backend failed to start on port {backend_port}.")
             cleanup()
             sys.exit(1)

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import initConfig from "./utils/initConfig";
-import { toDot, initWS } from "./utils/IOhandler";
+import { toDot, initWS, closeWS } from "./utils/IOhandler";
 import { useMessage } from "./utils/messageContext";
 import TokenMeter from "./components/TokenMeter";
 import SettingsModal from "./components/SettingsModal";
@@ -51,8 +51,10 @@ export default function App() {
 
   useEffect(() => {
     initConfig();
-    console.log("In App.js initWS initiated");
     initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus, setTokenUsage, setBrowserHeadless);
+    return () => {
+      closeWS();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -68,11 +68,10 @@ def handle_voice_transcription(text: str) -> None:
             try:
                 # Send transcribed voice input to the client user interface.
                 await ws.send_text(json.dumps({"type": "voice_input", "text": text}))
-                # Route through intentRouter to execute tools or direct actions.
+                # Route through intentRouter which streams output to the WebSocket.
                 data = await intentRouter(ws, text, session, client)
                 if data:
                     print(f"Received from dot: {data}")
-                    await ws.send_text(json.dumps({"type": "result", "data": data}))
             except Exception as err:
                 print(f"[Voice Dispatch Error]: {err}")
                 traceback.print_exc()
@@ -118,14 +117,17 @@ async def lifespan(app: FastAPI):
         print("MCP servers initialized and ready globally.")
         app_state["active_mcp_client"] = active_client
 
-        # Synchronize tools using the active client session.
-        print("Syncing tools to ChromaDB...")
-        try:
-            await sync_registry(active_client=active_client)
-            print("All tools registered in ChromaDB successfully.")
-        except Exception as reg_err:
-            print(f"[Warning] Tool registration encountered an error: {reg_err}")
-            traceback.print_exc()
+        # Synchronize tools in background without blocking port availability.
+        async def sync_tools_background():
+            print("Syncing tools to ChromaDB...")
+            try:
+                await sync_registry(active_client=active_client)
+                print("All tools registered in ChromaDB successfully.")
+            except Exception as reg_err:
+                print(f"[Warning] Tool registration encountered an error: {reg_err}")
+                traceback.print_exc()
+
+        asyncio.create_task(sync_tools_background())
 
         # The application runs while this context yields.
         yield
@@ -306,12 +308,10 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             text = await websocket.receive_text()
             try:
+                # Execute turn through intentRouter which streams output to the WebSocket.
                 data = await intentRouter(websocket, text, active_session, active_client)
-
                 if data:
-                    print(f"Received from dot: {data}")
-                    await websocket.send_text(json.dumps({"type": "result", "data": data}))
-                    print(f"Sent to frontend: {text}")
+                    print(f"Processed input: {text}")
 
                 # Broadcast updated token telemetry after turn execution.
                 try:

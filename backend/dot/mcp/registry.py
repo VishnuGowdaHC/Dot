@@ -26,10 +26,13 @@ def load_server_config() -> dict:
 
     # Resolve python interpreter and absolute binary paths.
     base_dir = str(BACKEND_DIR)
+    venv_py = os.path.join(str(BACKEND_DIR.parent), ".venv", "Scripts", "python.exe")
+    active_py = venv_py if os.path.exists(venv_py) else sys.executable
+
     for server_name, server_cfg in config_dict.get("mcpServers", {}).items():
         cmd = server_cfg.get("command", "")
         if cmd in ("py", "python", "python3"):
-            server_cfg["command"] = sys.executable
+            server_cfg["command"] = active_py
         elif not os.path.isabs(cmd):
             cand = os.path.join(base_dir, cmd)
             if os.path.exists(cand):
@@ -39,6 +42,7 @@ def load_server_config() -> dict:
             server_cfg["cwd"] = base_dir
 
         env = server_cfg.setdefault("env", {})
+        env["FASTMCP_SHOW_SERVER_BANNER"] = "false"
         existing_pythonpath = env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
         env["PYTHONPATH"] = f"{base_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else base_dir
 

@@ -8,6 +8,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer, util
 
 from dot.automation.app_opener import routeAppOpener
+from dot.core.context import stream_response
 from dot.core.engine import reAct_loop
 from dot.memory.vector_store import get_speculative_tools
 
@@ -59,7 +60,10 @@ async def intentRouter(websocket, text: str, active_session, active_client):
     # Direct Execution Mode for desktop applications and media.
     if best_score >= ROUTING_THRESHOLD:
         print(f"[Fast Execution Mode] Routing to routeAppOpener: '{text}'")
-        return await routeAppOpener(text)
+        res = await routeAppOpener(text)
+        if res and websocket:
+            await stream_response(websocket, res)
+        return res
 
     # Pre-retrieve speculative tools in worker thread for ReAct loop (<15ms).
     speculative_tools = await asyncio.to_thread(get_speculative_tools, text, 3)

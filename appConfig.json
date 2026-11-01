@@ -48,7 +48,7 @@
         "temperature": 0.0,
         "gpu_layers": 99,
         "user_name": "User",
-        "browser_headless": false
+        "browser_headless": true
     },
     "cloud": {
         "provider": "openai",

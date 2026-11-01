@@ -264,4 +264,4 @@ def os_find_text_coordinates(text: str) -> str:
 
     
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(show_banner=False)

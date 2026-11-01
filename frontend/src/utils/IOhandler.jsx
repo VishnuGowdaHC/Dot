@@ -1,6 +1,18 @@
-let ws;
+let ws = null;
+
+export function closeWS() {
+  if (ws) {
+    try {
+      ws.close();
+    } catch (err) {
+      console.warn("WebSocket close warning:", err);
+    }
+    ws = null;
+  }
+}
 
 export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus, setTokenUsage, setBrowserHeadless) {
+  closeWS();
   console.log("In IOhandler.js initWS");
   try {
     ws = new WebSocket("ws://localhost:3000/ws");
@@ -15,8 +27,16 @@ export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, ap
         setMessages((prev) => [...prev, { role: "user", content: payload.text }]);
         if (setIsLoading) setIsLoading(true);
       } else if (payload.type === "result") {
-        setMessages((prev) => [...prev, { role: "dot", content: payload.data }]);
+        // Prevent duplicate bubbles if content is already rendered from stream.
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "dot" && last.content === payload.data) {
+            return prev;
+          }
+          return [...prev, { role: "dot", content: payload.data }];
+        });
         if (setIsLoading) setIsLoading(false);
+        if (setIsStreaming) setIsStreaming(false);
       } else if (payload.type === "stream_start") {
         if (setIsLoading) setIsLoading(false);
         if (setIsStreaming) setIsStreaming(true);

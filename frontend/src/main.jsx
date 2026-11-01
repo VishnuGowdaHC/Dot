@@ -4,10 +4,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { MessageProvider } from "./utils/messageContext.jsx";
 
-// Dynamically load neutralino from neu server
-const script = document.createElement('script')
-script.src = `http://localhost:${window.NL_PORT}/js/neutralino.js`
-document.head.appendChild(script)
+// Load Neutralino client library when running inside Neutralino.
+if (window.NL_PORT) {
+  const script = document.createElement("script");
+  script.src = `http://localhost:${window.NL_PORT}/js/neutralino.js`;
+  document.head.appendChild(script);
+}
 
 
 ReactDOM.createRoot(document.getElementById("root")).render(
