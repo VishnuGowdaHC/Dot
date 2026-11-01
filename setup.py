@@ -111,7 +111,7 @@ class DotInstaller(ctk.CTk):
 
         # Discover existing GitHub Token from .env if present
         existing_gh_token = ""
-        for ep in [os.path.join(BASE_DIR, "dum-e", "src", "dot", ".env"), os.path.join(BASE_DIR, "dum-e", ".env"), os.path.join(BASE_DIR, ".env")]:
+        for ep in [os.path.join(BASE_DIR, "backend", "dot", ".env"), os.path.join(BASE_DIR, "backend", ".env"), os.path.join(BASE_DIR, ".env")]:
             if os.path.exists(ep):
                 try:
                     with open(ep, "r", encoding="utf-8") as f:
@@ -588,31 +588,31 @@ class DotInstaller(ctk.CTk):
                 log_error(f"Playwright browser install warning: {pw_err}")
 
             # 3. Frontend npm install (skip if node_modules already exists)
-            dume_dir = os.path.join(BASE_DIR, "dum-e")
-            nm_dir = os.path.join(dume_dir, "node_modules")
-            if os.path.exists(os.path.join(dume_dir, "package.json")):
+            frontend_dir = os.path.join(BASE_DIR, "frontend")
+            nm_dir = os.path.join(frontend_dir, "node_modules")
+            if os.path.exists(os.path.join(frontend_dir, "package.json")):
                 if not os.path.exists(nm_dir) or len(os.listdir(nm_dir)) < 5:
                     self.update_status("Installing frontend dependencies (npm install)...", 0.35)
                     npm_cmd = shutil.which("npm") or "npm"
-                    subprocess.run([npm_cmd, "install"], cwd=dume_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    subprocess.run([npm_cmd, "install"], cwd=frontend_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 else:
                     self.update_status("Frontend dependencies verified...", 0.35)
 
                 # Ensure frontend is built and bundled for Neutralino desktop
-                dume_res = os.path.join(dume_dir, "bin", "resources.neu")
-                out_res = os.path.join(dume_dir, "out", "Dot", "resources.neu")
-                dist_index = os.path.join(dume_dir, "dist", "index.html")
-                if not os.path.exists(dume_res) or not os.path.exists(out_res) or not os.path.exists(dist_index):
+                frontend_res = os.path.join(frontend_dir, "bin", "resources.neu")
+                out_res = os.path.join(frontend_dir, "out", "Dot", "resources.neu")
+                dist_index = os.path.join(frontend_dir, "dist", "index.html")
+                if not os.path.exists(frontend_res) or not os.path.exists(out_res) or not os.path.exists(dist_index):
                     self.update_status("Building Dot desktop application bundle...", 0.4)
                     try:
                         npx_cmd = shutil.which("npx") or "npx"
-                        subprocess.run([npx_cmd, "-y", "@neutralinojs/neu", "build"], cwd=dume_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                        subprocess.run([npx_cmd, "-y", "@neutralinojs/neu", "build"], cwd=frontend_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                         if os.path.exists(out_res):
-                            shutil.copy2(out_res, dume_res)
-                            shutil.copy2(out_res, os.path.join(dume_dir, "resources.neu"))
-                            built_exe = os.path.join(dume_dir, "out", "Dot", "Dot-win_x64.exe")
+                            shutil.copy2(out_res, frontend_res)
+                            shutil.copy2(out_res, os.path.join(frontend_dir, "resources.neu"))
+                            built_exe = os.path.join(frontend_dir, "out", "Dot", "Dot-win_x64.exe")
                             if os.path.exists(built_exe):
-                                shutil.copy2(built_exe, os.path.join(dume_dir, "bin", "Dot-win_x64.exe"))
+                                shutil.copy2(built_exe, os.path.join(frontend_dir, "bin", "Dot-win_x64.exe"))
                     except Exception as neu_err:
                         log_error(f"Neutralino build warning: {neu_err}")
 
@@ -746,7 +746,7 @@ class DotInstaller(ctk.CTk):
         # Write GitHub Token to .env files
         gh_token = self.github_token_var.get().strip()
         env_content = f'GITHUB_TOKEN="{gh_token}"\n'
-        for env_path in [os.path.join(BASE_DIR, "dum-e", "src", "dot", ".env"), os.path.join(BASE_DIR, "dum-e", ".env")]:
+        for env_path in [os.path.join(BASE_DIR, "backend", "dot", ".env"), os.path.join(BASE_DIR, "backend", ".env"), os.path.join(BASE_DIR, ".env")]:
             try:
                 os.makedirs(os.path.dirname(env_path), exist_ok=True)
                 with open(env_path, "w", encoding="utf-8") as f:
@@ -755,8 +755,8 @@ class DotInstaller(ctk.CTk):
                 log_error(f"Warning: Failed to write {env_path}: {e}")
 
         # Build start_dot.bat
-        orchestrator_cmd = "cd dum-e && python -m uvicorn server:app --port 3000"
-        frontend_cmd = "cd dum-e && npx @neutralinojs/neu run"
+        orchestrator_cmd = "cd backend && python -m uvicorn server:app --port 3000"
+        frontend_cmd = "cd frontend && npx @neutralinojs/neu run"
 
         engine_block = ""
         if backend != "cloud":
@@ -821,7 +821,7 @@ echo   Dot is starting up...
 echo ========================================================
 echo.
 {engine_block}echo [2/3] Starting Python Orchestrator...
-start "Dot Backend" cmd /k "call .venv\\Scripts\\activate.bat && cd dum-e && python -m uvicorn server:app --port 3000"
+start "Dot Backend" cmd /k "call .venv\\Scripts\\activate.bat && cd backend && python -m uvicorn server:app --port 3000"
 
 <nul set /p =[2/3] Waiting for orchestrator on port 3000 
 set ORCH_RETRIES=0

@@ -20,7 +20,8 @@ from typing import List, Optional
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(ROOT_DIR, "appConfig.json")
 BIN_DIR = os.path.join(ROOT_DIR, "bin")
-DUME_DIR = os.path.join(ROOT_DIR, "dum-e")
+BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 
 # ANSI color codes for multiplexed console output.
 COLOR_ENGINE = "\033[36m"    # Cyan
@@ -265,7 +266,7 @@ def main():
         print(f"{COLOR_BACKEND}[BACKEND]{COLOR_RESET} Starting backend server on port {backend_port}...")
         back_proc = subprocess.Popen(
             backend_cmd,
-            cwd=DUME_DIR,
+            cwd=BACKEND_DIR,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -296,7 +297,7 @@ def main():
         print(f"{COLOR_FRONTEND}[FRONTEND]{COLOR_RESET} Starting Neutralino with Vite HMR...")
         front_proc = subprocess.Popen(
             frontend_cmd,
-            cwd=DUME_DIR,
+            cwd=FRONTEND_DIR,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

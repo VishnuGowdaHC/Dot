@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "dot/mcp/bin/github-mcp-server.exe",
+      "args": ["stdio"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "browser": {
+      "command": "py",
+      "args": ["-m", "dot.automation.browser"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1"
+      }
+    },
+    "os_tools": {
+      "command": "py",
+      "args": ["-m", "dot.automation.desktop"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1"
+      }
+    }
+  }
+}
+

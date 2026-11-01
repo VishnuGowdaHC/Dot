@@ -93,47 +93,69 @@ Refactor the codebase into clean, decoupled layers to enable fast symbol search 
 ```text
 Dot/
 ├── appConfig.json
+├── dev.py
+├── dev.bat
 ├── launcher.pyw
 ├── setup.py
 ├── start_dot.bat
 ├── AGENTS.md
-└── dum-e/
-    ├── server.py
-    └── src/
-        ├── App.jsx
-        ├── index.css
-        ├── main.jsx
-        ├── utils/
-        └── dot/
-            ├── config/                 # Static configuration files
-            │   ├── allowed_apps.yml
-            │   └── mcp_servers.json
-            │
-            ├── core/                   # Agent orchestration & LLM interfaces
-            │   ├── engine.py           # Clean ReAct loop
-            │   ├── guardrails.py       # Input/output validation
-            │   ├── llm.py              # AsyncOpenAI client with true streaming
-            │   ├── prompts.py          # Static system prompts
-            │   └── router.py           # Fast intent classification
-            │
-            ├── mcp/                    # MCP client & protocol management
-            │   ├── client.py           # Unified client connection pool
-            │   └── registry.py         # Tool catalog and fast in-memory indexing
-            │
-            ├── automation/             # Automation servers & handlers
-            │   ├── browser.py          # Playwright browser controller
-            │   ├── os_desktop.py       # Desktop OS actions
-            │   └── intent_opener.py    # Direct application opener
-            │
-            ├── memory/                 # Storage & vector systems
-            │   ├── client.py           # Shared ChromaDB client singleton
-            │   ├── session.py          # Session history sliding window
-            │   ├── tokenizer.py        # Shared tokenizer singleton
-            │   └── search.py           # Fixed session and past turn search
-            │
-            └── voice/                  # Speech & audio subsystems
-                ├── listener.py         # Alt-hold key listener
-                └── transcriber.py      # Lazy-loaded faster-whisper worker
+├── frontend/                   # Decoupled React + Vite + Neutralino UI
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── neutralino.config.json
+│   ├── public/
+│   ├── resources/
+│   └── src/
+│       ├── App.jsx
+│       ├── main.jsx
+│       ├── index.css
+│       ├── components/
+│       │   ├── TokenMeter.jsx
+│       │   └── SettingsModal.jsx
+│       └── utils/
+│           ├── IOhandler.jsx
+│           ├── messageContext.jsx
+│           └── initConfig.js
+│
+└── backend/                    # Decoupled Python FastAPI & Feature-First Engine
+    ├── server.py               # Lean FastAPI server & WebSocket dispatcher
+    └── dot/
+        ├── __init__.py
+        ├── config/             # Path single source of truth & settings
+        │   ├── paths.py
+        │   ├── settings.py
+        │   ├── allowed_apps.yml
+        │   └── mcp_servers.json
+        ├── core/               # De-monolithed ReAct engine & LLM interfaces
+        │   ├── engine.py       # ReAct state machine orchestrator (<170 lines)
+        │   ├── parser.py       # Pydantic schema & JSON healing
+        │   ├── context.py      # Token telemetry & streaming
+        │   ├── executor.py     # Tool execution & loop breakers
+        │   ├── guardrails.py   # Intent & argument validation
+        │   ├── llm.py          # Dual-provider LLM client
+        │   ├── prompts.py      # Tier-scaled prompt templates
+        │   ├── router.py       # Intent router
+        │   └── utils.py        # Logging & observation helpers
+        ├── automation/         # Automation handlers
+        │   ├── browser.py      # Playwright browser controller
+        │   ├── desktop.py      # OS desktop automation
+        │   └── app_opener.py   # Direct application launcher
+        ├── mcp/                # FastMCP client & protocol management
+        │   ├── client.py       # Multi-server client pool
+        │   ├── client_core.py  # Low-level protocol bindings
+        │   └── registry.py     # Fast in-memory tool catalog
+        ├── memory/             # Storage & vector systems
+        │   ├── client.py       # Shared ChromaDB client singleton
+        │   ├── session.py      # Sliding window & ASD-STE100 compaction
+        │   ├── compactor.py    # Memory compactor
+        │   ├── search.py       # Transcript & vector memory search
+        │   ├── tokenizer.py    # AutoTokenizer singleton
+        │   ├── vector_store.py # Tool vector retrieval
+        │   └── collections/    # ChromaDB collections
+        └── voice/              # Voice subsystems
+            ├── listener.py     # Alt-hold key listener
+            └── transcriber.py  # Lazy-loaded faster-whisper worker
 ```
 
 ---

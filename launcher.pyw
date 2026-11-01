@@ -156,13 +156,14 @@ def main():
 
     # 2. Start Python Orchestrator Backend
     py_exe = find_python_exe()
-    dume_dir = os.path.join(BASE_DIR, "dum-e")
+    backend_dir = os.path.join(BASE_DIR, "backend")
+    frontend_dir = os.path.join(BASE_DIR, "frontend")
     backend_cmd = [py_exe, "-m", "uvicorn", "server:app", "--port", "3000"]
 
     with open(BACKEND_LOG, "w", encoding="utf-8") as back_log_file:
         back_proc = subprocess.Popen(
             backend_cmd,
-            cwd=dume_dir,
+            cwd=backend_dir,
             stdout=back_log_file,
             stderr=subprocess.STDOUT,
             creationflags=no_window_flag
@@ -180,13 +181,13 @@ def main():
 
     # 3. Launch Frontend UI (Native Neutralino desktop app)
     neu_candidates = [
-        os.path.join(dume_dir, "out", "Dot", "Dot-win_x64.exe"),
-        os.path.join(dume_dir, "bin", "Dot-win_x64.exe"),
-        os.path.join(dume_dir, "bin", "neutralino-win_x64.exe"),
+        os.path.join(frontend_dir, "out", "Dot", "Dot-win_x64.exe"),
+        os.path.join(frontend_dir, "bin", "Dot-win_x64.exe"),
+        os.path.join(frontend_dir, "bin", "neutralino-win_x64.exe"),
     ]
 
     frontend_cmd = None
-    frontend_cwd = dume_dir
+    frontend_cwd = frontend_dir
     for cand in neu_candidates:
         if os.path.exists(cand):
             frontend_cmd = [cand]
@@ -194,7 +195,7 @@ def main():
             # Ensure resources.neu exists in the executable's directory
             res_path = os.path.join(frontend_cwd, "resources.neu")
             if not os.path.exists(res_path):
-                alt_res = os.path.join(dume_dir, "out", "Dot", "resources.neu")
+                alt_res = os.path.join(frontend_dir, "out", "Dot", "resources.neu")
                 if os.path.exists(alt_res):
                     import shutil
                     try:
@@ -205,7 +206,7 @@ def main():
 
     if not frontend_cmd:
         frontend_cmd = ["cmd", "/c", "npx", "@neutralinojs/neu", "run"]
-        frontend_cwd = dume_dir
+        frontend_cwd = frontend_dir
 
     front_proc = subprocess.Popen(
         frontend_cmd,
