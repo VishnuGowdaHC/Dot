@@ -4,6 +4,13 @@ FastAPI application server and WebSocket communication bridge for Dot.
 
 import os
 import sys
+
+# Configure standard streams for UTF-8 with error replacement to prevent cp1252 encode crashes
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import json
 import uuid
 import asyncio

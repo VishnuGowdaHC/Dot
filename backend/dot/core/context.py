@@ -51,7 +51,7 @@ def build_turn_context(
         "pinned": True,
     }]
 
-    custom_system_prompt = get_system_prompt(tools_context_text) if tools_context_text else None
+    custom_system_prompt = get_system_prompt(tools_context_text) if tools_context_text else get_system_prompt()
     return history_parts, custom_system_prompt
 
 

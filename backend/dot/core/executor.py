@@ -4,11 +4,12 @@ Tool execution dispatcher, anti-loop circuit breaker, and observation formatter.
 
 import json
 import re
+import time
 from typing import Dict, Any, List, Set, Optional, Tuple
 
 from dot.core.parser import AgentStep
 from dot.core.guardrails import check_guardrails
-from dot.core.utils import dump_observation, trim_observation
+from dot.core.utils import dump_observation, trim_observation, log_tool_execution
 from dot.core.context import append_or_update_error
 from dot.memory.vector_store import get_relevant_tools
 from dot.mcp.client import execute_mcp_tool
@@ -174,6 +175,7 @@ async def execute_tool_call(
     executed_signatures.add(current_sig)
     last_tool_sig = current_sig
     browser_used = False
+    start_time = time.time()
 
     # Execute tool on native handler or FastMCP client
     if step_obj.tool_service == "native":
@@ -189,6 +191,16 @@ async def execute_tool_call(
             observation = await execute_mcp_tool(active_client, step_obj.tool_service, step_obj.tool_name, clean_args)
         except Exception as e:
             observation = f"Failed to execute tool '{step_obj.tool_name}': {e}."
+
+    duration_sec = time.time() - start_time
+    log_tool_execution(
+        step=step_num,
+        service=step_obj.tool_service,
+        tool_name=step_obj.tool_name,
+        tool_args=clean_args,
+        observation=observation,
+        duration_sec=duration_sec,
+    )
 
     # Clear inspection signatures when state-changing actions execute
     if step_obj.tool_name in STATE_CHANGING_TOOLS:

@@ -8,7 +8,72 @@ import time
 import uuid
 import json
 from typing import Any, List, Tuple
-from dot.config.paths import OBS_LOG_DIR
+from dot.config.paths import OBS_LOG_DIR, DEBUG_LOG_FILE, CONTEXT_LOG_FILE
+
+
+def log_agent_context(
+    query: str,
+    step: int,
+    history_parts: list,
+    system_prompt: str,
+    total_tokens: int = 0,
+    context_limit: int = 8192,
+) -> None:
+    """Writes the full prompt context for the current step to agent_context.log."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    divider = "=" * 80
+    subdivider = "-" * 80
+
+    lines = [
+        f"\n{divider}",
+        f"TIMESTAMP: {timestamp} | STEP: {step} | TOKENS: {total_tokens}/{context_limit}",
+        f"QUERY: {query}",
+        f"{subdivider}",
+        "--- SYSTEM PROMPT ---",
+        (system_prompt or "").strip(),
+        f"{subdivider}",
+        "--- CONTEXT HISTORY ENTRIES ---",
+    ]
+
+    for idx, part in enumerate(history_parts):
+        role = part.get("role", "unknown")
+        pinned = part.get("pinned", False)
+        text = part.get("text", "")
+        lines.append(f"[{idx}] Role: {role} (pinned={pinned}):\n{text}")
+
+    lines.append(f"{divider}\n")
+
+    try:
+        with open(CONTEXT_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception as err:
+        print(f"[Logging Warning] Failed to write context log: {err}")
+
+
+def log_tool_execution(
+    step: int,
+    service: str,
+    tool_name: str,
+    tool_args: dict,
+    observation: Any,
+    duration_sec: float,
+) -> None:
+    """Appends tool execution trajectory and duration to agent_debug.log."""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    header = f"[{timestamp}] [Step {step}] TOOL: {service}.{tool_name} (Duration: {duration_sec:.2f}s)"
+    args_json = json.dumps(tool_args, default=str)
+    obs_summary = auto_format_observation(observation)
+    entry = (
+        f"{header}\n"
+        f"  ARGS: {args_json}\n"
+        f"  OBSERVATION:\n{obs_summary}\n"
+        + ("-" * 60) + "\n"
+    )
+    try:
+        with open(DEBUG_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except Exception as err:
+        print(f"[Logging Warning] Failed to write debug log: {err}")
 
 
 def extract_json(raw: str):

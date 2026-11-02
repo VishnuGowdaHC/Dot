@@ -22,7 +22,7 @@ from dot.core.executor import (
     cleanup_browser,
 )
 from dot.core.llm import async_llm
-from dot.core.utils import render_history
+from dot.core.utils import render_history, log_agent_context
 from dot.memory.vector_store import get_all_services, get_speculative_tools
 
 
@@ -73,6 +73,20 @@ async def reAct_loop(
         # Emit active token telemetry for this step
         await emit_token_telemetry(websocket, session, custom_system_prompt, history_parts)
 
+        # Log complete context snapshot to agent_context.log
+        if session is not None:
+            active_prompt = custom_system_prompt or ""
+            sys_tok = session.count_tokens(f"<|think|> {active_prompt}")
+            hist_tok = session.count_tokens(render_history(history_parts))
+            log_agent_context(
+                query=query,
+                step=step + 1,
+                history_parts=history_parts,
+                system_prompt=active_prompt,
+                total_tokens=sys_tok + hist_tok,
+                context_limit=session.context_size,
+            )
+
         prompt = render_history(history_parts)
         try:
             raw = await async_llm(prompt, schema=schema, system_prompt=custom_system_prompt)
@@ -93,6 +107,11 @@ async def reAct_loop(
             append_or_update_error(history_parts, f"[Invalid JSON: {val_err}. Retry with valid JSON.]")
             continue
 
+        # Format and display step telemetry cleanly in the console
+        print(f"\n--- [ReAct Step {step + 1}/{max_steps}] ---")
+        if step_obj.thought:
+            print(f"[Thought] {step_obj.thought}")
+
         history_parts.append({"role": "model", "text": extracted, "pinned": False})
         if step_obj.thought:
             history_parts.append({"role": "thought", "text": f"[Thought]: {step_obj.thought}", "pinned": False})
@@ -100,11 +119,13 @@ async def reAct_loop(
         # 1. Final Answer Action
         if step_obj.action == "Final" and step_obj.final_answer and step_obj.final_answer != "...":
             ans = step_obj.final_answer
+            print(f"[Final Answer] {ans}")
             await record_session_turn(session, query, ans)
             return await finish_turn(ans)
 
         # 2. Tool Discovery Action
         if step_obj.action == "Tool":
+            print(f"[Discovery Search] {step_obj.tool_service} -> '{step_obj.get_tool}'")
             res = await execute_tool_discovery(step_obj, history_parts, executed_signatures)
             if res.tripped_circuit_breaker:
                 fallback = "I cannot find the required tools to complete this request."
@@ -113,6 +134,7 @@ async def reAct_loop(
 
         # 3. Tool Execution Action
         elif step_obj.action == "Tool-exec":
+            print(f"[Tool Action] {step_obj.tool_service}.{step_obj.tool_name}({step_obj.tool_args or {}})")
             res, last_tool_sig, loop_strikes = await execute_tool_call(
                 step_obj=step_obj,
                 step_num=step,
@@ -125,6 +147,9 @@ async def reAct_loop(
                 loop_strikes=loop_strikes,
                 max_steps=max_steps,
             )
+            if res.observation:
+                obs_prev = res.observation.replace("\n", " ")[:100]
+                print(f"[Observation] {obs_prev}...")
             if res.browser_used:
                 browser_used = True
 

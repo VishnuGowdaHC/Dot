@@ -264,9 +264,13 @@ def main():
             backend_cmd.extend(["--reload", "--reload-exclude", "*storage*", "--reload-exclude", "*transcripts*"])
 
         print(f"{COLOR_BACKEND}[BACKEND]{COLOR_RESET} Starting backend server on port {backend_port}...")
+        backend_env = os.environ.copy()
+        backend_env["PYTHONIOENCODING"] = "utf-8"
+        backend_env["PYTHONUTF8"] = "1"
         back_proc = subprocess.Popen(
             backend_cmd,
             cwd=BACKEND_DIR,
+            env=backend_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

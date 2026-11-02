@@ -21,33 +21,21 @@
     "computer.*",
     "debug.log"
   ],
-  "globalVariables": {
-    "TEST1": "Hello",
-    "TEST2": [
-      2,
-      4,
-      5
-    ],
-    "TEST3": {
-      "value1": 10,
-      "value2": {}
-    }
-  },
   "modes": {
     "window": {
       "title": "Dot",
-      "width": 600,
-      "height": 1200,
-      "minWidth": 600,
-      "minHeight": 400,
+      "width": 660,
+      "height": 276,
+      "minWidth": 300,
+      "minHeight": 160,
       "fullScreen": false,
       "maximize": false,
       "maximizable": false,
-      "transparent": false,
-      "alwaysOnTop": false,
+      "transparent": true,
+      "borderless": true,
+      "alwaysOnTop": true,
       "icon": "/resources/icons/appIcon.png",
       "enableInspector": false,
-      "borderless": false,
       "hidden": false,
       "resizable": true,
       "exitProcessOnClose": true
@@ -67,8 +55,8 @@
       ]
     },
     "chrome": {
-      "width": 800,
-      "height": 500,
+      "width": 500,
+      "height": 168,
       "args": "--user-agent=\"Neutralinojs chrome mode\"",
       "nativeBlockList": [
         "filesystem.*",
@@ -83,13 +71,6 @@
     "clientLibrary": "/dist/neutralino.js",
     "distributionPath": "/out",
     "binaryVersion": "6.5.0",
-    "clientVersion": "6.5.0",
-    "frontendLibrary": {
-      "patchFile": "./index.html",
-      "devUrl": "http://localhost:5173",
-      "devCommand": "cmd /c npm run dev",
-      "buildCommand": "cmd /c npm run build",
-      "projectPath": "/"
-    }
+    "clientVersion": "6.5.0"
   }
 }

@@ -1,16 +1,1249 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dot</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Roboto:ital,wght@0,400;0,500;0,700;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./output.css">
+  <link rel="icon" type="image/x-icon" href="./favicon.ico">
+  <style>
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .font-sans {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* Hardware-accelerated transitions for dynamic height and message reveal */
+    #corner-shell {
+      transition: height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: height;
+    }
+    #chat-container {
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .settings-tab-btn.active {
+      border-color: #6366f1;
+      color: #818cf8;
+      background-color: rgba(99, 102, 241, 0.1);
+    }
+  </style>
+</head>
+<body class="bg-transparent overflow-hidden select-none font-sans text-slate-100 h-screen w-screen relative m-0 p-0">
+
+  <!-- Transparent Padding Container: 12px margin on all sides ensures rounded corners & glow never clip -->
+  <div class="absolute inset-0 p-3 flex flex-col justify-end pointer-events-none">
+
+    <!-- Main Corner Shell Card: Floating rounded container with fully blurred & faded corners -->
+    <div
+      id="corner-shell"
+      class="w-full relative flex flex-col justify-end overflow-visible pointer-events-auto transition-all"
+      style="height: 154px; border-radius: 36px; background: linear-gradient(135deg, rgba(28, 35, 63, 0.72) 0%, rgba(19, 25, 47, 0.84) 50%, rgba(12, 16, 32, 0.92) 100%); backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%); -webkit-mask-image: radial-gradient(ellipse 95% 95% at 50% 50%, black 45%, rgba(0, 0, 0, 0.82) 62%, rgba(0, 0, 0, 0.25) 84%, transparent 100%); mask-image: radial-gradient(ellipse 95% 95% at 50% 50%, black 45%, rgba(0, 0, 0, 0.82) 62%, rgba(0, 0, 0, 0.25) 84%, transparent 100%); box-shadow: 0 20px 50px -10px rgba(0,0,0,0.6), 0 0 50px 8px rgba(129,140,248,0.22);"
+    >
+
+      <!-- Soft Ambient Outer Glow Aura -->
+      <div class="absolute -inset-8 bg-[radial-gradient(ellipse_at_70%_70%,rgba(129,140,248,0.38),rgba(99,102,241,0.18)_45%,transparent_75%)] blur-3xl pointer-events-none z-0 rounded-[48px]"></div>
+
+      <!-- S-Curve Organic Top Boundary Canvas -->
+      <svg id="scurve-svg" class="absolute top-0 left-0 right-0 w-full h-10 pointer-events-none z-1" viewBox="0 0 416 40" preserveAspectRatio="none" fill="none">
+        <defs>
+          <!-- Luminous Glow Filter for S-Curve boundary ridge -->
+          <filter id="glowEdge" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="6" result="blur1" />
+            <feGaussianBlur stdDeviation="2" result="blur2" />
+            <feMerge>
+              <feMergeNode in="blur1" />
+              <feMergeNode in="blur2" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          <!-- Specular Edge Gradient along the S-Curve -->
+          <linearGradient id="edgeGrad" x1="0" y1="0" x2="416" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#818cf8" stop-opacity="0.15" />
+            <stop offset="30%" stop-color="#818cf8" stop-opacity="0.95" />
+            <stop offset="70%" stop-color="#a78bfa" stop-opacity="0.85" />
+            <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.30" />
+          </linearGradient>
+        </defs>
+
+        <!-- Glowing S-Curve Ridge Stroke -->
+        <path
+          d="M 0,16 C 80,24 150,6 250,14 C 330,20 380,8 416,14"
+          stroke="url(#edgeGrad)"
+          stroke-width="2.2"
+          fill="none"
+          filter="url(#glowEdge)"
+        />
+
+        <!-- Specular Core Line along S-Curve -->
+        <path
+          d="M 0,16 C 80,24 150,6 250,14 C 330,20 380,8 416,14"
+          stroke="url(#edgeGrad)"
+          stroke-width="1"
+          fill="none"
+          opacity="0.95"
+        />
+      </svg>
+
+      <!-- Top Window Drag Handle & Minimal Header (Visible on hover) -->
+      <div id="drag-handle" class="absolute top-0 left-0 right-0 h-7 flex items-center justify-between px-3 z-30 cursor-move opacity-0 hover:opacity-100 transition-opacity duration-200">
+        <div class="flex items-center gap-1.5 text-[9.5px] font-mono text-slate-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_#818cf8]"></span>
+          <span>Dot Assistant</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="btn-minimize" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Minimize / Collapse">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button id="btn-close" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-slate-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer" title="Close">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat Messages Scroll Container -->
+      <div id="chat-container" class="hidden opacity-0 translate-y-2 flex-1 overflow-y-auto chat-scroll px-4 pt-7 pb-2 flex-col gap-2.5 z-10">
+        <!-- Dynamic Messages Injected via JavaScript -->
+      </div>
+
+      <!-- Active Thinking Indicator Line -->
+      <div id="thinking-container" class="hidden px-4 py-0.5 z-10">
+        <div class="inline-flex items-center gap-1.5 bg-[#14192b]/85 border border-slate-700/60 px-2.5 py-0.5 rounded-lg text-[11px] font-mono">
+          <span class="text-indigo-400 text-[9.5px] font-semibold uppercase tracking-wider">thinking</span>
+          <span class="text-slate-500">:</span>
+          <span id="thinking-text" class="text-slate-300">processing request...</span>
+        </div>
+      </div>
+
+      <!-- Active Voice Recording Banner -->
+      <div id="voice-banner" class="hidden px-4 py-0.5 z-10">
+        <div class="bg-rose-950/40 border border-rose-800/80 text-rose-200 px-2.5 py-1 rounded-xl text-[11px] font-mono flex items-center justify-between animate-pulse">
+          <span>Recording audio...</span>
+          <span>Release <kbd class="px-1 py-0.2 rounded bg-rose-900/60 border border-rose-700 text-white text-[9px]">Alt</kbd></span>
+        </div>
+      </div>
+
+      <!-- The Control Shelf: Token Bar + 3-Dots + Input Pill -->
+      <div class="relative z-10 px-3.5 pt-1.5 pb-2.5 flex flex-col gap-2">
+
+        <!-- Upper Tier: Compact Token Bar + 3-Dots Button -->
+        <div class="flex items-center justify-between gap-2 font-mono">
+
+          <!-- Token Bar -->
+          <div class="flex-1 h-7 px-2.5 bg-[#1e2640]/65 border border-white/10 rounded-xl backdrop-blur-md flex items-center justify-between text-xs shadow-sm">
+            <div class="flex items-center gap-1.5">
+              <span class="relative flex h-1.5 w-1.5">
+                <span class="pulse-anim absolute inline-flex h-full w-full rounded-full opacity-60 bg-emerald-400"></span>
+                <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
+              </span>
+              <span class="text-slate-400 text-[10px]">Context:</span>
+              <span class="text-slate-100 font-semibold text-[10px]">
+                <span id="token-val">924</span>
+                <span class="text-slate-500 font-normal"> / <span id="token-limit">8,192</span></span>
+              </span>
+              <span id="typing-badge" class="hidden text-[9px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-1 rounded animate-pulse">
+                +0
+              </span>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <!-- Browser Toggle Button -->
+              <button id="btn-browser-toggle" type="button" class="flex items-center gap-1 px-1.5 py-0.2 rounded text-[9.5px] bg-indigo-500/15 border border-indigo-500/30 text-indigo-200 hover:bg-indigo-500/25 transition-all cursor-pointer" title="Toggle Browser Headless / GUI Mode">
+                <span>🌐</span>
+                <span id="browser-label">Headless</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 3-Dots Settings Button -->
+          <button id="btn-settings" type="button" class="w-7 h-7 rounded-xl bg-[#1e2640]/65 border border-white/10 backdrop-blur-md flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#2d3860]/85 transition-all cursor-pointer shadow-sm shrink-0" title="Settings (Model, Cloud, MCP)">
+            <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+              <circle cx="12" cy="5" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="19" r="2" />
+            </svg>
+          </button>
+
+        </div>
+
+        <!-- Lower Tier: Input Pill -->
+        <div id="input-pill" class="h-12 rounded-full bg-[#1e2642]/75 border border-white/12 shadow-[0_8px_24px_rgba(5,8,20,0.45),0_1px_0_rgba(255,255,255,0.14)_inset] backdrop-blur-xl flex items-center px-3.5 gap-2.5 transition-all duration-200 focus-within:border-indigo-400/50 focus-within:shadow-[0_10px_28px_rgba(5,8,20,0.6),0_0_0_1px_rgba(129,140,248,0.35)]">
+
+          <!-- Attachment Button -->
+          <button id="btn-attach" type="button" class="text-slate-400 hover:text-slate-200 transition-colors cursor-pointer shrink-0" title="Attach file">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+            </svg>
+          </button>
+
+          <!-- Text Input: min-w-0 prevents layout overflow -->
+          <input
+            id="user-input"
+            type="text"
+            placeholder="Ask or command Dot..."
+            class="min-w-0 flex-1 bg-transparent text-[13.5px] text-white placeholder-slate-400 outline-none font-sans"
+            autocomplete="off"
+          />
+
+          <!-- Right Side: Voice Alt Badge + Luminous Gradient Orb -->
+          <div class="flex items-center gap-2 shrink-0 font-mono">
+            <div id="voice-tag" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[9.5px] text-slate-300 transition-all select-none shrink-0" title="Hold Alt to speak">
+              <span>Hold</span>
+              <kbd class="font-semibold text-white">Alt</kbd>
+            </div>
+
+            <div
+              id="dot-orb"
+              class="w-6 h-6 rounded-full bg-gradient-to-br from-[#f472b6] via-[#a78bfa] to-[#60a5fa] shadow-[0_0_12px_rgba(167,139,250,0.75),0_0_22px_rgba(96,165,250,0.4)] cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95 shrink-0"
+              title="Dot Core Engine"
+            ></div>
+          </div>
+
+        </div>
+
+        <!-- Sub-footer hints -->
+        <div class="flex items-center justify-between px-1.5 text-[9px] font-mono text-slate-400 select-none">
+          <span>Hold <kbd class="border border-slate-700 bg-slate-800/80 px-1 py-0.2 rounded text-slate-300">Alt</kbd> for voice</span>
+          <span>Press <kbd class="border border-slate-700 bg-slate-800/80 px-1 py-0.2 rounded text-slate-300">Enter</kbd> to send</span>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Settings Modal Dialog (Complete 3-Tab Settings Dialog) -->
+  <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-md items-center justify-center p-3 animate-in fade-in duration-150">
+    <div class="w-full max-w-sm bg-[#131728]/95 border border-white/12 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] font-sans text-xs">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-white/8 bg-[#171c32]">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-lg bg-indigo-600/25 border border-indigo-500/40 flex items-center justify-center text-indigo-400 text-xs">
+            ⚙️
+          </div>
+          <h3 class="font-semibold text-white text-sm">Dot Settings</h3>
+        </div>
+        <button id="btn-close-settings" type="button" class="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Close">✕</button>
+      </div>
+
+      <!-- Tab Navigation Bar -->
+      <div class="flex items-center px-4 border-b border-white/8 bg-[#15192d] text-[11px] font-medium font-mono">
+        <button id="tab-btn-model" type="button" class="settings-tab-btn active py-2 px-2.5 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer">
+          <span>🤖</span>
+          <span>Model & Cloud</span>
+        </button>
+        <button id="tab-btn-mcp" type="button" class="settings-tab-btn py-2 px-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer">
+          <span>⚡</span>
+          <span>MCP Tools</span>
+        </button>
+        <button id="tab-btn-browser" type="button" class="settings-tab-btn py-2 px-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer">
+          <span>🌐</span>
+          <span>Browser</span>
+        </button>
+      </div>
+
+      <!-- Tab Contents Area (Scrollable) -->
+      <div class="flex-1 overflow-y-auto chat-scroll p-3.5 space-y-2.5 font-sans">
+
+        <!-- TAB 1: MODEL & CLOUD -->
+        <div id="tab-pane-model" class="space-y-3">
+          
+          <!-- Backend Mode Switcher -->
+          <div>
+            <label class="block text-[10.5px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Inference Backend</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="btn-backend-local" type="button" class="p-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-white text-left transition-all cursor-pointer">
+                <div class="font-semibold text-xs flex items-center justify-between">
+                  <span>Local llama-server</span>
+                  <span id="badge-local-active" class="text-[9.5px] text-indigo-400 font-mono">Active</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">Private offline inference on local GPU/CPU.</p>
+              </button>
+
+              <button id="btn-backend-cloud" type="button" class="p-2.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-left transition-all cursor-pointer hover:border-slate-600">
+                <div class="font-semibold text-xs flex items-center justify-between">
+                  <span>Cloud API Endpoint</span>
+                  <span id="badge-cloud-active" class="hidden text-[9.5px] text-indigo-400 font-mono">Active</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">OpenAI, OpenRouter, Groq, DeepSeek.</p>
+              </button>
+            </div>
+          </div>
+
+          <!-- Local Configuration Options -->
+          <div id="pane-local-config" class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2.5">
+            <div>
+              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">Local Model Tier</label>
+              <select id="select-tier" class="w-full bg-[#0e1222] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none font-mono">
+                <option value="2B">2B Tier (Fastest, 8K Context)</option>
+                <option value="4B" selected>4B Tier (Balanced Standard, 8K Context)</option>
+                <option value="12B">12B Tier (Heavy Reasoning, 4K Context)</option>
+              </select>
+            </div>
+            <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-0.5">
+              <span>Hardware Acceleration:</span>
+              <span id="label-accel-backend" class="uppercase text-slate-200 font-semibold">CUDA</span>
+            </div>
+          </div>
+
+          <!-- Cloud API Configuration Options -->
+          <div id="pane-cloud-config" class="hidden p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2.5">
+            <!-- Preset Selector -->
+            <div>
+              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">Provider Preset</label>
+              <div id="preset-buttons-container" class="flex flex-wrap gap-1.5">
+                <button type="button" data-preset="openai" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-indigo-600 text-white cursor-pointer">OpenAI</button>
+                <button type="button" data-preset="openrouter" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">OpenRouter</button>
+                <button type="button" data-preset="groq" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">Groq</button>
+                <button type="button" data-preset="deepseek" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">DeepSeek</button>
+                <button type="button" data-preset="custom" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">Custom</button>
+              </div>
+            </div>
+
+            <!-- Base URL -->
+            <div>
+              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">Base URL</label>
+              <input id="input-cloud-baseurl" type="text" placeholder="https://api.openai.com/v1" class="w-full bg-[#0e1222] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
+            </div>
+
+            <!-- Model Name -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-[10.5px] font-medium text-slate-300">Model Name</label>
+                <span class="text-[9.5px] text-slate-500">Customizable</span>
+              </div>
+              <input id="input-cloud-model" type="text" placeholder="e.g. gpt-4o-mini" class="w-full bg-[#0e1222] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
+              <!-- Suggestion Chips Container -->
+              <div id="model-suggestions-container" class="flex flex-wrap gap-1 mt-1.5">
+                <!-- Dynamically updated -->
+              </div>
+            </div>
+
+            <!-- API Key -->
+            <div>
+              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">API Key</label>
+              <div class="relative">
+                <input id="input-cloud-apikey" type="password" placeholder="sk-..." class="w-full bg-[#0e1222] border border-slate-700 rounded-lg pl-2.5 pr-12 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
+                <button id="btn-toggle-apikey" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
+              </div>
+              <p class="text-[9.5px] text-slate-500 mt-1">Stored locally in appConfig.json and never logged.</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- TAB 2: MCP TOOLS & GITHUB -->
+        <div id="tab-pane-mcp" class="hidden space-y-3">
+          
+          <!-- GitHub PAT Configuration -->
+          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <svg class="w-4 h-4 fill-slate-300" viewBox="0 0 24 24">
+                  <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+                </svg>
+                <span class="font-semibold text-xs text-white">GitHub Token (PAT)</span>
+              </div>
+              <span id="badge-github-status" class="text-[9px] font-mono px-1.5 py-0.2 rounded border bg-amber-500/15 text-amber-400 border-amber-500/30">
+                Missing
+              </span>
+            </div>
+            <p class="text-[10px] text-slate-400">Required for GitHub MCP tools (issues, PRs, repos, commits).</p>
+
+            <div class="relative">
+              <input id="input-github-token" type="password" placeholder="ghp_... or github_pat_..." class="w-full bg-[#0e1222] border border-slate-700 rounded-lg pl-2.5 pr-12 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
+              <button id="btn-toggle-ghtoken" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
+            </div>
+            <div class="flex items-center justify-between text-[9.5px] text-slate-500 pt-0.5">
+              <span>Saved locally in appConfig.json</span>
+              <a href="https://github.com/settings/tokens" target="_blank" class="text-indigo-400 hover:underline">Get Token ↗</a>
+            </div>
+          </div>
+
+          <!-- Active MCP Servers List -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-[10.5px] font-semibold text-slate-300 uppercase tracking-wider">Active MCP Servers</label>
+              <span id="count-mcp-servers" class="text-[10px] font-mono text-slate-400">0 servers</span>
+            </div>
+            <div id="mcp-servers-list" class="space-y-1.5">
+              <!-- Dynamically populated -->
+              <div class="p-2.5 bg-[#151a30] border border-white/8 rounded-xl flex items-center justify-between text-xs font-mono text-slate-400">
+                <span>Loading servers...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sync Action Button -->
+          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-xs font-semibold text-white">Sync Tool Registry</h4>
+                <p class="text-[9.5px] text-slate-400">Fetch schemas & reindex ChromaDB vector store.</p>
+              </div>
+              <button id="btn-sync-mcp" type="button" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-sm">
+                <span>⚡</span>
+                <span>Sync Tools</span>
+              </button>
+            </div>
+            <div id="mcp-sync-status" class="text-[10px] font-mono text-slate-400"></div>
+          </div>
+
+        </div>
+
+        <!-- TAB 3: BROWSER & POSITION -->
+        <div id="tab-pane-browser" class="hidden space-y-3">
+          
+          <!-- Browser Mode -->
+          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-xs font-semibold text-white">Headless Browser</h4>
+                <p class="text-[10px] text-slate-400">Playwright automates silently without opening a visible browser.</p>
+              </div>
+              <input type="checkbox" id="chk-browser-headless" class="cursor-pointer w-4 h-4 accent-indigo-600" />
+            </div>
+            <div class="pt-1.5 border-t border-white/8 flex items-center justify-between text-[10px] font-mono text-slate-400">
+              <span>CDP Port 9222:</span>
+              <span id="label-cdp-status" class="text-emerald-400 font-semibold">Active</span>
+            </div>
+          </div>
+
+          <!-- Desktop Position -->
+          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+            <label class="block text-[10.5px] font-semibold text-slate-300 uppercase tracking-wider">Desktop Dock Position</label>
+            <div class="flex gap-2">
+              <button id="btn-dock-bottom" type="button" class="flex-1 py-1.5 bg-indigo-600/30 border border-indigo-500/50 rounded-lg text-indigo-200 text-xs font-medium cursor-pointer">Bottom-Right</button>
+              <button id="btn-dock-top" type="button" class="flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 text-xs font-medium cursor-pointer hover:bg-slate-700">Top-Right</button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex items-center justify-between px-4 py-2.5 border-t border-white/8 bg-[#171c32]">
+        <div id="settings-status" class="text-[10px] font-mono text-slate-400 truncate max-w-[190px]"></div>
+        <div class="flex items-center gap-2">
+          <button id="btn-cancel-settings" type="button" class="px-3 py-1 rounded-lg text-slate-400 hover:text-white text-xs cursor-pointer">Cancel</button>
+          <button id="btn-save-settings" type="button" class="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-xs shadow-sm cursor-pointer transition-colors">Save Changes</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Neutralino Client Library -->
+  <script src="./neutralino.js"></script>
+
+  <!-- Application Logic & WebSocket Bridge -->
+  <script>
+    // Provider presets for Cloud API configuration
+    const PROVIDER_PRESETS = [
+      {
+        id: "openai",
+        name: "OpenAI",
+        baseUrl: "https://api.openai.com/v1",
+        suggestedModels: ["gpt-4o-mini", "gpt-4o", "o1-mini"],
+        keyPlaceholder: "sk-proj-..."
+      },
+      {
+        id: "openrouter",
+        name: "OpenRouter",
+        baseUrl: "https://openrouter.ai/api/v1",
+        suggestedModels: ["anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct"],
+        keyPlaceholder: "sk-or-v1-..."
+      },
+      {
+        id: "groq",
+        name: "Groq",
+        baseUrl: "https://api.groq.com/openai/v1",
+        suggestedModels: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+        keyPlaceholder: "gsk_..."
+      },
+      {
+        id: "deepseek",
+        name: "DeepSeek",
+        baseUrl: "https://api.deepseek.com/v1",
+        suggestedModels: ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"],
+        keyPlaceholder: "sk-..."
+      },
+      {
+        id: "custom",
+        name: "Custom",
+        baseUrl: "",
+        suggestedModels: [],
+        keyPlaceholder: "API key or token"
+      }
+    ];
+
+    // State management
+    const state = {
+      messages: [],
+      isLoading: false,
+      isStreaming: false,
+      isExpanded: false,
+      isSettingsOpen: false,
+      isNeutralinoReady: false,
+      voiceStatus: "idle",
+      browserHeadless: true,
+      currentDock: "bottom", // "bottom" or "top"
+      tokenUsage: { total_tokens: 924, context_limit: 8192 },
+      ws: null,
+      idleHeight: 184,
+      expandedHeight: 510,
+      settingsHeight: 560,
+      windowWidth: 440,
+      margin: 24,
+      isFirstDock: true,
+      // Active settings store
+      settings: {
+        backend: "cuda",
+        selected_tier: "4B",
+        browser_headless: true,
+        cloud: {
+          provider: "openai",
+          base_url: "https://api.openai.com/v1",
+          model: "gpt-4o-mini",
+          api_key: ""
+        },
+        github_token: "",
+        mcp_servers: []
+      }
+    };
+
+    // DOM Elements
+    const cornerShell = document.getElementById('corner-shell');
+    const chatContainer = document.getElementById('chat-container');
+    const thinkingContainer = document.getElementById('thinking-container');
+    const thinkingText = document.getElementById('thinking-text');
+    const voiceBanner = document.getElementById('voice-banner');
+    const voiceTag = document.getElementById('voice-tag');
+    const userInput = document.getElementById('user-input');
+    const tokenVal = document.getElementById('token-val');
+    const tokenLimit = document.getElementById('token-limit');
+    const typingBadge = document.getElementById('typing-badge');
+    const browserLabel = document.getElementById('browser-label');
+    const btnBrowserToggle = document.getElementById('btn-browser-toggle');
+    const btnSettings = document.getElementById('btn-settings');
+    const settingsModal = document.getElementById('settings-modal');
+    const btnCloseSettings = document.getElementById('btn-close-settings');
+    const btnCancelSettings = document.getElementById('btn-cancel-settings');
+    const btnSaveSettings = document.getElementById('btn-save-settings');
+    const btnMinimize = document.getElementById('btn-minimize');
+    const btnClose = document.getElementById('btn-close');
+
+    // Settings Modal Tab Elements
+    const tabBtnModel = document.getElementById('tab-btn-model');
+    const tabBtnMcp = document.getElementById('tab-btn-mcp');
+    const tabBtnBrowser = document.getElementById('tab-btn-browser');
+    const tabPaneModel = document.getElementById('tab-pane-model');
+    const tabPaneMcp = document.getElementById('tab-pane-mcp');
+    const tabPaneBrowser = document.getElementById('tab-pane-browser');
+
+    // Model & Cloud Controls
+    const btnBackendLocal = document.getElementById('btn-backend-local');
+    const btnBackendCloud = document.getElementById('btn-backend-cloud');
+    const badgeLocalActive = document.getElementById('badge-local-active');
+    const badgeCloudActive = document.getElementById('badge-cloud-active');
+    const paneLocalConfig = document.getElementById('pane-local-config');
+    const paneCloudConfig = document.getElementById('pane-cloud-config');
+    const selectTier = document.getElementById('select-tier');
+    const labelAccelBackend = document.getElementById('label-accel-backend');
+    const inputCloudBaseUrl = document.getElementById('input-cloud-baseurl');
+    const inputCloudModel = document.getElementById('input-cloud-model');
+    const inputCloudApiKey = document.getElementById('input-cloud-apikey');
+    const btnToggleApiKey = document.getElementById('btn-toggle-apikey');
+    const presetButtonsContainer = document.getElementById('preset-buttons-container');
+    const modelSuggestionsContainer = document.getElementById('model-suggestions-container');
+
+    // MCP Controls
+    const inputGithubToken = document.getElementById('input-github-token');
+    const btnToggleGhToken = document.getElementById('btn-toggle-ghtoken');
+    const badgeGithubStatus = document.getElementById('badge-github-status');
+    const countMcpServers = document.getElementById('count-mcp-servers');
+    const mcpServersList = document.getElementById('mcp-servers-list');
+    const btnSyncMcp = document.getElementById('btn-sync-mcp');
+    const mcpSyncStatus = document.getElementById('mcp-sync-status');
+
+    // Browser & Dock Controls
+    const chkBrowserHeadless = document.getElementById('chk-browser-headless');
+    const labelCdpStatus = document.getElementById('label-cdp-status');
+    const btnDockBottom = document.getElementById('btn-dock-bottom');
+    const btnDockTop = document.getElementById('btn-dock-top');
+    const settingsStatus = document.getElementById('settings-status');
+
+    // Helper: Timeout-guarded native call
+    async function nativeCall(fn, timeoutMs = 800) {
+      if (!state.isNeutralinoReady || typeof Neutralino === 'undefined' || !Neutralino.window) return null;
+      try {
+        return await Promise.race([
+          fn(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+        ]);
+      } catch (err) {
+        console.warn('Native API call warning:', err);
+        return null;
+      }
+    }
+
+    // Helper: Obtain accurate device pixel ratio
+    function getDpr() {
+      return window.devicePixelRatio || 1;
+    }
+
+    // Reposition Neutralino Window in corner with DPI scaling
+    async function dockWindow(targetHeight, forceResetPos = false) {
+      if (!state.isNeutralinoReady) return;
+      try {
+        const dpr = getDpr();
+        const height = targetHeight || (state.isExpanded ? state.expandedHeight : state.idleHeight);
+        const physWidth = Math.round(state.windowWidth * dpr);
+        const physHeight = Math.round(height * dpr);
+        const physMargin = Math.round(state.margin * dpr);
+
+        if (forceResetPos || state.isFirstDock) {
+          const screenPhysW = Math.round((window.screen.availWidth || 1920) * dpr);
+          const screenPhysH = Math.round((window.screen.availHeight || 1080) * dpr);
+          const screenPhysLeft = Math.round((window.screen.availLeft || 0) * dpr);
+          const screenPhysTop = Math.round((window.screen.availTop || 0) * dpr);
+
+          const physX = screenPhysLeft + screenPhysW - physWidth - physMargin;
+          const physY = state.currentDock === 'top'
+            ? (screenPhysTop + physMargin)
+            : (screenPhysTop + screenPhysH - physHeight - physMargin);
+
+          await nativeCall(() => Neutralino.window.setSize({ width: physWidth, height: physHeight }));
+          await nativeCall(() => Neutralino.window.move(physX, physY));
+          state.isFirstDock = false;
+        } else {
+          // Preserve current horizontal position and anchor bottom
+          const currentPos = await nativeCall(() => Neutralino.window.getPosition());
+          const currentSize = await nativeCall(() => Neutralino.window.getSize());
+          if (currentPos && currentSize) {
+            let physY;
+            if (state.currentDock === 'top') {
+              physY = currentPos.y;
+            } else {
+              const physBottom = currentPos.y + currentSize.height;
+              physY = physBottom - physHeight;
+            }
+            await nativeCall(() => Neutralino.window.setSize({ width: physWidth, height: physHeight }));
+            await nativeCall(() => Neutralino.window.move(currentPos.x, physY));
+          }
+        }
+      } catch (err) {
+        console.warn('Dock window error:', err);
+      }
+    }
+
+    // Smooth dynamic vertical expansion & collapse
+    async function setExpandedState(expand, customHeight = null) {
+      if (state.isExpanded === expand && !customHeight) return;
+      state.isExpanded = expand;
+
+      const dpr = getDpr();
+      const physWidth = Math.round(state.windowWidth * dpr);
+      const targetHeight = customHeight || (expand ? state.expandedHeight : state.idleHeight);
+      const physTargetHeight = Math.round(targetHeight * dpr);
+
+      // Card height inside 15px window padding = targetHeight - 30
+      const cardHeight = Math.max(154, targetHeight - 30);
+
+      if (expand) {
+        // --- EXPAND UPWARD ---
+        if (state.isNeutralinoReady) {
+          const currentPos = await nativeCall(() => Neutralino.window.getPosition());
+          const currentSize = await nativeCall(() => Neutralino.window.getSize());
+          let newPhysY;
+          let newPhysX;
+
+          if (currentPos && currentSize) {
+            newPhysX = currentPos.x;
+            if (state.currentDock === 'top') {
+              newPhysY = currentPos.y;
+            } else {
+              const physBottom = currentPos.y + currentSize.height;
+              newPhysY = physBottom - physTargetHeight;
+            }
+          } else {
+            const screenPhysW = Math.round((window.screen.availWidth || 1920) * dpr);
+            const screenPhysH = Math.round((window.screen.availHeight || 1080) * dpr);
+            const physMargin = Math.round(state.margin * dpr);
+            newPhysX = screenPhysW - physWidth - physMargin;
+            newPhysY = screenPhysH - physTargetHeight - physMargin;
+          }
+
+          // 1. Reposition window top first then expand native bounding box to keep bottom anchored
+          await nativeCall(() => Neutralino.window.move(newPhysX, newPhysY));
+          await nativeCall(() => Neutralino.window.setSize({ width: physWidth, height: physTargetHeight }));
+        }
+
+        // 2. Make chat container visible in layout (opacity 0)
+        chatContainer.classList.remove('hidden');
+        chatContainer.classList.add('flex');
+
+        // 3. Trigger GPU-accelerated CSS height and opacity animation
+        requestAnimationFrame(() => {
+          cornerShell.style.height = `${cardHeight}px`;
+          chatContainer.classList.remove('opacity-0', 'translate-y-2');
+          chatContainer.classList.add('opacity-100', 'translate-y-0');
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        });
+      } else {
+        // --- COLLAPSE DOWNWARD ---
+        // 1. Animate CSS height down first
+        chatContainer.classList.remove('opacity-100', 'translate-y-0');
+        chatContainer.classList.add('opacity-0', 'translate-y-2');
+        cornerShell.style.height = `${cardHeight}px`;
+
+        // 2. Shrink native window once CSS animation finishes
+        setTimeout(async () => {
+          chatContainer.classList.remove('flex');
+          chatContainer.classList.add('hidden');
+
+          if (state.isNeutralinoReady) {
+            const pos = await nativeCall(() => Neutralino.window.getPosition());
+            const size = await nativeCall(() => Neutralino.window.getSize());
+            if (pos && size) {
+              let shrinkY;
+              if (state.currentDock === 'top') {
+                shrinkY = pos.y;
+              } else {
+                const physBottom = pos.y + size.height;
+                shrinkY = physBottom - physTargetHeight;
+              }
+              await nativeCall(() => Neutralino.window.setSize({ width: physWidth, height: physTargetHeight }));
+              await nativeCall(() => Neutralino.window.move(pos.x, shrinkY));
+            }
+          }
+        }, 360);
+      }
+    }
+
+    // Toggle expanded/idle container height based on content
+    function updateShellExpansion() {
+      if (state.isSettingsOpen) return;
+      const hasContent = state.messages.length > 0 || state.isLoading || state.isStreaming;
+      setExpandedState(hasContent);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Render message bubbles
+    function renderMessages() {
+      chatContainer.innerHTML = '';
+      state.messages.forEach((msg) => {
+        const bubble = document.createElement('div');
+        if (msg.role === 'user') {
+          bubble.className = 'self-end max-w-[85%] bg-indigo-600 text-white px-3 py-1.5 rounded-2xl rounded-br-sm text-[12.5px] leading-relaxed shadow-sm font-sans';
+          bubble.textContent = msg.content;
+        } else {
+          bubble.className = 'self-start max-w-[90%] bg-[#1c233c]/85 border border-white/8 text-slate-200 px-3 py-2 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed backdrop-blur-md shadow-sm font-mono';
+          bubble.innerHTML = formatMarkdown(msg.content);
+        }
+        chatContainer.appendChild(bubble);
+      });
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Simple markdown code formatting
+    function formatMarkdown(text) {
+      if (!text) return '';
+      const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return escaped.replace(/`([^`]+)`/g, '<code class="bg-black/40 border border-white/8 px-1 py-0.2 rounded text-[10.5px] text-indigo-300 font-mono">$1</code>')
+                    .replace(/\n/g, '<br/>');
+    }
+
+    // WebSocket Client
+    function connectWebSocket() {
+      try {
+        state.ws = new WebSocket("ws://localhost:3000/ws");
+
+        state.ws.onopen = () => {
+          console.log("[WS] Connected to Dot backend server");
+        };
+
+        state.ws.onmessage = (event) => {
+          const payload = JSON.parse(event.data);
+
+          if (payload.type === "voice_status") {
+            state.voiceStatus = payload.status;
+            if (payload.status === "recording") {
+              voiceBanner.classList.remove('hidden');
+              voiceTag.classList.add('bg-rose-800', 'text-white');
+            } else {
+              voiceBanner.classList.add('hidden');
+              voiceTag.classList.remove('bg-rose-800', 'text-white');
+            }
+          } else if (payload.type === "voice_input") {
+            state.messages.push({ role: "user", content: payload.text });
+            state.isLoading = true;
+            thinkingContainer.classList.remove('hidden');
+            renderMessages();
+            updateShellExpansion();
+          } else if (payload.type === "stream_start") {
+            state.isLoading = false;
+            state.isStreaming = true;
+            thinkingContainer.classList.add('hidden');
+            state.messages.push({ role: "dot", content: "" });
+            renderMessages();
+            updateShellExpansion();
+          } else if (payload.type === "stream") {
+            if (state.messages.length > 0) {
+              const last = state.messages[state.messages.length - 1];
+              if (last.role === "dot") {
+                last.content += payload.data;
+                renderMessages();
+              }
+            }
+          } else if (payload.type === "stream_end" || payload.type === "result") {
+            state.isLoading = false;
+            state.isStreaming = false;
+            thinkingContainer.classList.add('hidden');
+            if (payload.type === "result") {
+              const last = state.messages[state.messages.length - 1];
+              if (!last || last.role !== "dot" || last.content !== payload.data) {
+                state.messages.push({ role: "dot", content: payload.data });
+              }
+            }
+            renderMessages();
+            updateShellExpansion();
+          } else if (payload.type === "token_usage") {
+            state.tokenUsage = payload.data;
+            tokenVal.textContent = (payload.data.total_tokens || 924).toLocaleString();
+            tokenLimit.textContent = (payload.data.context_limit || 8192).toLocaleString();
+          } else if (payload.type === "browser_status") {
+            state.browserHeadless = payload.data?.browser_headless ?? true;
+            browserLabel.textContent = state.browserHeadless ? "Headless" : "GUI";
+            chkBrowserHeadless.checked = state.browserHeadless;
+          }
+        };
+
+        state.ws.onclose = () => {
+          setTimeout(connectWebSocket, 3000);
+        };
+        state.ws.onerror = () => {
+          state.ws.close();
+        };
+      } catch (err) {
+        setTimeout(connectWebSocket, 3000);
+      }
+    }
+
+    // Send prompt to Dot
+    function sendPrompt() {
+      const text = userInput.value.trim();
+      if (!text || state.isLoading) return;
+
+      state.messages.push({ role: "user", content: text });
+      userInput.value = "";
+      typingBadge.classList.add('hidden');
+      state.isLoading = true;
+      thinkingContainer.classList.remove('hidden');
+
+      renderMessages();
+      updateShellExpansion();
+
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify(text));
+      }
+    }
+
+    // Real-time live typing preview in token meter
+    userInput.addEventListener('input', (e) => {
+      const len = e.target.value.trim().length;
+      if (len > 0) {
+        const tokens = Math.max(1, Math.ceil(len / 3.6));
+        typingBadge.textContent = `+${tokens}`;
+        typingBadge.classList.remove('hidden');
+      } else {
+        typingBadge.classList.add('hidden');
+      }
+    });
+
+    userInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendPrompt();
+      }
+    });
+
+    // Browser Headless/GUI toggle
+    btnBrowserToggle.addEventListener('click', async () => {
+      try {
+        const res = await fetch("http://localhost:3000/api/browser/toggle", { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          state.browserHeadless = data.browser_headless;
+          browserLabel.textContent = state.browserHeadless ? "Headless" : "GUI";
+          chkBrowserHeadless.checked = state.browserHeadless;
+        }
+      } catch (err) {
+        console.error("Browser toggle failed:", err);
+      }
+    });
+
+    // ==========================================
+    // SETTINGS MODAL INTERACTION & API
+    // ==========================================
+
+    function switchSettingsTab(tabName) {
+      [tabBtnModel, tabBtnMcp, tabBtnBrowser].forEach(b => {
+        b.classList.remove('active');
+        b.classList.add('border-transparent', 'text-slate-400');
+      });
+      [tabPaneModel, tabPaneMcp, tabPaneBrowser].forEach(p => p.classList.add('hidden'));
+
+      if (tabName === 'model') {
+        tabBtnModel.classList.add('active');
+        tabBtnModel.classList.remove('border-transparent', 'text-slate-400');
+        tabPaneModel.classList.remove('hidden');
+      } else if (tabName === 'mcp') {
+        tabBtnMcp.classList.add('active');
+        tabBtnMcp.classList.remove('border-transparent', 'text-slate-400');
+        tabPaneMcp.classList.remove('hidden');
+      } else if (tabName === 'browser') {
+        tabBtnBrowser.classList.add('active');
+        tabBtnBrowser.classList.remove('border-transparent', 'text-slate-400');
+        tabPaneBrowser.classList.remove('hidden');
+      }
+    }
+
+    tabBtnModel.addEventListener('click', () => switchSettingsTab('model'));
+    tabBtnMcp.addEventListener('click', () => switchSettingsTab('mcp'));
+    tabBtnBrowser.addEventListener('click', () => switchSettingsTab('browser'));
+
+    // Backend Switcher
+    function setBackendMode(mode) {
+      state.settings.backend = mode;
+      if (mode === 'cloud') {
+        btnBackendCloud.className = "p-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-white text-left transition-all cursor-pointer";
+        btnBackendLocal.className = "p-2.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-left transition-all cursor-pointer hover:border-slate-600";
+        badgeCloudActive.classList.remove('hidden');
+        badgeLocalActive.classList.add('hidden');
+        paneCloudConfig.classList.remove('hidden');
+        paneLocalConfig.classList.add('hidden');
+      } else {
+        btnBackendLocal.className = "p-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-white text-left transition-all cursor-pointer";
+        btnBackendCloud.className = "p-2.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-left transition-all cursor-pointer hover:border-slate-600";
+        badgeLocalActive.classList.remove('hidden');
+        badgeCloudActive.classList.add('hidden');
+        paneLocalConfig.classList.remove('hidden');
+        paneCloudConfig.classList.add('hidden');
+      }
+    }
+
+    btnBackendLocal.addEventListener('click', () => setBackendMode('cuda'));
+    btnBackendCloud.addEventListener('click', () => setBackendMode('cloud'));
+
+    // Cloud Provider Preset Selection
+    function selectCloudPreset(presetId) {
+      state.settings.cloud.provider = presetId;
+      const preset = PROVIDER_PRESETS.find(p => p.id === presetId) || PROVIDER_PRESETS[0];
+
+      // Update preset buttons visual
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        if (btn.dataset.preset === presetId) {
+          btn.className = "preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-indigo-600 text-white cursor-pointer";
+        } else {
+          btn.className = "preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer";
+        }
+      });
+
+      if (preset.baseUrl) {
+        inputCloudBaseUrl.value = preset.baseUrl;
+        state.settings.cloud.base_url = preset.baseUrl;
+      }
+      inputCloudApiKey.placeholder = preset.keyPlaceholder || "sk-...";
+
+      // Render model suggestions
+      renderModelSuggestions(preset.suggestedModels || []);
+    }
+
+    function renderModelSuggestions(models) {
+      modelSuggestionsContainer.innerHTML = '';
+      if (!models || models.length === 0) return;
+
+      const label = document.createElement('span');
+      label.className = "text-[9px] text-slate-500 font-mono self-center mr-1";
+      label.textContent = "Suggestions:";
+      modelSuggestionsContainer.appendChild(label);
+
+      models.forEach(modelName => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = "px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white hover:border-indigo-400 transition-colors cursor-pointer";
+        chip.textContent = modelName;
+        chip.addEventListener('click', () => {
+          inputCloudModel.value = modelName;
+          state.settings.cloud.model = modelName;
+        });
+        modelSuggestionsContainer.appendChild(chip);
+      });
+    }
+
+    presetButtonsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.preset-btn');
+      if (btn && btn.dataset.preset) {
+        selectCloudPreset(btn.dataset.preset);
+      }
+    });
+
+    // Eye Toggles
+    btnToggleApiKey.addEventListener('click', () => {
+      const isPwd = inputCloudApiKey.type === 'password';
+      inputCloudApiKey.type = isPwd ? 'text' : 'password';
+      btnToggleApiKey.textContent = isPwd ? 'Hide' : 'Show';
+    });
+
+    btnToggleGhToken.addEventListener('click', () => {
+      const isPwd = inputGithubToken.type === 'password';
+      inputGithubToken.type = isPwd ? 'text' : 'password';
+      btnToggleGhToken.textContent = isPwd ? 'Hide' : 'Show';
+    });
+
+    // Load Settings from Backend
+    async function loadSettings() {
+      try {
+        const [settingsRes, serversRes] = await Promise.all([
+          fetch("http://localhost:3000/api/settings").catch(() => null),
+          fetch("http://localhost:3000/api/mcp/servers").catch(() => null)
+        ]);
+
+        if (settingsRes && settingsRes.ok) {
+          const data = await settingsRes.json();
+          const active = data.active_settings || {};
+          const cloud = data.cloud || {};
+
+          state.settings.backend = active.backend || "cuda";
+          state.settings.selected_tier = active.selected_tier || "4B";
+          state.settings.browser_headless = Boolean(active.browser_headless);
+          state.settings.github_token = data.github_token || "";
+
+          state.settings.cloud = {
+            provider: cloud.provider || "openai",
+            base_url: cloud.base_url || "https://api.openai.com/v1",
+            model: cloud.model || "gpt-4o-mini",
+            api_key: cloud.api_key || ""
+          };
+
+          // Populate DOM
+          setBackendMode(state.settings.backend);
+          selectTier.value = state.settings.selected_tier;
+          labelAccelBackend.textContent = state.settings.backend;
+
+          inputCloudBaseUrl.value = state.settings.cloud.base_url;
+          inputCloudModel.value = state.settings.cloud.model;
+          inputCloudApiKey.value = state.settings.cloud.api_key;
+          selectCloudPreset(state.settings.cloud.provider);
+
+          inputGithubToken.value = state.settings.github_token;
+          if (state.settings.github_token) {
+            badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+            badgeGithubStatus.textContent = "Configured";
+          } else {
+            badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-amber-500/15 text-amber-400 border-amber-500/30";
+            badgeGithubStatus.textContent = "Missing";
+          }
+
+          chkBrowserHeadless.checked = state.settings.browser_headless;
+          state.browserHeadless = state.settings.browser_headless;
+          browserLabel.textContent = state.browserHeadless ? "Headless" : "GUI";
+        }
+
+        if (serversRes && serversRes.ok) {
+          const sData = await serversRes.json();
+          const servers = sData.servers || [];
+          countMcpServers.textContent = `${servers.length} active`;
+          mcpServersList.innerHTML = '';
+          if (servers.length === 0) {
+            mcpServersList.innerHTML = `<div class="p-2.5 bg-[#151a30] border border-white/8 rounded-xl text-center text-[10px] font-mono text-slate-500">No active MCP servers found</div>`;
+          } else {
+            servers.forEach(srv => {
+              const item = document.createElement('div');
+              item.className = "p-2.5 bg-[#151a30] border border-white/8 rounded-xl flex items-center justify-between text-xs font-mono";
+              item.innerHTML = `
+                <div class="flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  <span class="font-semibold text-slate-200">${srv}</span>
+                </div>
+                <span class="text-[9.5px] text-slate-400 bg-white/5 px-1.5 py-0.2 rounded border border-white/5">stdio</span>
+              `;
+              mcpServersList.appendChild(item);
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load settings:", err);
+      }
+    }
+
+    // Save Settings to Backend
+    async function saveSettings() {
+      btnSaveSettings.disabled = true;
+      btnSaveSettings.textContent = "Saving...";
+      settingsStatus.className = "text-[10px] font-mono text-slate-400 truncate max-w-[190px]";
+      settingsStatus.textContent = "Saving...";
+
+      const payload = {
+        backend: state.settings.backend,
+        selected_tier: selectTier.value,
+        browser_headless: chkBrowserHeadless.checked,
+        cloud: {
+          provider: state.settings.cloud.provider,
+          base_url: inputCloudBaseUrl.value.trim(),
+          model: inputCloudModel.value.trim(),
+          api_key: inputCloudApiKey.value.trim()
+        },
+        github_token: inputGithubToken.value.trim()
+      };
+
+      try {
+        const res = await fetch("http://localhost:3000/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          settingsStatus.className = "text-[10px] font-mono text-emerald-400 truncate max-w-[190px]";
+          settingsStatus.textContent = "Saved successfully!";
+          btnSaveSettings.textContent = "Saved ✓";
+          setTimeout(() => {
+            closeSettingsModal();
+            btnSaveSettings.disabled = false;
+            btnSaveSettings.textContent = "Save Changes";
+            settingsStatus.textContent = "";
+          }, 600);
+        } else {
+          throw new Error(`Server returned ${res.status}`);
+        }
+      } catch (err) {
+        settingsStatus.className = "text-[10px] font-mono text-rose-400 truncate max-w-[190px]";
+        settingsStatus.textContent = `Error: ${err.message}`;
+        btnSaveSettings.disabled = false;
+        btnSaveSettings.textContent = "Save Changes";
+      }
+    }
+
+    // MCP Sync Registry
+    async function syncMcpRegistry() {
+      btnSyncMcp.disabled = true;
+      btnSyncMcp.innerHTML = `<span class="w-2.5 h-2.5 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block"></span> <span>Syncing...</span>`;
+      mcpSyncStatus.className = "text-[10px] font-mono text-slate-400";
+      mcpSyncStatus.textContent = "Syncing tools with ChromaDB...";
+
+      try {
+        // Save current token first
+        const token = inputGithubToken.value.trim();
+        if (token) {
+          await fetch("http://localhost:3000/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ github_token: token })
+          });
+        }
+
+        const res = await fetch("http://localhost:3000/api/mcp/sync", { method: "POST" });
+        const data = await res.json();
+        if (data.status === "ok") {
+          mcpSyncStatus.className = "text-[10px] font-mono text-emerald-400";
+          const services = (data.services || []).join(", ") || "tools ready";
+          mcpSyncStatus.textContent = `Active services: ${services}`;
+        } else {
+          mcpSyncStatus.className = "text-[10px] font-mono text-rose-400";
+          mcpSyncStatus.textContent = data.message || "Sync failed";
+        }
+      } catch (err) {
+        mcpSyncStatus.className = "text-[10px] font-mono text-rose-400";
+        mcpSyncStatus.textContent = `Error: ${err.message}`;
+      } finally {
+        btnSyncMcp.disabled = false;
+        btnSyncMcp.innerHTML = `<span>⚡</span> <span>Sync Tools</span>`;
+      }
+    }
+
+    // Modal Visibility Helpers
+    async function openSettingsModal() {
+      state.isSettingsOpen = true;
+      settingsModal.classList.remove('hidden');
+      settingsModal.classList.add('flex');
+      loadSettings();
+
+      // Expand window vertically if idle so settings modal has full comfortable view
+      if (!state.isExpanded) {
+        await setExpandedState(true, state.settingsHeight);
+      }
+    }
+
+    async function closeSettingsModal() {
+      state.isSettingsOpen = false;
+      settingsModal.classList.remove('flex');
+      settingsModal.classList.add('hidden');
+
+      const hasContent = state.messages.length > 0 || state.isLoading || state.isStreaming;
+      if (!hasContent) {
+        await setExpandedState(false);
+      } else {
+        await setExpandedState(true, state.expandedHeight);
+      }
+    }
+
+    btnSettings.addEventListener('click', openSettingsModal);
+    btnCloseSettings.addEventListener('click', closeSettingsModal);
+    btnCancelSettings.addEventListener('click', closeSettingsModal);
+    btnSaveSettings.addEventListener('click', saveSettings);
+    btnSyncMcp.addEventListener('click', syncMcpRegistry);
+
+    // Dock selection
+    btnDockBottom.addEventListener('click', () => {
+      state.currentDock = 'bottom';
+      btnDockBottom.className = "flex-1 py-1.5 bg-indigo-600/30 border border-indigo-500/50 rounded-lg text-indigo-200 text-xs font-medium cursor-pointer";
+      btnDockTop.className = "flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 text-xs font-medium cursor-pointer hover:bg-slate-700";
+      dockWindow(null, true);
+    });
+    btnDockTop.addEventListener('click', () => {
+      state.currentDock = 'top';
+      btnDockTop.className = "flex-1 py-1.5 bg-indigo-600/30 border border-indigo-500/50 rounded-lg text-indigo-200 text-xs font-medium cursor-pointer";
+      btnDockBottom.className = "flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 text-xs font-medium cursor-pointer hover:bg-slate-700";
+      dockWindow(null, true);
+    });
+
+    // Window controls
+    btnMinimize.addEventListener('click', () => {
+      if (state.isExpanded || state.isSettingsOpen) {
+        if (state.isSettingsOpen) closeSettingsModal();
+        setExpandedState(false);
+      } else if (typeof Neutralino !== 'undefined' && Neutralino.window) {
+        Neutralino.window.minimize();
+      }
+    });
+    btnClose.addEventListener('click', () => {
+      if (typeof Neutralino !== 'undefined' && Neutralino.app) {
+        Neutralino.app.exit();
+      }
+    });
+
+    // Initialize Neutralino.js
+    if (typeof Neutralino !== 'undefined') {
+      Neutralino.init();
+      Neutralino.events.on('ready', () => {
+        state.isNeutralinoReady = true;
+        Neutralino.window.setDraggableRegion('drag-handle');
+        dockWindow(state.idleHeight, true);
+      });
+    }
+
+    // Connect WebSocket to Dot backend
+    connectWebSocket();
+    updateShellExpansion();
+  </script>
+</body>
 </html>
