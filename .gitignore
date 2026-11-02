@@ -31,3 +31,4 @@ backend/tests/diff_results/
 backend/dot/memory/storage/transcripts/
 backend/dot/memory/storage/summaries/
 backend/dot/memory/storage/chroma_db/
+frontend/out/*.zip

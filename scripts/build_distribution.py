@@ -34,14 +34,14 @@ def build_frontend(root_dir: Path, dist_frontend_dir: Path) -> None:
     src_frontend = root_dir / "frontend"
     log("Preparing frontend assets...")
 
-    # Build fresh Neutralino resources if npx is available
-    npx_cmd = shutil.which("npx")
-    if npx_cmd:
+    # Build fresh Neutralino resources if npm is available
+    npm_cmd = shutil.which("npm")
+    if npm_cmd:
         try:
-            log("Compiling Neutralino application bundle (neu build --release)...")
-            subprocess.run(["cmd", "/c", "npx", "@neutralinojs/neu", "build", "--release"], cwd=str(src_frontend), check=True)
+            log("Compiling frontend assets and Neutralino bundle (npm run build)...")
+            subprocess.run(["cmd", "/c", "npm", "run", "build"], cwd=str(src_frontend), check=True)
         except Exception as e:
-            log(f"neu build warning: {e}")
+            log(f"Frontend build warning: {e}")
 
     dist_frontend_dir.mkdir(parents=True, exist_ok=True)
 
