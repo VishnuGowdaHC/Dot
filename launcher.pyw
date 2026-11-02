@@ -90,20 +90,62 @@ def show_error(title, message):
     root.destroy()
 
 
+def check_essentials(config):
+    """Verify that all required files and configurations exist."""
+    active_settings = config.get("active_settings", {})
+    backend = active_settings.get("backend", "cuda")
+
+    if backend == "cloud":
+        cloud_cfg = config.get("cloud", {})
+        api_key = cloud_cfg.get("api_key", "").strip()
+        has_env_key = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+        return bool(api_key or has_env_key)
+
+    bin_dir = os.path.join(BASE_DIR, "bin")
+    server_exe = os.path.join(bin_dir, "llama-server.exe")
+    if not os.path.exists(server_exe):
+        return False
+
+    tier = active_settings.get("selected_tier", "4B")
+    model_info = config.get("models", {}).get(tier, {})
+    model_fn = model_info.get("filename", "")
+    if not model_fn:
+        return False
+
+    model_path = os.path.join(bin_dir, model_fn)
+    if not os.path.exists(model_path):
+        return False
+
+    return True
+
+
 def main():
     mutex = acquire_single_instance_lock()
     if not mutex:
         show_error("Dot - Already Running", "Dot is already running on this system.")
         return
 
-    if not os.path.exists(CONFIG_PATH):
-        py_exe = find_python_exe()
+    py_exe = find_python_exe()
+    config = {}
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            config = {}
+
+    # Automatically launch setup wizard if configuration or essentials are missing
+    if not config or not check_essentials(config):
         subprocess.run([py_exe, os.path.join(BASE_DIR, "setup.py")], cwd=BASE_DIR)
         if not os.path.exists(CONFIG_PATH):
             return
-
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        config = json.load(f)
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            return
+        if not check_essentials(config):
+            return
 
     active_settings = config.get("active_settings", {})
     backend = active_settings.get("backend", "cuda")
@@ -117,26 +159,10 @@ def main():
     if backend != "cloud":
         bin_dir = os.path.join(BASE_DIR, "bin")
         server_exe = os.path.join(bin_dir, "llama-server.exe")
-
-        if not os.path.exists(server_exe):
-            show_error(
-                "Dot - Missing Engine",
-                f"Inference engine binary not found in:\n{server_exe}\n\nPlease run setup.py first."
-            )
-            return
-
         model_info = config.get("models", {}).get(tier, {})
         model_fn = model_info.get("filename", "")
         mmproj_fn = model_info.get("mmproj", "")
         context_size = model_info.get("context_size", 8192)
-
-        model_path = os.path.join(bin_dir, model_fn)
-        if not os.path.exists(model_path):
-            show_error(
-                "Dot - Missing Model",
-                f"Model file '{model_fn}' was not found in bin/.\n\nPlease run setup.py to download or import it."
-            )
-            return
 
         gpu_args = ["-ngl", str(gpu_layers)] if backend == "cuda" else []
         engine_cmd = [

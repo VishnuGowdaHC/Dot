@@ -138,7 +138,24 @@ class DotInstaller(ctk.CTk):
         self.container = ctk.CTkFrame(self, corner_radius=12, fg_color=COLOR_PANEL)
         self.container.pack(fill="both", expand=True, padx=20, pady=20)
 
-        self.show_rig_analysis()
+        # Check if essentials are missing and route to the appropriate screen
+        bin_dir = os.path.join(BASE_DIR, "bin")
+        server_exe = os.path.join(bin_dir, "llama-server.exe")
+        tier = self.tier_var.get()
+        model_info = self.config.get("models", {}).get(tier, {})
+        model_fn = model_info.get("filename", "")
+        model_path = os.path.join(bin_dir, model_fn) if model_fn else ""
+        backend = self.backend_var.get()
+
+        if backend != "cloud" and os.path.exists(CONFIG_FILE):
+            if model_path and not os.path.exists(model_path):
+                self.show_model_files()
+            elif not os.path.exists(server_exe):
+                self.start_installation()
+            else:
+                self.show_rig_analysis()
+        else:
+            self.show_rig_analysis()
 
     # ----------------------------------------------------
     # CONFIG & HARDWARE PROBING
@@ -590,32 +607,33 @@ class DotInstaller(ctk.CTk):
             except Exception as pw_err:
                 log_error(f"Playwright browser install warning: {pw_err}")
 
-            # 3. Frontend npm install (skip if node_modules already exists)
+            # 3. Frontend verification (skip npm if pre-bundled)
             frontend_dir = os.path.join(BASE_DIR, "frontend")
-            nm_dir = os.path.join(frontend_dir, "node_modules")
-            if os.path.exists(os.path.join(frontend_dir, "package.json")):
-                if not os.path.exists(nm_dir) or len(os.listdir(nm_dir)) < 5:
-                    self.update_status("Installing frontend dependencies (npm install)...", 0.35)
-                    npm_cmd = shutil.which("npm") or "npm"
-                    subprocess.run([npm_cmd, "install"], cwd=frontend_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                else:
-                    self.update_status("Frontend dependencies verified...", 0.35)
+            frontend_res_candidates = [
+                os.path.join(frontend_dir, "bin", "resources.neu"),
+                os.path.join(frontend_dir, "resources.neu"),
+                os.path.join(frontend_dir, "out", "Dot", "resources.neu"),
+            ]
+            has_frontend_bundle = any(os.path.exists(p) for p in frontend_res_candidates)
 
-                # Ensure frontend is built and bundled for Neutralino desktop
-                frontend_res = os.path.join(frontend_dir, "bin", "resources.neu")
-                out_res = os.path.join(frontend_dir, "out", "Dot", "resources.neu")
-                dist_index = os.path.join(frontend_dir, "dist", "index.html")
-                if not os.path.exists(frontend_res) or not os.path.exists(out_res) or not os.path.exists(dist_index):
-                    self.update_status("Building Dot desktop application bundle...", 0.4)
+            if has_frontend_bundle:
+                self.update_status("Frontend desktop bundle verified...", 0.35)
+            elif os.path.exists(os.path.join(frontend_dir, "package.json")):
+                npm_cmd = shutil.which("npm")
+                if npm_cmd:
+                    nm_dir = os.path.join(frontend_dir, "node_modules")
+                    if not os.path.exists(nm_dir) or len(os.listdir(nm_dir)) < 5:
+                        self.update_status("Installing frontend dependencies...", 0.35)
+                        try:
+                            subprocess.run([npm_cmd, "install"], cwd=frontend_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                        except Exception as npm_err:
+                            log_error(f"npm install warning: {npm_err}")
+
+                npx_cmd = shutil.which("npx")
+                if npx_cmd:
                     try:
-                        npx_cmd = shutil.which("npx") or "npx"
+                        self.update_status("Building Dot desktop application bundle...", 0.4)
                         subprocess.run([npx_cmd, "-y", "@neutralinojs/neu", "build"], cwd=frontend_dir, shell=True, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                        if os.path.exists(out_res):
-                            shutil.copy2(out_res, frontend_res)
-                            shutil.copy2(out_res, os.path.join(frontend_dir, "resources.neu"))
-                            built_exe = os.path.join(frontend_dir, "out", "Dot", "Dot-win_x64.exe")
-                            if os.path.exists(built_exe):
-                                shutil.copy2(built_exe, os.path.join(frontend_dir, "bin", "Dot-win_x64.exe"))
                     except Exception as neu_err:
                         log_error(f"Neutralino build warning: {neu_err}")
 
