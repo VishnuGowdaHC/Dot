@@ -7,7 +7,7 @@
     "build:css": "tailwindcss -i ./src/input.css -o ./dist/output.css --minify",
     "watch:css": "tailwindcss -i ./src/input.css -o ./dist/output.css --watch",
     "neu": "neu run",
-    "build": "npm run build:css",
+    "build": "npm run build:css && npx @neutralinojs/neu build --release",
     "dev": "concurrently \"npm run watch:css\" \"neu run\"",
     "start": "concurrently \"npm run watch:css\" \"neu run\""
   },

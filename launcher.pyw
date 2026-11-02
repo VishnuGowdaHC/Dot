@@ -59,6 +59,21 @@ def acquire_single_instance_lock(name="Dot_SingleInstance_Mutex"):
     return mutex
 
 
+def focus_existing_window():
+    """Brings the active Dot window to the foreground."""
+    try:
+        user32 = ctypes.WinDLL("user32")
+        hwnd = user32.FindWindowW(None, "Dot")
+        if hwnd:
+            SW_RESTORE = 9
+            user32.ShowWindow(hwnd, SW_RESTORE)
+            user32.SetForegroundWindow(hwnd)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def find_python_exe():
     """Finds the bundled Python runtime or local virtual environment."""
     candidates = [
@@ -146,7 +161,7 @@ def check_essentials(config):
 def main():
     mutex = acquire_single_instance_lock()
     if not mutex:
-        show_error("Dot - Already Running", "Dot is already running on this system.")
+        focus_existing_window()
         return
 
     py_exe = find_python_exe()

@@ -34,13 +34,22 @@ def build_frontend(root_dir: Path, dist_frontend_dir: Path) -> None:
     src_frontend = root_dir / "frontend"
     log("Preparing frontend assets...")
 
+    # Build fresh Neutralino resources if npx is available
+    npx_cmd = shutil.which("npx")
+    if npx_cmd:
+        try:
+            log("Compiling Neutralino application bundle (neu build --release)...")
+            subprocess.run(["cmd", "/c", "npx", "@neutralinojs/neu", "build", "--release"], cwd=str(src_frontend), check=True)
+        except Exception as e:
+            log(f"neu build warning: {e}")
+
     dist_frontend_dir.mkdir(parents=True, exist_ok=True)
 
     # Candidate source binaries for Neutralino
     neu_candidates = [
+        src_frontend / "out" / "Dot" / "Dot-win_x64.exe",
         src_frontend / "bin" / "Dot-win_x64.exe",
         src_frontend / "bin" / "neutralino-win_x64.exe",
-        src_frontend / "out" / "Dot" / "Dot-win_x64.exe",
     ]
 
     binary_found = False
@@ -58,8 +67,8 @@ def build_frontend(root_dir: Path, dist_frontend_dir: Path) -> None:
 
     # Copy resources.neu
     neu_res_candidates = [
-        src_frontend / "bin" / "resources.neu",
         src_frontend / "out" / "Dot" / "resources.neu",
+        src_frontend / "bin" / "resources.neu",
         src_frontend / "resources.neu",
     ]
     res_found = False
