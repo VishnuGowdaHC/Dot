@@ -30,6 +30,7 @@ TEST_MODULES = [
     "tests.test_voice_subsystem",
     "tests.test_logging",
     "tests.test_memory_compactor",
+    "tests.test_github_guardrails",
 ]
 
 

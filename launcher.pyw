@@ -6,6 +6,7 @@ import socket
 import atexit
 import signal
 import subprocess
+import ctypes
 import tkinter as tk
 from tkinter import messagebox
 
@@ -47,8 +48,21 @@ except Exception:
     pass
 
 
+def acquire_single_instance_lock(name="Dot_SingleInstance_Mutex"):
+    """Acquires a named mutex to ensure only one instance runs."""
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    mutex = kernel32.CreateMutexW(None, False, name)
+    last_error = kernel32.GetLastError()
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        return None
+    return mutex
+
+
 def find_python_exe():
+    """Finds the bundled Python runtime or local virtual environment."""
     candidates = [
+        os.path.join(BASE_DIR, "runtime", "python.exe"),
+        os.path.join(BASE_DIR, "runtime", "pythonw.exe"),
         os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe"),
         os.path.join(BASE_DIR, ".venv", "Scripts", "pythonw.exe"),
     ]
@@ -77,6 +91,11 @@ def show_error(title, message):
 
 
 def main():
+    mutex = acquire_single_instance_lock()
+    if not mutex:
+        show_error("Dot - Already Running", "Dot is already running on this system.")
+        return
+
     if not os.path.exists(CONFIG_PATH):
         py_exe = find_python_exe()
         subprocess.run([py_exe, os.path.join(BASE_DIR, "setup.py")], cwd=BASE_DIR)
@@ -181,8 +200,9 @@ def main():
 
     # 3. Launch Frontend UI (Native Neutralino desktop app)
     neu_candidates = [
-        os.path.join(frontend_dir, "out", "Dot", "Dot-win_x64.exe"),
+        os.path.join(frontend_dir, "Dot-win_x64.exe"),
         os.path.join(frontend_dir, "bin", "Dot-win_x64.exe"),
+        os.path.join(frontend_dir, "out", "Dot", "Dot-win_x64.exe"),
         os.path.join(frontend_dir, "bin", "neutralino-win_x64.exe"),
     ]
 

@@ -66,6 +66,14 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
         elif tool_name.startswith("github_"):
             tool_service = "github"
 
+    if tool_service == "github" or tool_name.startswith("github_"):
+        from dot.config.settings import get_github_token
+        if not get_github_token():
+            raise RuntimeError(
+                "GitHub Personal Access Token (PAT) is missing. "
+                "Configure a valid GitHub PAT in Settings (3 dots > MCP Tools) or set the GITHUB_TOKEN environment variable."
+            )
+
     resolved_name = TOOL_ALIASES.get(tool_name, tool_name)
     raw_name = resolved_name
     if tool_service and resolved_name.startswith(f"{tool_service}_"):
@@ -85,7 +93,9 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
             result = await active_client.call_tool(name, tool_args or {})
             break
         except Exception as err:
-            last_error = err
+            # Preserve meaningful tool execution errors over fallback 'Unknown tool' errors
+            if last_error is None or "unknown tool" in str(last_error).lower():
+                last_error = err
 
     if result is None:
         raise RuntimeError(f"Tool '{tool_name}' failed to execute on server '{tool_service}': {last_error}")

@@ -465,7 +465,7 @@ async def fill(role: str, name: str, text: str) -> dict:
 
 
 @mcp.tool
-async def extract_text(role: str = None, name: str = None) -> dict:
+async def extract_text(role: str = None, name: str = None, url: str = None) -> dict:
     """
     Read and extract the visible text content from the active webpage.
     To read the full article or page, call this with NO arguments.
@@ -474,12 +474,19 @@ async def extract_text(role: str = None, name: str = None) -> dict:
     Args:
         role (str, optional): The HTML tag or role of a specific element to extract from. Defaults to None.
         name (str, optional): The accessible name or text of a specific element to extract from. Defaults to None.
+        url (str, optional): Target URL to navigate to before extraction if different from active page.
         
     Returns:
         dict: A status dictionary where 'detail' contains the extracted text string.
     """
     try:
         page = await _ensure_browser()
+        if url and (page.url != url and not (page.url or "").rstrip('/').endswith(url.rstrip('/'))):
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            except Exception:
+                pass
+
         text = None
         if role and name:
             try:

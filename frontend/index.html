@@ -26,13 +26,13 @@
       transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .settings-tab-btn.active {
-      border-color: #6366f1;
-      color: #818cf8;
-      background-color: rgba(99, 102, 241, 0.1);
+      border-color: #ffffff;
+      color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.08);
     }
   </style>
 </head>
-<body class="bg-transparent overflow-hidden select-none font-sans text-slate-100 h-screen w-screen relative m-0 p-0">
+<body class="bg-transparent overflow-hidden select-none font-sans text-zinc-100 h-screen w-screen relative m-0 p-0">
 
   <!-- Transparent Padding Container: 12px margin on all sides ensures rounded corners & glow never clip -->
   <div class="absolute inset-0 p-3 flex flex-col justify-end pointer-events-none">
@@ -41,11 +41,11 @@
     <div
       id="corner-shell"
       class="w-full relative flex flex-col justify-end overflow-visible pointer-events-auto transition-all"
-      style="height: 154px; border-radius: 36px; background: linear-gradient(135deg, rgba(28, 35, 63, 0.72) 0%, rgba(19, 25, 47, 0.84) 50%, rgba(12, 16, 32, 0.92) 100%); backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%); -webkit-mask-image: radial-gradient(ellipse 95% 95% at 50% 50%, black 45%, rgba(0, 0, 0, 0.82) 62%, rgba(0, 0, 0, 0.25) 84%, transparent 100%); mask-image: radial-gradient(ellipse 95% 95% at 50% 50%, black 45%, rgba(0, 0, 0, 0.82) 62%, rgba(0, 0, 0, 0.25) 84%, transparent 100%); box-shadow: 0 20px 50px -10px rgba(0,0,0,0.6), 0 0 50px 8px rgba(129,140,248,0.22);"
+      style="height: 154px; border-radius: 36px; background: linear-gradient(145deg, rgba(28, 28, 28, 0.94) 0%, rgba(18, 18, 18, 0.96) 50%, rgba(10, 10, 10, 0.98) 100%); backdrop-filter: blur(28px) grayscale(100%); -webkit-backdrop-filter: blur(28px) grayscale(100%); -webkit-mask-image: radial-gradient(ellipse 95% 95% at 50% 50%, black 45%, rgba(0, 0, 0, 0.82) 62%, rgba(0, 0, 0, 0.25) 84%, transparent 100%); mask-image: radial-gradient(ellipse 95% 95% at 50% 50%, black 45%, rgba(0, 0, 0, 0.82) 62%, rgba(0, 0, 0, 0.25) 84%, transparent 100%); box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.85), 0 0 50px 4px rgba(255, 255, 255, 0.02);"
     >
 
-      <!-- Soft Ambient Outer Glow Aura -->
-      <div class="absolute -inset-8 bg-[radial-gradient(ellipse_at_70%_70%,rgba(129,140,248,0.38),rgba(99,102,241,0.18)_45%,transparent_75%)] blur-3xl pointer-events-none z-0 rounded-[48px]"></div>
+      <!-- Soft Ambient Outer Glow Aura (Strictly Monochrome) -->
+      <div class="absolute -inset-8 bg-[radial-gradient(ellipse_at_50%_50%,rgba(255,255,255,0.05),rgba(255,255,255,0.01)_50%,transparent_75%)] blur-3xl pointer-events-none z-0 rounded-[48px]"></div>
 
       <!-- S-Curve Organic Top Boundary Canvas -->
       <svg id="scurve-svg" class="absolute top-0 left-0 right-0 w-full h-10 pointer-events-none z-1" viewBox="0 0 416 40" preserveAspectRatio="none" fill="none">
@@ -61,12 +61,12 @@
             </feMerge>
           </filter>
 
-          <!-- Specular Edge Gradient along the S-Curve -->
+          <!-- Specular Chrome Gradient along the S-Curve -->
           <linearGradient id="edgeGrad" x1="0" y1="0" x2="416" y2="0" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#818cf8" stop-opacity="0.15" />
-            <stop offset="30%" stop-color="#818cf8" stop-opacity="0.95" />
-            <stop offset="70%" stop-color="#a78bfa" stop-opacity="0.85" />
-            <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.30" />
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12" />
+            <stop offset="35%" stop-color="#ffffff" stop-opacity="0.92" />
+            <stop offset="70%" stop-color="#d1d5db" stop-opacity="0.75" />
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0.25" />
           </linearGradient>
         </defs>
 
@@ -91,15 +91,15 @@
 
       <!-- Top Window Drag Handle & Minimal Header (Visible on hover) -->
       <div id="drag-handle" class="absolute top-0 left-0 right-0 h-7 flex items-center justify-between px-3 z-30 cursor-move opacity-0 hover:opacity-100 transition-opacity duration-200">
-        <div class="flex items-center gap-1.5 text-[9.5px] font-mono text-slate-400">
-          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_#818cf8]"></span>
+        <div class="flex items-center gap-1.5 text-[9.5px] font-mono text-zinc-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"></span>
           <span>Dot Assistant</span>
         </div>
         <div class="flex items-center gap-1">
-          <button id="btn-minimize" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Minimize / Collapse">
+          <button id="btn-minimize" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Minimize / Collapse">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           </button>
-          <button id="btn-close" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-slate-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer" title="Close">
+          <button id="btn-close" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Close">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
@@ -112,18 +112,18 @@
 
       <!-- Active Thinking Indicator Line -->
       <div id="thinking-container" class="hidden px-4 py-0.5 z-10">
-        <div class="inline-flex items-center gap-1.5 bg-[#14192b]/85 border border-slate-700/60 px-2.5 py-0.5 rounded-lg text-[11px] font-mono">
-          <span class="text-indigo-400 text-[9.5px] font-semibold uppercase tracking-wider">thinking</span>
-          <span class="text-slate-500">:</span>
-          <span id="thinking-text" class="text-slate-300">processing request...</span>
+        <div class="inline-flex items-center gap-1.5 bg-[#141416]/90 border border-white/8 px-2.5 py-0.5 rounded-lg text-[11px] font-mono shadow-sm">
+          <span class="text-white text-[9.5px] font-semibold uppercase tracking-wider">thinking</span>
+          <span class="text-zinc-600">:</span>
+          <span id="thinking-text" class="text-zinc-300">processing request...</span>
         </div>
       </div>
 
       <!-- Active Voice Recording Banner -->
       <div id="voice-banner" class="hidden px-4 py-0.5 z-10">
-        <div class="bg-rose-950/40 border border-rose-800/80 text-rose-200 px-2.5 py-1 rounded-xl text-[11px] font-mono flex items-center justify-between animate-pulse">
+        <div class="bg-zinc-900 border border-white/20 text-white px-2.5 py-1 rounded-xl text-[11px] font-mono flex items-center justify-between animate-pulse">
           <span>Recording audio...</span>
-          <span>Release <kbd class="px-1 py-0.2 rounded bg-rose-900/60 border border-rose-700 text-white text-[9px]">Alt</kbd></span>
+          <span>Release <kbd class="px-1 py-0.2 rounded bg-white/10 border border-white/20 text-white text-[9px]">Alt</kbd></span>
         </div>
       </div>
 
@@ -134,33 +134,37 @@
         <div class="flex items-center justify-between gap-2 font-mono">
 
           <!-- Token Bar -->
-          <div class="flex-1 h-7 px-2.5 bg-[#1e2640]/65 border border-white/10 rounded-xl backdrop-blur-md flex items-center justify-between text-xs shadow-sm">
+          <div class="flex-1 h-7 px-2.5 bg-[#1a1a1d]/80 border border-white/8 rounded-xl backdrop-blur-md flex items-center justify-between text-xs shadow-sm">
             <div class="flex items-center gap-1.5">
               <span class="relative flex h-1.5 w-1.5">
                 <span class="pulse-anim absolute inline-flex h-full w-full rounded-full opacity-60 bg-emerald-400"></span>
                 <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
               </span>
-              <span class="text-slate-400 text-[10px]">Context:</span>
-              <span class="text-slate-100 font-semibold text-[10px]">
+              <span class="text-zinc-400 text-[10px]">Context:</span>
+              <span class="text-white font-semibold text-[10px]">
                 <span id="token-val">924</span>
-                <span class="text-slate-500 font-normal"> / <span id="token-limit">8,192</span></span>
+                <span class="text-zinc-500 font-normal"> / <span id="token-limit">8,192</span></span>
               </span>
-              <span id="typing-badge" class="hidden text-[9px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-1 rounded animate-pulse">
+              <span id="typing-badge" class="hidden text-[9px] bg-white/10 text-white border border-white/20 px-1 rounded animate-pulse">
                 +0
               </span>
             </div>
 
             <div class="flex items-center gap-1.5">
-              <!-- Browser Toggle Button -->
-              <button id="btn-browser-toggle" type="button" class="flex items-center gap-1 px-1.5 py-0.2 rounded text-[9.5px] bg-indigo-500/15 border border-indigo-500/30 text-indigo-200 hover:bg-indigo-500/25 transition-all cursor-pointer" title="Toggle Browser Headless / GUI Mode">
-                <span>🌐</span>
+              <!-- Browser Toggle Button (SVG Icon, Zero Emoji) -->
+              <button id="btn-browser-toggle" type="button" class="group flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] bg-white/5 border border-white/8 text-zinc-300 hover:bg-white/10 hover:text-white transition-all cursor-pointer" title="Toggle Browser Headless / GUI Mode">
+                <svg class="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
                 <span id="browser-label">Headless</span>
               </button>
             </div>
           </div>
 
           <!-- 3-Dots Settings Button -->
-          <button id="btn-settings" type="button" class="w-7 h-7 rounded-xl bg-[#1e2640]/65 border border-white/10 backdrop-blur-md flex items-center justify-center text-slate-400 hover:text-white hover:bg-[#2d3860]/85 transition-all cursor-pointer shadow-sm shrink-0" title="Settings (Model, Cloud, MCP)">
+          <button id="btn-settings" type="button" class="w-7 h-7 rounded-xl bg-[#1a1a1d]/80 border border-white/8 backdrop-blur-md flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer shadow-sm shrink-0" title="Settings (Model, Cloud, MCP)">
             <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
               <circle cx="12" cy="5" r="2" />
               <circle cx="12" cy="12" r="2" />
@@ -171,10 +175,10 @@
         </div>
 
         <!-- Lower Tier: Input Pill -->
-        <div id="input-pill" class="h-12 rounded-full bg-[#1e2642]/75 border border-white/12 shadow-[0_8px_24px_rgba(5,8,20,0.45),0_1px_0_rgba(255,255,255,0.14)_inset] backdrop-blur-xl flex items-center px-3.5 gap-2.5 transition-all duration-200 focus-within:border-indigo-400/50 focus-within:shadow-[0_10px_28px_rgba(5,8,20,0.6),0_0_0_1px_rgba(129,140,248,0.35)]">
+        <div id="input-pill" class="h-12 rounded-full bg-[#161618]/90 border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.55),0_1px_0_rgba(255,255,255,0.08)_inset] backdrop-blur-xl flex items-center px-3.5 gap-2.5 transition-all duration-200 focus-within:border-white/60 focus-within:shadow-[0_10px_28px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.25)]">
 
           <!-- Attachment Button -->
-          <button id="btn-attach" type="button" class="text-slate-400 hover:text-slate-200 transition-colors cursor-pointer shrink-0" title="Attach file">
+          <button id="btn-attach" type="button" class="text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0" title="Attach file">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
             </svg>
@@ -185,30 +189,31 @@
             id="user-input"
             type="text"
             placeholder="Ask or command Dot..."
-            class="min-w-0 flex-1 bg-transparent text-[13.5px] text-white placeholder-slate-400 outline-none font-sans"
+            class="min-w-0 flex-1 bg-transparent text-[13.5px] text-white placeholder-zinc-500 outline-none font-sans"
             autocomplete="off"
           />
 
-          <!-- Right Side: Voice Alt Badge + Luminous Gradient Orb -->
+          <!-- Right Side: Voice Alt Badge + Chrome Silver Orb -->
           <div class="flex items-center gap-2 shrink-0 font-mono">
-            <div id="voice-tag" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[9.5px] text-slate-300 transition-all select-none shrink-0" title="Hold Alt to speak">
+            <div id="voice-tag" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[9.5px] text-zinc-300 transition-all select-none shrink-0" title="Hold Alt to speak">
               <span>Hold</span>
               <kbd class="font-semibold text-white">Alt</kbd>
             </div>
 
             <div
               id="dot-orb"
-              class="w-6 h-6 rounded-full bg-gradient-to-br from-[#f472b6] via-[#a78bfa] to-[#60a5fa] shadow-[0_0_12px_rgba(167,139,250,0.75),0_0_22px_rgba(96,165,250,0.4)] cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95 shrink-0"
+              class="w-6 h-6 rounded-full shadow-[0_0_12px_rgba(255,255,255,0.45),0_0_20px_rgba(255,255,255,0.2)] cursor-pointer transition-transform duration-200 hover:scale-110 active:scale-95 shrink-0"
+              style="background: radial-gradient(circle at 35% 35%, #ffffff 0%, #e4e4e7 25%, #a1a1aa 50%, #52525b 75%, #18181b 100%);"
               title="Dot Core Engine"
             ></div>
           </div>
 
         </div>
 
-        <!-- Sub-footer hints -->
-        <div class="flex items-center justify-between px-1.5 text-[9px] font-mono text-slate-400 select-none">
-          <span>Hold <kbd class="border border-slate-700 bg-slate-800/80 px-1 py-0.2 rounded text-slate-300">Alt</kbd> for voice</span>
-          <span>Press <kbd class="border border-slate-700 bg-slate-800/80 px-1 py-0.2 rounded text-slate-300">Enter</kbd> to send</span>
+        <!-- Sub-footer hints (Zero em dashes) -->
+        <div class="flex items-center justify-between px-1.5 text-[9px] font-mono text-zinc-400 select-none">
+          <span>Hold <kbd class="border border-white/10 bg-white/5 px-1 py-0.2 rounded text-zinc-300">Alt</kbd> for voice</span>
+          <span>Press <kbd class="border border-white/10 bg-white/5 px-1 py-0.2 rounded text-zinc-300">Enter</kbd> to send</span>
         </div>
 
       </div>
@@ -218,32 +223,57 @@
   </div>
 
   <!-- Settings Modal Dialog (Complete 3-Tab Settings Dialog) -->
-  <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-md items-center justify-center p-3 animate-in fade-in duration-150">
-    <div class="w-full max-w-sm bg-[#131728]/95 border border-white/12 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] font-sans text-xs">
+  <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-md items-center justify-center p-3 animate-in fade-in duration-150">
+    <div class="w-full max-w-sm bg-[#18181b]/98 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] font-sans text-xs">
       
-      <!-- Modal Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-white/8 bg-[#171c32]">
+      <!-- Modal Header (Zero Emoji) -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-white/8 bg-[#1f1f22]">
         <div class="flex items-center gap-2">
-          <div class="w-6 h-6 rounded-lg bg-indigo-600/25 border border-indigo-500/40 flex items-center justify-center text-indigo-400 text-xs">
-            ⚙️
+          <div class="w-6 h-6 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center text-white text-xs">
+            <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
           </div>
           <h3 class="font-semibold text-white text-sm">Dot Settings</h3>
         </div>
-        <button id="btn-close-settings" type="button" class="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Close">✕</button>
+        <button id="btn-close-settings" type="button" class="w-6 h-6 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Close">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
-      <!-- Tab Navigation Bar -->
-      <div class="flex items-center px-4 border-b border-white/8 bg-[#15192d] text-[11px] font-medium font-mono">
+      <!-- Tab Navigation Bar (Zero Emoji) -->
+      <div class="flex items-center px-4 border-b border-white/8 bg-[#1b1b1e] text-[11px] font-medium font-mono">
         <button id="tab-btn-model" type="button" class="settings-tab-btn active py-2 px-2.5 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer">
-          <span>🤖</span>
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <line x1="9" y1="1" x2="9" y2="4"></line>
+            <line x1="15" y1="1" x2="15" y2="4"></line>
+            <line x1="9" y1="20" x2="9" y2="23"></line>
+            <line x1="15" y1="20" x2="15" y2="23"></line>
+            <line x1="20" y1="9" x2="23" y2="9"></line>
+            <line x1="20" y1="14" x2="23" y2="14"></line>
+            <line x1="1" y1="9" x2="4" y2="9"></line>
+            <line x1="1" y1="14" x2="4" y2="14"></line>
+          </svg>
           <span>Model & Cloud</span>
         </button>
-        <button id="tab-btn-mcp" type="button" class="settings-tab-btn py-2 px-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer">
-          <span>⚡</span>
+        <button id="tab-btn-mcp" type="button" class="settings-tab-btn py-2 px-2.5 border-b-2 border-transparent text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
           <span>MCP Tools</span>
         </button>
-        <button id="tab-btn-browser" type="button" class="settings-tab-btn py-2 px-2.5 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer">
-          <span>🌐</span>
+        <button id="tab-btn-browser" type="button" class="settings-tab-btn py-2 px-2.5 border-b-2 border-transparent text-zinc-400 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
           <span>Browser</span>
         </button>
       </div>
@@ -256,69 +286,69 @@
           
           <!-- Backend Mode Switcher -->
           <div>
-            <label class="block text-[10.5px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Inference Backend</label>
+            <label class="block text-[10.5px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Inference Backend</label>
             <div class="grid grid-cols-2 gap-2">
-              <button id="btn-backend-local" type="button" class="p-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-white text-left transition-all cursor-pointer">
+              <button id="btn-backend-local" type="button" class="p-2.5 rounded-xl border border-white bg-white/10 text-white text-left transition-all cursor-pointer">
                 <div class="font-semibold text-xs flex items-center justify-between">
                   <span>Local llama-server</span>
-                  <span id="badge-local-active" class="text-[9.5px] text-indigo-400 font-mono">Active</span>
+                  <span id="badge-local-active" class="text-[9.5px] text-white font-mono font-medium">Active</span>
                 </div>
-                <p class="text-[10px] text-slate-400 mt-0.5">Private offline inference on local GPU/CPU.</p>
+                <p class="text-[10px] text-zinc-400 mt-0.5">Private offline inference on local GPU/CPU.</p>
               </button>
 
-              <button id="btn-backend-cloud" type="button" class="p-2.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-left transition-all cursor-pointer hover:border-slate-600">
+              <button id="btn-backend-cloud" type="button" class="p-2.5 rounded-xl border border-white/10 bg-white/5 text-zinc-300 text-left transition-all cursor-pointer hover:border-white/20">
                 <div class="font-semibold text-xs flex items-center justify-between">
                   <span>Cloud API Endpoint</span>
-                  <span id="badge-cloud-active" class="hidden text-[9.5px] text-indigo-400 font-mono">Active</span>
+                  <span id="badge-cloud-active" class="hidden text-[9.5px] text-white font-mono font-medium">Active</span>
                 </div>
-                <p class="text-[10px] text-slate-400 mt-0.5">OpenAI, OpenRouter, Groq, DeepSeek.</p>
+                <p class="text-[10px] text-zinc-400 mt-0.5">OpenAI, OpenRouter, Groq, DeepSeek.</p>
               </button>
             </div>
           </div>
 
           <!-- Local Configuration Options -->
-          <div id="pane-local-config" class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2.5">
+          <div id="pane-local-config" class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2.5">
             <div>
-              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">Local Model Tier</label>
-              <select id="select-tier" class="w-full bg-[#0e1222] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none font-mono">
+              <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">Local Model Tier</label>
+              <select id="select-tier" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none font-mono focus:border-white focus:ring-1 focus:ring-white/20">
                 <option value="2B">2B Tier (Fastest, 8K Context)</option>
                 <option value="4B" selected>4B Tier (Balanced Standard, 8K Context)</option>
                 <option value="12B">12B Tier (Heavy Reasoning, 4K Context)</option>
               </select>
             </div>
-            <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-0.5">
+            <div class="flex items-center justify-between text-[10px] font-mono text-zinc-400 pt-0.5">
               <span>Hardware Acceleration:</span>
-              <span id="label-accel-backend" class="uppercase text-slate-200 font-semibold">CUDA</span>
+              <span id="label-accel-backend" class="uppercase text-white font-semibold">CUDA</span>
             </div>
           </div>
 
           <!-- Cloud API Configuration Options -->
-          <div id="pane-cloud-config" class="hidden p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2.5">
+          <div id="pane-cloud-config" class="hidden p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2.5">
             <!-- Preset Selector -->
             <div>
-              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">Provider Preset</label>
+              <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">Provider Preset</label>
               <div id="preset-buttons-container" class="flex flex-wrap gap-1.5">
-                <button type="button" data-preset="openai" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-indigo-600 text-white cursor-pointer">OpenAI</button>
-                <button type="button" data-preset="openrouter" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">OpenRouter</button>
-                <button type="button" data-preset="groq" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">Groq</button>
-                <button type="button" data-preset="deepseek" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">DeepSeek</button>
-                <button type="button" data-preset="custom" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer">Custom</button>
+                <button type="button" data-preset="openai" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white text-black font-semibold cursor-pointer">OpenAI</button>
+                <button type="button" data-preset="openrouter" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">OpenRouter</button>
+                <button type="button" data-preset="groq" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">Groq</button>
+                <button type="button" data-preset="deepseek" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">DeepSeek</button>
+                <button type="button" data-preset="custom" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">Custom</button>
               </div>
             </div>
 
             <!-- Base URL -->
             <div>
-              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">Base URL</label>
-              <input id="input-cloud-baseurl" type="text" placeholder="https://api.openai.com/v1" class="w-full bg-[#0e1222] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
+              <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">Base URL</label>
+              <input id="input-cloud-baseurl" type="text" placeholder="https://api.openai.com/v1" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
             </div>
 
             <!-- Model Name -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="block text-[10.5px] font-medium text-slate-300">Model Name</label>
-                <span class="text-[9.5px] text-slate-500">Customizable</span>
+                <label class="block text-[10.5px] font-medium text-zinc-300">Model Name</label>
+                <span class="text-[9.5px] text-zinc-500">Customizable</span>
               </div>
-              <input id="input-cloud-model" type="text" placeholder="e.g. gpt-4o-mini" class="w-full bg-[#0e1222] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
+              <input id="input-cloud-model" type="text" placeholder="e.g. gpt-4o-mini" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
               <!-- Suggestion Chips Container -->
               <div id="model-suggestions-container" class="flex flex-wrap gap-1 mt-1.5">
                 <!-- Dynamically updated -->
@@ -327,12 +357,12 @@
 
             <!-- API Key -->
             <div>
-              <label class="block text-[10.5px] font-medium text-slate-300 mb-1">API Key</label>
+              <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">API Key</label>
               <div class="relative">
-                <input id="input-cloud-apikey" type="password" placeholder="sk-..." class="w-full bg-[#0e1222] border border-slate-700 rounded-lg pl-2.5 pr-12 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
-                <button id="btn-toggle-apikey" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
+                <input id="input-cloud-apikey" type="password" placeholder="sk-..." class="w-full bg-[#0f0f11] border border-white/10 rounded-lg pl-2.5 pr-12 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
+                <button id="btn-toggle-apikey" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
               </div>
-              <p class="text-[9.5px] text-slate-500 mt-1">Stored locally in appConfig.json and never logged.</p>
+              <p class="text-[9.5px] text-zinc-500 mt-1">Stored locally in appConfig.json and never logged.</p>
             </div>
           </div>
 
@@ -342,57 +372,65 @@
         <div id="tab-pane-mcp" class="hidden space-y-3">
           
           <!-- GitHub PAT Configuration -->
-          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+          <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5">
-                <svg class="w-4 h-4 fill-slate-300" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 fill-zinc-300" viewBox="0 0 24 24">
                   <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
                 </svg>
                 <span class="font-semibold text-xs text-white">GitHub Token (PAT)</span>
               </div>
-              <span id="badge-github-status" class="text-[9px] font-mono px-1.5 py-0.2 rounded border bg-amber-500/15 text-amber-400 border-amber-500/30">
+              <span id="badge-github-status" class="text-[9px] font-mono px-1.5 py-0.2 rounded border bg-white/10 text-zinc-300 border-white/20">
                 Missing
               </span>
             </div>
-            <p class="text-[10px] text-slate-400">Required for GitHub MCP tools (issues, PRs, repos, commits).</p>
+            <p class="text-[10px] text-zinc-400">Required for GitHub MCP tools (issues, PRs, repos, commits).</p>
 
             <div class="relative">
-              <input id="input-github-token" type="password" placeholder="ghp_... or github_pat_..." class="w-full bg-[#0e1222] border border-slate-700 rounded-lg pl-2.5 pr-12 py-1 text-xs text-slate-200 font-mono outline-none focus:border-indigo-400" />
-              <button id="btn-toggle-ghtoken" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
+              <input id="input-github-token" type="password" placeholder="ghp_... or github_pat_..." class="w-full bg-[#0f0f11] border border-white/10 rounded-lg pl-2.5 pr-12 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
+              <button id="btn-toggle-ghtoken" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
             </div>
-            <div class="flex items-center justify-between text-[9.5px] text-slate-500 pt-0.5">
+            <div class="flex items-center justify-between text-[9.5px] text-zinc-500 pt-0.5">
               <span>Saved locally in appConfig.json</span>
-              <a href="https://github.com/settings/tokens" target="_blank" class="text-indigo-400 hover:underline">Get Token ↗</a>
+              <a href="https://github.com/settings/tokens" target="_blank" class="text-zinc-300 hover:text-white underline inline-flex items-center gap-1">
+                <span>Get Token</span>
+                <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="7" y1="17" x2="17" y2="7"></line>
+                  <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+              </a>
             </div>
           </div>
 
           <!-- Active MCP Servers List -->
           <div>
             <div class="flex items-center justify-between mb-1.5">
-              <label class="block text-[10.5px] font-semibold text-slate-300 uppercase tracking-wider">Active MCP Servers</label>
-              <span id="count-mcp-servers" class="text-[10px] font-mono text-slate-400">0 servers</span>
+              <label class="block text-[10.5px] font-semibold text-zinc-300 uppercase tracking-wider">Active MCP Servers</label>
+              <span id="count-mcp-servers" class="text-[10px] font-mono text-zinc-400">0 servers</span>
             </div>
             <div id="mcp-servers-list" class="space-y-1.5">
               <!-- Dynamically populated -->
-              <div class="p-2.5 bg-[#151a30] border border-white/8 rounded-xl flex items-center justify-between text-xs font-mono text-slate-400">
+              <div class="p-2.5 bg-[#141416] border border-white/8 rounded-xl flex items-center justify-between text-xs font-mono text-zinc-400">
                 <span>Loading servers...</span>
               </div>
             </div>
           </div>
 
           <!-- Sync Action Button -->
-          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+          <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2">
             <div class="flex items-center justify-between">
               <div>
                 <h4 class="text-xs font-semibold text-white">Sync Tool Registry</h4>
-                <p class="text-[9.5px] text-slate-400">Fetch schemas & reindex ChromaDB vector store.</p>
+                <p class="text-[9.5px] text-zinc-400">Fetch schemas & reindex ChromaDB vector store.</p>
               </div>
-              <button id="btn-sync-mcp" type="button" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-sm">
-                <span>⚡</span>
+              <button id="btn-sync-mcp" type="button" class="px-3 py-1.5 bg-white hover:bg-zinc-200 active:bg-zinc-300 active:scale-95 text-black rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm">
+                <svg class="w-3.5 h-3.5 fill-black text-black" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
                 <span>Sync Tools</span>
               </button>
             </div>
-            <div id="mcp-sync-status" class="text-[10px] font-mono text-slate-400"></div>
+            <div id="mcp-sync-status" class="text-[10px] font-mono text-zinc-400"></div>
           </div>
 
         </div>
@@ -401,26 +439,26 @@
         <div id="tab-pane-browser" class="hidden space-y-3">
           
           <!-- Browser Mode -->
-          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
+          <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2">
             <div class="flex items-center justify-between">
               <div>
                 <h4 class="text-xs font-semibold text-white">Headless Browser</h4>
-                <p class="text-[10px] text-slate-400">Playwright automates silently without opening a visible browser.</p>
+                <p class="text-[10px] text-zinc-400">Playwright automates silently without opening a visible browser.</p>
               </div>
-              <input type="checkbox" id="chk-browser-headless" class="cursor-pointer w-4 h-4 accent-indigo-600" />
+              <input type="checkbox" id="chk-browser-headless" class="cursor-pointer w-4 h-4 accent-white" />
             </div>
-            <div class="pt-1.5 border-t border-white/8 flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <div class="pt-1.5 border-t border-white/8 flex items-center justify-between text-[10px] font-mono text-zinc-400">
               <span>CDP Port 9222:</span>
-              <span id="label-cdp-status" class="text-emerald-400 font-semibold">Active</span>
+              <span id="label-cdp-status" class="text-zinc-200 font-semibold">Active</span>
             </div>
           </div>
 
           <!-- Desktop Position -->
-          <div class="p-3 bg-[#151a30] border border-white/8 rounded-xl space-y-2">
-            <label class="block text-[10.5px] font-semibold text-slate-300 uppercase tracking-wider">Desktop Dock Position</label>
+          <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2">
+            <label class="block text-[10.5px] font-semibold text-zinc-300 uppercase tracking-wider">Desktop Dock Position</label>
             <div class="flex gap-2">
-              <button id="btn-dock-bottom" type="button" class="flex-1 py-1.5 bg-indigo-600/30 border border-indigo-500/50 rounded-lg text-indigo-200 text-xs font-medium cursor-pointer">Bottom-Right</button>
-              <button id="btn-dock-top" type="button" class="flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 text-xs font-medium cursor-pointer hover:bg-slate-700">Top-Right</button>
+              <button id="btn-dock-bottom" type="button" class="flex-1 py-1.5 bg-white/20 border border-white rounded-lg text-white text-xs font-medium cursor-pointer">Bottom-Right</button>
+              <button id="btn-dock-top" type="button" class="flex-1 py-1.5 bg-white/5 border border-white/10 rounded-lg text-zinc-400 text-xs font-medium cursor-pointer hover:bg-white/10 hover:text-white">Top-Right</button>
             </div>
           </div>
 
@@ -429,11 +467,11 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="flex items-center justify-between px-4 py-2.5 border-t border-white/8 bg-[#171c32]">
-        <div id="settings-status" class="text-[10px] font-mono text-slate-400 truncate max-w-[190px]"></div>
+      <div class="flex items-center justify-between px-4 py-2.5 border-t border-white/8 bg-[#1f1f22]">
+        <div id="settings-status" class="text-[10px] font-mono text-zinc-400 truncate max-w-[190px]"></div>
         <div class="flex items-center gap-2">
-          <button id="btn-cancel-settings" type="button" class="px-3 py-1 rounded-lg text-slate-400 hover:text-white text-xs cursor-pointer">Cancel</button>
-          <button id="btn-save-settings" type="button" class="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-xs shadow-sm cursor-pointer transition-colors">Save Changes</button>
+          <button id="btn-cancel-settings" type="button" class="px-3 py-1 rounded-lg text-zinc-400 hover:text-white text-xs cursor-pointer">Cancel</button>
+          <button id="btn-save-settings" type="button" class="px-3.5 py-1 bg-white hover:bg-zinc-200 active:bg-zinc-300 text-black rounded-lg font-semibold text-xs shadow-sm cursor-pointer transition-all">Save Changes</button>
         </div>
       </div>
 
@@ -742,10 +780,10 @@
       state.messages.forEach((msg) => {
         const bubble = document.createElement('div');
         if (msg.role === 'user') {
-          bubble.className = 'self-end max-w-[85%] bg-indigo-600 text-white px-3 py-1.5 rounded-2xl rounded-br-sm text-[12.5px] leading-relaxed shadow-sm font-sans';
+          bubble.className = 'self-end max-w-[85%] bg-[#27272a] border border-white/10 text-white px-3 py-1.5 rounded-2xl rounded-br-sm text-[12.5px] leading-relaxed shadow-sm font-sans';
           bubble.textContent = msg.content;
         } else {
-          bubble.className = 'self-start max-w-[90%] bg-[#1c233c]/85 border border-white/8 text-slate-200 px-3 py-2 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed backdrop-blur-md shadow-sm font-mono';
+          bubble.className = 'self-start max-w-[90%] bg-[#18181b]/92 border border-white/8 text-zinc-200 px-3 py-2 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed backdrop-blur-md shadow-sm font-mono';
           bubble.innerHTML = formatMarkdown(msg.content);
         }
         chatContainer.appendChild(bubble);
@@ -757,7 +795,7 @@
     function formatMarkdown(text) {
       if (!text) return '';
       const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return escaped.replace(/`([^`]+)`/g, '<code class="bg-black/40 border border-white/8 px-1 py-0.2 rounded text-[10.5px] text-indigo-300 font-mono">$1</code>')
+      return escaped.replace(/`([^`]+)`/g, '<code class="bg-white/10 border border-white/15 px-1 py-0.2 rounded text-[10.5px] text-zinc-200 font-mono">$1</code>')
                     .replace(/\n/g, '<br/>');
     }
 
@@ -777,10 +815,10 @@
             state.voiceStatus = payload.status;
             if (payload.status === "recording") {
               voiceBanner.classList.remove('hidden');
-              voiceTag.classList.add('bg-rose-800', 'text-white');
+              voiceTag.classList.add('bg-white', 'text-black');
             } else {
               voiceBanner.classList.add('hidden');
-              voiceTag.classList.remove('bg-rose-800', 'text-white');
+              voiceTag.classList.remove('bg-white', 'text-black');
             }
           } else if (payload.type === "voice_input") {
             state.messages.push({ role: "user", content: payload.text });
@@ -897,21 +935,21 @@
     function switchSettingsTab(tabName) {
       [tabBtnModel, tabBtnMcp, tabBtnBrowser].forEach(b => {
         b.classList.remove('active');
-        b.classList.add('border-transparent', 'text-slate-400');
+        b.classList.add('border-transparent', 'text-zinc-400');
       });
       [tabPaneModel, tabPaneMcp, tabPaneBrowser].forEach(p => p.classList.add('hidden'));
 
       if (tabName === 'model') {
         tabBtnModel.classList.add('active');
-        tabBtnModel.classList.remove('border-transparent', 'text-slate-400');
+        tabBtnModel.classList.remove('border-transparent', 'text-zinc-400');
         tabPaneModel.classList.remove('hidden');
       } else if (tabName === 'mcp') {
         tabBtnMcp.classList.add('active');
-        tabBtnMcp.classList.remove('border-transparent', 'text-slate-400');
+        tabBtnMcp.classList.remove('border-transparent', 'text-zinc-400');
         tabPaneMcp.classList.remove('hidden');
       } else if (tabName === 'browser') {
         tabBtnBrowser.classList.add('active');
-        tabBtnBrowser.classList.remove('border-transparent', 'text-slate-400');
+        tabBtnBrowser.classList.remove('border-transparent', 'text-zinc-400');
         tabPaneBrowser.classList.remove('hidden');
       }
     }
@@ -924,15 +962,15 @@
     function setBackendMode(mode) {
       state.settings.backend = mode;
       if (mode === 'cloud') {
-        btnBackendCloud.className = "p-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-white text-left transition-all cursor-pointer";
-        btnBackendLocal.className = "p-2.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-left transition-all cursor-pointer hover:border-slate-600";
+        btnBackendCloud.className = "p-2.5 rounded-xl border border-white bg-white/10 text-white text-left transition-all cursor-pointer";
+        btnBackendLocal.className = "p-2.5 rounded-xl border border-white/10 bg-white/5 text-zinc-400 text-left transition-all cursor-pointer hover:border-white/20";
         badgeCloudActive.classList.remove('hidden');
         badgeLocalActive.classList.add('hidden');
         paneCloudConfig.classList.remove('hidden');
         paneLocalConfig.classList.add('hidden');
       } else {
-        btnBackendLocal.className = "p-2.5 rounded-xl border border-indigo-500 bg-indigo-600/20 text-white text-left transition-all cursor-pointer";
-        btnBackendCloud.className = "p-2.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-left transition-all cursor-pointer hover:border-slate-600";
+        btnBackendLocal.className = "p-2.5 rounded-xl border border-white bg-white/10 text-white text-left transition-all cursor-pointer";
+        btnBackendCloud.className = "p-2.5 rounded-xl border border-white/10 bg-white/5 text-zinc-400 text-left transition-all cursor-pointer hover:border-white/20";
         badgeLocalActive.classList.remove('hidden');
         badgeCloudActive.classList.add('hidden');
         paneLocalConfig.classList.remove('hidden');
@@ -951,9 +989,9 @@
       // Update preset buttons visual
       document.querySelectorAll('.preset-btn').forEach(btn => {
         if (btn.dataset.preset === presetId) {
-          btn.className = "preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-indigo-600 text-white cursor-pointer";
+          btn.className = "preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white text-black font-semibold cursor-pointer";
         } else {
-          btn.className = "preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:text-white cursor-pointer";
+          btn.className = "preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer";
         }
       });
 
@@ -972,14 +1010,14 @@
       if (!models || models.length === 0) return;
 
       const label = document.createElement('span');
-      label.className = "text-[9px] text-slate-500 font-mono self-center mr-1";
+      label.className = "text-[9px] text-zinc-500 font-mono self-center mr-1";
       label.textContent = "Suggestions:";
       modelSuggestionsContainer.appendChild(label);
 
       models.forEach(modelName => {
         const chip = document.createElement('button');
         chip.type = 'button';
-        chip.className = "px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white hover:border-indigo-400 transition-colors cursor-pointer";
+        chip.className = "px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white hover:border-white transition-colors cursor-pointer";
         chip.textContent = modelName;
         chip.addEventListener('click', () => {
           inputCloudModel.value = modelName;
@@ -1046,10 +1084,10 @@
 
           inputGithubToken.value = state.settings.github_token;
           if (state.settings.github_token) {
-            badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+            badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-white/20 text-white border-white/40";
             badgeGithubStatus.textContent = "Configured";
           } else {
-            badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-amber-500/15 text-amber-400 border-amber-500/30";
+            badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-white/10 text-zinc-400 border-white/20";
             badgeGithubStatus.textContent = "Missing";
           }
 
@@ -1064,17 +1102,17 @@
           countMcpServers.textContent = `${servers.length} active`;
           mcpServersList.innerHTML = '';
           if (servers.length === 0) {
-            mcpServersList.innerHTML = `<div class="p-2.5 bg-[#151a30] border border-white/8 rounded-xl text-center text-[10px] font-mono text-slate-500">No active MCP servers found</div>`;
+            mcpServersList.innerHTML = `<div class="p-2.5 bg-[#141416] border border-white/8 rounded-xl text-center text-[10px] font-mono text-zinc-500">No active MCP servers found</div>`;
           } else {
             servers.forEach(srv => {
               const item = document.createElement('div');
-              item.className = "p-2.5 bg-[#151a30] border border-white/8 rounded-xl flex items-center justify-between text-xs font-mono";
+              item.className = "p-2.5 bg-[#141416] border border-white/8 rounded-xl flex items-center justify-between text-xs font-mono";
               item.innerHTML = `
                 <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span class="font-semibold text-slate-200">${srv}</span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-white"></span>
+                  <span class="font-semibold text-zinc-200">${srv}</span>
                 </div>
-                <span class="text-[9.5px] text-slate-400 bg-white/5 px-1.5 py-0.2 rounded border border-white/5">stdio</span>
+                <span class="text-[9.5px] text-zinc-400 bg-white/5 px-1.5 py-0.2 rounded border border-white/5">stdio</span>
               `;
               mcpServersList.appendChild(item);
             });
@@ -1089,7 +1127,7 @@
     async function saveSettings() {
       btnSaveSettings.disabled = true;
       btnSaveSettings.textContent = "Saving...";
-      settingsStatus.className = "text-[10px] font-mono text-slate-400 truncate max-w-[190px]";
+      settingsStatus.className = "text-[10px] font-mono text-zinc-400 truncate max-w-[190px]";
       settingsStatus.textContent = "Saving...";
 
       const payload = {
@@ -1113,9 +1151,9 @@
         });
 
         if (res.ok) {
-          settingsStatus.className = "text-[10px] font-mono text-emerald-400 truncate max-w-[190px]";
+          settingsStatus.className = "text-[10px] font-mono text-white truncate max-w-[190px]";
           settingsStatus.textContent = "Saved successfully!";
-          btnSaveSettings.textContent = "Saved ✓";
+          btnSaveSettings.textContent = "Saved";
           setTimeout(() => {
             closeSettingsModal();
             btnSaveSettings.disabled = false;
@@ -1126,7 +1164,7 @@
           throw new Error(`Server returned ${res.status}`);
         }
       } catch (err) {
-        settingsStatus.className = "text-[10px] font-mono text-rose-400 truncate max-w-[190px]";
+        settingsStatus.className = "text-[10px] font-mono text-zinc-400 truncate max-w-[190px]";
         settingsStatus.textContent = `Error: ${err.message}`;
         btnSaveSettings.disabled = false;
         btnSaveSettings.textContent = "Save Changes";
@@ -1136,8 +1174,8 @@
     // MCP Sync Registry
     async function syncMcpRegistry() {
       btnSyncMcp.disabled = true;
-      btnSyncMcp.innerHTML = `<span class="w-2.5 h-2.5 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block"></span> <span>Syncing...</span>`;
-      mcpSyncStatus.className = "text-[10px] font-mono text-slate-400";
+      btnSyncMcp.innerHTML = `<span class="w-2.5 h-2.5 border-2 border-black/30 border-t-black rounded-full animate-spin inline-block"></span> <span>Syncing...</span>`;
+      mcpSyncStatus.className = "text-[10px] font-mono text-zinc-400";
       mcpSyncStatus.textContent = "Syncing tools with ChromaDB...";
 
       try {
@@ -1154,19 +1192,19 @@
         const res = await fetch("http://localhost:3000/api/mcp/sync", { method: "POST" });
         const data = await res.json();
         if (data.status === "ok") {
-          mcpSyncStatus.className = "text-[10px] font-mono text-emerald-400";
+          mcpSyncStatus.className = "text-[10px] font-mono text-white";
           const services = (data.services || []).join(", ") || "tools ready";
           mcpSyncStatus.textContent = `Active services: ${services}`;
         } else {
-          mcpSyncStatus.className = "text-[10px] font-mono text-rose-400";
+          mcpSyncStatus.className = "text-[10px] font-mono text-zinc-400";
           mcpSyncStatus.textContent = data.message || "Sync failed";
         }
       } catch (err) {
-        mcpSyncStatus.className = "text-[10px] font-mono text-rose-400";
+        mcpSyncStatus.className = "text-[10px] font-mono text-zinc-400";
         mcpSyncStatus.textContent = `Error: ${err.message}`;
       } finally {
         btnSyncMcp.disabled = false;
-        btnSyncMcp.innerHTML = `<span>⚡</span> <span>Sync Tools</span>`;
+        btnSyncMcp.innerHTML = `<svg class="w-3.5 h-3.5 fill-black text-black" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg> <span>Sync Tools</span>`;
       }
     }
 
@@ -1205,14 +1243,14 @@
     // Dock selection
     btnDockBottom.addEventListener('click', () => {
       state.currentDock = 'bottom';
-      btnDockBottom.className = "flex-1 py-1.5 bg-indigo-600/30 border border-indigo-500/50 rounded-lg text-indigo-200 text-xs font-medium cursor-pointer";
-      btnDockTop.className = "flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 text-xs font-medium cursor-pointer hover:bg-slate-700";
+      btnDockBottom.className = "flex-1 py-1.5 bg-white/20 border border-white rounded-lg text-white text-xs font-medium cursor-pointer transition-colors";
+      btnDockTop.className = "flex-1 py-1.5 bg-white/5 border border-white/10 rounded-lg text-zinc-400 text-xs font-medium cursor-pointer hover:bg-white/10 hover:text-white transition-colors";
       dockWindow(null, true);
     });
     btnDockTop.addEventListener('click', () => {
       state.currentDock = 'top';
-      btnDockTop.className = "flex-1 py-1.5 bg-indigo-600/30 border border-indigo-500/50 rounded-lg text-indigo-200 text-xs font-medium cursor-pointer";
-      btnDockBottom.className = "flex-1 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 text-xs font-medium cursor-pointer hover:bg-slate-700";
+      btnDockTop.className = "flex-1 py-1.5 bg-white/20 border border-white rounded-lg text-white text-xs font-medium cursor-pointer transition-colors";
+      btnDockBottom.className = "flex-1 py-1.5 bg-white/5 border border-white/10 rounded-lg text-zinc-400 text-xs font-medium cursor-pointer hover:bg-white/10 hover:text-white transition-colors";
       dockWindow(null, true);
     });
 

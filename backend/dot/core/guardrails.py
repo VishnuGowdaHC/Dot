@@ -35,13 +35,25 @@ def check_guardrails(step_obj: Any) -> Optional[str]:
     action = getattr(step_obj, "action", None)
 
     if action == "Tool":
-        if not is_real_value(getattr(step_obj, "get_tool", None)):
+        tool_query = getattr(step_obj, "get_tool", None)
+        tool_service = getattr(step_obj, "tool_service", None)
+        if not is_real_value(tool_query):
             return "action='Tool' requires a search query in the payload. Example: {'query': 'search'}"
+        if tool_service == "github" or (tool_query and "github" in str(tool_query).lower()):
+            from dot.config.settings import get_github_token
+            if not get_github_token():
+                return "GitHub Personal Access Token (PAT) is missing. Configure a valid GitHub PAT in Settings (3 dots > MCP Tools) or set the GITHUB_TOKEN environment variable."
         return None
 
     if action == "Tool-exec":
-        if not getattr(step_obj, "tool_name", None):
+        tool_name = getattr(step_obj, "tool_name", None) or ""
+        tool_service = getattr(step_obj, "tool_service", None) or ""
+        if not tool_name:
             return "action='Tool-exec' requires a 'name' in the payload."
+        if tool_service == "github" or tool_name.startswith("github_"):
+            from dot.config.settings import get_github_token
+            if not get_github_token():
+                return "GitHub Personal Access Token (PAT) is missing. Configure a valid GitHub PAT in Settings (3 dots > MCP Tools) or set the GITHUB_TOKEN environment variable."
         return None
 
     return None

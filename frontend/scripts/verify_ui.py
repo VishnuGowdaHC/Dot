@@ -78,6 +78,20 @@ def verify_ui():
         page.screenshot(path=SETTINGS_SCREENSHOT, omit_background=True)
         print(f"Captured settings screenshot: {SETTINGS_SCREENSHOT}")
 
+        # Capture Settings MCP tab
+        page.evaluate("""() => {
+            switchSettingsTab('mcp');
+        }""")
+        page.wait_for_timeout(300)
+        page.screenshot(path=os.path.join(FRONTEND_DIR, "dist", "screenshot_settings_mcp.png"), omit_background=True)
+
+        # Capture Settings Browser tab
+        page.evaluate("""() => {
+            switchSettingsTab('browser');
+        }""")
+        page.wait_for_timeout(300)
+        page.screenshot(path=os.path.join(FRONTEND_DIR, "dist", "screenshot_settings_browser.png"), omit_background=True)
+
         # 4. Test High-DPI simulation (150% scaling)
         page_dpi = browser.new_page(viewport={"width": 440, "height": 184}, device_scale_factor=1.5)
         page_dpi.goto(f"file:///{os.path.abspath(DIST_HTML)}")

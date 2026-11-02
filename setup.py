@@ -81,6 +81,9 @@ CLOUD_PROVIDERS = {
 
 
 def get_python_exe():
+    runtime_py = os.path.join(BASE_DIR, "runtime", "python.exe")
+    if os.path.exists(runtime_py):
+        return runtime_py
     venv_py = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
     return venv_py if os.path.exists(venv_py) else sys.executable
 

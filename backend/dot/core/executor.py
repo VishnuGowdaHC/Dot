@@ -73,7 +73,11 @@ async def execute_tool_discovery(
 
     discovery_sig = f"search_{step_obj.tool_service}_{step_obj.get_tool}"
     if discovery_sig in executed_signatures:
-        return ExecutionResult(tripped_circuit_breaker=True)
+        append_or_update_error(
+            history_parts,
+            f"[Warning: You already searched for '{step_obj.get_tool}'. Use action='Tool-exec' with an available tool, or search with a different query.]"
+        )
+        return ExecutionResult(should_retry=True)
 
     executed_signatures.add(discovery_sig)
     results = get_relevant_tools(query=step_obj.get_tool, k=1, service_hint=step_obj.tool_service)
@@ -158,13 +162,13 @@ async def execute_tool_call(
             is_duplicate = True
 
     if is_duplicate:
-        if loop_strikes < 1:
-            loop_strikes += 1
+        loop_strikes += 1
+        if loop_strikes <= 3:
             has_obs = any(h.get("role") == "observation" for h in history_parts)
             hint = (
-                f"[Anti-Loop Guard: You are calling '{step_obj.tool_name}' on the same page. Call 'browser_navigate' to read a different page.]"
+                f"[Anti-Loop Warning (Attempt {loop_strikes}/3): You are calling '{step_obj.tool_name}' on the same page. Call 'browser_navigate' to read a different page or synthesize your answer with action='Final'.]"
                 if is_inspection else
-                f"[Anti-Loop Guard: You already executed '{step_obj.tool_name}' with these arguments. {'Synthesize your final answer using action=\"Final\".' if has_obs else 'Try different arguments.'}]"
+                f"[Anti-Loop Warning (Attempt {loop_strikes}/3): You already executed '{step_obj.tool_name}' with these arguments. {'Synthesize your final answer using action=\"Final\".' if has_obs else 'Try different arguments or another tool.'}]"
             )
             append_or_update_error(history_parts, hint)
             return ExecutionResult(should_retry=True), last_tool_sig, loop_strikes
