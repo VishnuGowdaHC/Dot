@@ -157,6 +157,12 @@ def main() -> int:
     """Execute the full distribution assembly."""
     parser = argparse.ArgumentParser(description="Build complete Dot distribution package.")
     parser.add_argument(
+        "--venv",
+        type=Path,
+        default=Path(".venv"),
+        help="Path to source virtual environment",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path("dist") / "Dot",
@@ -193,10 +199,15 @@ def main() -> int:
         if not args.skip_runtime:
             log("Running runtime bundling script...")
             bundler_script = root_dir / "scripts" / "bundle_runtime.py"
-            result = subprocess.run(
-                [sys.executable, str(bundler_script), "--output", str(dist_dir / "runtime")],
-                cwd=str(root_dir),
-            )
+            cmd = [
+                sys.executable,
+                str(bundler_script),
+                "--venv",
+                str(args.venv),
+                "--output",
+                str(dist_dir / "runtime"),
+            ]
+            result = subprocess.run(cmd, cwd=str(root_dir))
             if result.returncode != 0:
                 log_error("Runtime bundling failed.")
                 return 1
@@ -211,4 +222,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

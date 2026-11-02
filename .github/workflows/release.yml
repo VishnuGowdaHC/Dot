@@ -49,19 +49,11 @@ jobs:
 
       - name: Assemble distribution package
         run: |
-          python scripts/build_distribution.py
+          python scripts/build_distribution.py --venv .venv
 
       - name: Compile Inno Setup installer
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\DotSetup.iss
-
-      - name: Compute installer checksum
-        id: checksum
-        shell: pwsh
-        run: |
-          $hash = (Get-FileHash -Path "dist\installer\Dot-Setup-x64.exe" -Algorithm SHA256).Hash
-          Set-Content -Path "dist\installer\Dot-Setup-x64.exe.sha256" -Value "$hash  Dot-Setup-x64.exe"
-          Write-Output "Installer SHA256: $hash"
+          python scripts/compile_installer.py
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -72,4 +64,3 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-
