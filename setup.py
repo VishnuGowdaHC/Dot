@@ -1,3 +1,4 @@
+import copy
 import io
 import json
 import logging
@@ -77,6 +78,67 @@ CLOUD_PROVIDERS = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
     "gemini": {"label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-3.7-flash"},
     "custom": {"label": "Custom / Other (OpenAI-compatible)", "base_url": "", "default_model": ""}
+}
+
+DEFAULT_CONFIG = {
+    "backends": {
+        "cuda": {
+            "asset_keywords": ["cudart", "win", "cuda", "x64.zip"],
+            "executable": "bin\\llama-server.exe"
+        },
+        "cpu": {
+            "url": "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-b3580-bin-win-avx2-x64.zip",
+            "executable": "bin\\llama-server.exe"
+        }
+    },
+    "models": {
+        "2B": {
+            "repo_id": "google/gemma-4-E2B-it-qat-q4_0-gguf",
+            "filename": "gemma-4-E2B_q4_0-it.gguf",
+            "mmproj": "gemma-4-E2B-it-mmproj.gguf",
+            "context_size": 8192
+        },
+        "4B": {
+            "repo_id": "google/gemma-4-E4B-it-qat-q4_0-gguf",
+            "filename": "gemma-4-E4B_q4_0-it.gguf",
+            "mmproj": "gemma-4-E4B-it-mmproj.gguf",
+            "context_size": 8192
+        },
+        "12B": {
+            "repo_id": "google/gemma-4-E12B-it-qat-q4_0-gguf",
+            "filename": "gemma-4-E12B_q4_0-it.gguf",
+            "mmproj": "gemma-4-E12B-it-mmproj.gguf",
+            "context_size": 4096
+        }
+    },
+    "launcher_templates": {
+        "cuda": "llama-server.exe -m {model_file} --mmproj {mmproj_file} --port {port} -c {context_size} -fa on -ctk q8_0 -ctv q8_0 -ngl {gpu_layers} --temp {temperature} --alias dot-engine",
+        "cpu": "llama-server.exe -m {model_file} --mmproj {mmproj_file} --port {port} -c {context_size} -fa on -ctk q8_0 -ctv q8_0 --temp {temperature} --alias dot-engine",
+        "orchestrator": "cd backend && py -3.12 -m uvicorn server:app --port 3000",
+        "frontend": "cd frontend && npx @neutralinojs/neu run"
+    },
+    "active_settings": {
+        "backend": "cuda",
+        "selected_tier": "4B",
+        "port": 11434,
+        "context_size": 8192,
+        "temperature": 0.0,
+        "gpu_layers": 99,
+        "user_name": "User",
+        "browser_headless": True
+    },
+    "cloud": {
+        "provider": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "api_key": ""
+    },
+    "allowed_processes": [
+        "chrome.exe", "msedge.exe", "firefox.exe", "code.exe",
+        "discord.exe", "spotify.exe", "notepad.exe", "cmd.exe",
+        "powershell.exe", "wt.exe", "calc.exe", "explorer.exe"
+    ],
+    "github_token": ""
 }
 
 
@@ -163,22 +225,34 @@ class DotInstaller(ctk.CTk):
     def load_configuration(self):
         try:
             if not os.path.exists(CONFIG_FILE):
-                raise FileNotFoundError(f"Configuration file not found: {CONFIG_FILE}")
+                cfg = copy.deepcopy(DEFAULT_CONFIG)
+                try:
+                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(cfg, f, indent=4)
+                except Exception as save_err:
+                    log_error(f"Failed to initialize default appConfig.json: {save_err}")
+                return cfg
+
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-            if "cloud" not in cfg:
-                cfg["cloud"] = {"provider": "openai", "base_url": CLOUD_PROVIDERS["openai"]["base_url"], "model": CLOUD_PROVIDERS["openai"]["default_model"], "api_key": ""}
-            if "allowed_processes" not in cfg:
-                cfg["allowed_processes"] = [
-                    "chrome.exe", "msedge.exe", "firefox.exe", "code.exe",
-                    "discord.exe", "spotify.exe", "notepad.exe", "cmd.exe",
-                    "powershell.exe", "wt.exe", "calc.exe", "explorer.exe"
-                ]
+
+            # Ensure all required top-level sections exist
+            for key, val in DEFAULT_CONFIG.items():
+                if key not in cfg:
+                    cfg[key] = copy.deepcopy(val)
+
             return cfg
         except Exception as e:
-            log_error(f"Failed to load appConfig.json: {e}")
-            self.after(100, lambda: self.show_fatal_error_screen(f"Could not load appConfig.json: {e}"))
-            return {}
+            err_msg = str(e)
+            log_error(f"Failed to load appConfig.json: {err_msg}")
+            # Self-heal with complete default configuration
+            cfg = copy.deepcopy(DEFAULT_CONFIG)
+            try:
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=4)
+            except Exception:
+                pass
+            return cfg
 
     def probe_hardware(self):
         ram = 8.0

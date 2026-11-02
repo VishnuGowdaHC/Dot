@@ -121,6 +121,7 @@ def copy_launcher_and_configs(root_dir: Path, dist_dir: Path) -> None:
         "setup.py",
         "app_icon.ico",
         "requirements.txt",
+        "appConfig.json",
     ]
 
     for fname in files_to_copy:
