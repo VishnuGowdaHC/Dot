@@ -6,6 +6,7 @@ import socket
 import atexit
 import signal
 import subprocess
+import shutil
 import ctypes
 import tkinter as tk
 from tkinter import messagebox
@@ -69,7 +70,30 @@ def find_python_exe():
     for c in candidates:
         if os.path.exists(c):
             return c
-    return sys.executable
+
+    # Search system PATH, excluding Dot.exe itself
+    for cmd in ["python.exe", "python", "py.exe"]:
+        p = shutil.which(cmd)
+        if p and not p.lower().endswith("dot.exe"):
+            return p
+
+    # Check standard Windows installation paths
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    system_candidates = [
+        os.path.join(local_app_data, "Programs", "Python", "Python312", "python.exe"),
+        os.path.join(local_app_data, "Programs", "Python", "Python311", "python.exe"),
+        "C:\\Python312\\python.exe",
+        "C:\\Python311\\python.exe",
+    ]
+    for sc in system_candidates:
+        if os.path.exists(sc):
+            return sc
+
+    # Only return sys.executable if running as raw Python script, never when frozen as Dot.exe
+    if not getattr(sys, "frozen", False) and not sys.executable.lower().endswith("dot.exe"):
+        return sys.executable
+
+    return None
 
 
 def wait_for_port(port, timeout=60):
@@ -126,6 +150,15 @@ def main():
         return
 
     py_exe = find_python_exe()
+    if not py_exe:
+        show_error(
+            "Dot - Setup Required",
+            "Python runtime was not found.\n\n"
+            "If running from the source repository, please execute 'start_setup.bat' first.\n\n"
+            "To install Dot with the pre-bundled runtime, download 'Dot-Setup-x64.exe' from GitHub Releases."
+        )
+        return
+
     config = {}
     if os.path.exists(CONFIG_PATH):
         try:
