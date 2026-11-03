@@ -317,8 +317,17 @@ class StartupSupervisor:
         self.eng_log_writer = None
         self.back_log_writer = None
 
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.build_ui()
         self.root.after(100, self.start_startup_flow)
+
+    def on_close(self):
+        """Handle supervisor window close button."""
+        cleanup()
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
     def center_window(self, width, height):
         """Center the window on the primary screen."""
@@ -826,13 +835,11 @@ class StartupSupervisor:
             frontend_cmd = ["cmd", "/c", "npx", "@neutralinojs/neu", "run"]
             frontend_cwd = frontend_dir
 
-        self.front_proc = subprocess.Popen(
-            frontend_cmd, cwd=frontend_cwd, creationflags=no_window_flag
-        )
+        self.front_proc = subprocess.Popen(frontend_cmd, cwd=frontend_cwd)
         running_processes.append(self.front_proc)
 
-        # Close the supervisor window smoothly
-        self.root.after(400, self.root.destroy)
+        # Hide supervisor window smoothly while keeping mainloop alive
+        self.root.after(400, self.root.withdraw)
 
         # Wait until frontend is closed by user, then cleanup
         try:
@@ -841,6 +848,10 @@ class StartupSupervisor:
             pass
         finally:
             cleanup()
+            try:
+                self.root.after(0, self.root.destroy)
+            except Exception:
+                pass
 
     def show_failure_screen(self, title, summary, advice, manual_cmd, log_lines):
         """Transform window into the Diagnostic Error Screen."""
