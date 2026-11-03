@@ -338,45 +338,62 @@ def open_desktop_tab_for_user(target: str) -> dict:
     return open_in_browser(target)
 
 @mcp.tool
-async def screenshot(ctx: Context, question: str = "Describe what's visible on screen.") -> dict:
+async def screenshot(ctx: Context = None, question: str = "Describe what's visible in the browser viewport.") -> dict:
     """
-    ONLY use this to capture internal web pages inside the browser
-    Capture a screenshot of the current browser viewport (only what's
-    visibly on screen, not the full scrollable page) and have the vision
-    model describe it in plain text. Use this when the user asks what's
-    on screen, what a page looks like, or to describe visual content
-    a text-only extraction (browser_extract_text) can't capture.
-    
+    Capture a screenshot of the automated browser webpage and describe it.
+    DO NOT use this to capture the user's computer monitor, desktop, or active OS windows.
+    Use os_tools_os_take_screenshot to capture and describe the user's physical screen or desktop.
 
     Args:
-        question (str, optional): What to focus on when describing the screenshot
-            (e.g. "Is there a login button?", "What's the main headline?").
-            Defaults to a general description.
+        question (str, optional): Focus for the description. Defaults to general description.
 
     Returns:
-        dict: A status dictionary where 'detail' contains a short TEXT description
-        of the screenshot — never raw image bytes.
+        dict: A status dictionary containing a text description in 'detail'.
     """
     try:
         page = await _ensure_browser()
         screenshot_bytes = await page.screenshot(full_page=False, timeout=5000)
         import base64
         encoded = base64.b64encode(screenshot_bytes).decode("utf-8")
-        result = await ctx.sample(
-            messages=[
-                SamplingMessage(
-                    role="user",
-                    content=ImageContent(type="image", data=encoded, mimeType="image/png"),
-                ),
-                SamplingMessage(
-                    role="user",
-                    content=TextContent(type="text", text=question),
-                ),
-            ],
-            system_prompt="Describe the screenshot in 2-3 concise sentences.",
-            max_tokens=200,
-        )
-        description = result.text if hasattr(result, "text") else str(result)
+        image_url = f"data:image/png;base64,{encoded}"
+
+        description = None
+        try:
+            from dot.core.llm import async_llm
+            description = await async_llm(
+                query=question,
+                image_url=image_url,
+                system_prompt="Describe what is visible in this browser screenshot in 2-3 concise sentences.",
+            )
+        except Exception:
+            description = None
+
+        if not description and ctx and hasattr(ctx, "session") and ctx.session:
+            try:
+                from fastmcp.client.sampling import SamplingMessage
+                from mcp.types import ImageContent, TextContent
+                sample_res = await ctx.session.create_message(
+                    messages=[
+                        SamplingMessage(
+                            role="user",
+                            content=ImageContent(type="image", data=encoded, mimeType="image/png"),
+                        ),
+                        SamplingMessage(
+                            role="user",
+                            content=TextContent(type="text", text=question),
+                        ),
+                    ],
+                    system_prompt="Describe what is visible in this browser screenshot in 2-3 concise sentences.",
+                    max_tokens=200,
+                )
+                if hasattr(sample_res, "content"):
+                    description = sample_res.content.text if hasattr(sample_res.content, "text") else str(sample_res.content)
+            except Exception:
+                pass
+
+        if not description:
+            description = "Browser screenshot captured successfully."
+
         return {"success": True, "detail": description, "error": None}
     except Exception as e:
         return {"success": False, "detail": None, "error": str(e)}

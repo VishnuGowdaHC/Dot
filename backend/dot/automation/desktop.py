@@ -138,13 +138,14 @@ def os_get_active_window():
         return f"Failed to get active window. Error: {str(e)}"
 
 @mcp.tool
-async def os_take_screenshot(ctx: Context, question: str = "Describe what's visible on screen."):
+async def os_take_screenshot(ctx: Context = None, question: str = "Describe what's visible on the screen.") -> dict:
     """
-    Use this to capture the user's actual computer screen, Windows desktop, or taskbar search
-    Takes a full-screen snapshot of the current desktop and saves it to the local disk.
-    
+    Capture a screenshot of the user's actual computer monitor, Windows desktop, or active applications.
+    Use this when the user asks what is happening on their screen, wants to see their desktop,
+    or asks to describe what is currently visible on their display.
+
     Returns:
-        str: A message containing the absolute file path of the saved screenshot image.
+        dict: A status dictionary containing a text description in 'detail' and image path in 'filepath'.
     """
     try:
         obs_dir = os.path.abspath(os.path.join("logs", "screenshots"))
@@ -157,28 +158,48 @@ async def os_take_screenshot(ctx: Context, question: str = "Describe what's visi
         import base64
         with open(filepath, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("utf-8")
+        image_url = f"data:image/png;base64,{encoded}"
 
-        from fastmcp.client.sampling import SamplingMessage
-        from mcp.types import ImageContent, TextContent
+        description = None
+        try:
+            from dot.core.llm import async_llm
+            description = await async_llm(
+                query=question,
+                image_url=image_url,
+                system_prompt="Describe what is visible on this desktop screen in 2-3 concise sentences.",
+            )
+        except Exception:
+            description = None
 
-        result = await ctx.sample(
-            messages=[
-                SamplingMessage(
-                    role="user",
-                    content=ImageContent(type="image", data=encoded, mimeType="image/png"),
-                ),
-                SamplingMessage(
-                    role="user",
-                    content=TextContent(type="text", text=question),
-                ),
-            ],
-            system_prompt="Describe the desktop screenshot in 2-3 concise sentences.",
-            max_tokens=200,
-        )
-        description = result.text if hasattr(result, "text") else str(result)
+        if not description and ctx and hasattr(ctx, "session") and ctx.session:
+            try:
+                from fastmcp.client.sampling import SamplingMessage
+                from mcp.types import ImageContent, TextContent
+                sample_res = await ctx.session.create_message(
+                    messages=[
+                        SamplingMessage(
+                            role="user",
+                            content=ImageContent(type="image", data=encoded, mimeType="image/png"),
+                        ),
+                        SamplingMessage(
+                            role="user",
+                            content=TextContent(type="text", text=question),
+                        ),
+                    ],
+                    system_prompt="Describe what is visible on this desktop screen in 2-3 concise sentences.",
+                    max_tokens=200,
+                )
+                if hasattr(sample_res, "content"):
+                    description = sample_res.content.text if hasattr(sample_res.content, "text") else str(sample_res.content)
+            except Exception:
+                pass
+
+        if not description:
+            description = f"Desktop screenshot captured and saved to {filepath}."
+
         return {"success": True, "detail": description, "filepath": filepath, "error": None}
     except Exception as e:
-        return f"Failed to take screenshot. Error: {str(e)}"
+        return {"success": False, "detail": None, "filepath": None, "error": f"Failed to take screenshot: {str(e)}"}
 
 pyautogui.FAILSAFE = True
 
