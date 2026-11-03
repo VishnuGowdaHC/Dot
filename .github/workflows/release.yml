@@ -39,18 +39,13 @@ jobs:
         run: |
           python -m venv .venv
           .\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
-          .\.venv\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
+          .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
       - name: Build frontend static assets
         working-directory: frontend
         run: |
           npm ci
           npm run build
-
-      - name: Build Dot launcher binary
-        run: |
-          .\.venv\Scripts\python.exe -m PyInstaller Dot.spec --noconfirm
-          Copy-Item -Path "dist\Dot.exe" -Destination "Dot.exe" -Force
 
       - name: Assemble distribution package
         run: |
