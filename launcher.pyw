@@ -32,6 +32,7 @@ ENGINE_LOG = os.path.join(LOGS_DIR, "engine.log")
 BACKEND_LOG = os.path.join(LOGS_DIR, "backend.log")
 
 running_processes = []
+open_log_writers = []
 is_cleaning_up = False
 
 
@@ -48,6 +49,27 @@ def kill_process_tree(pid):
         pass
 
 
+def kill_orphaned_servers():
+    """Kill lingering background server processes holding ports 3000 or 11434."""
+    try:
+        no_win = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        res = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            creationflags=no_win,
+        )
+        for line in res.stdout.splitlines():
+            line_str = line.strip()
+            if (":3000" in line_str or ":11434" in line_str) and "LISTENING" in line_str:
+                parts = line_str.split()
+                pid = parts[-1]
+                if pid.isdigit() and int(pid) != os.getpid():
+                    kill_process_tree(int(pid))
+    except Exception:
+        pass
+
+
 def cleanup():
     """Cleanly terminate all spawned server processes on exit."""
     global is_cleaning_up
@@ -59,6 +81,13 @@ def cleanup():
         try:
             if p and p.poll() is None:
                 kill_process_tree(p.pid)
+        except Exception:
+            pass
+
+    for w in open_log_writers:
+        try:
+            w.flush()
+            w.close()
         except Exception:
             pass
 
@@ -132,11 +161,13 @@ def find_python_exe():
 
 def is_port_open(port, host="127.0.0.1"):
     """Check if a network port accepts connections."""
-    try:
-        with socket.create_connection((host, port), timeout=0.4):
-            return True
-    except (ConnectionRefusedError, socket.timeout, OSError):
-        return False
+    for test_host in [host, "localhost", "::1"]:
+        try:
+            with socket.create_connection((test_host, port), timeout=1.0):
+                return True
+        except (ConnectionRefusedError, socket.timeout, OSError):
+            pass
+    return False
 
 
 def check_essentials(config):
@@ -185,21 +216,27 @@ def enable_dark_title_bar(window):
         pass
 
 
-def read_last_log_lines(file_path, num_lines=25):
+def read_last_log_lines(file_path, num_lines=35):
     """Read the last N lines from a log file safely."""
     if not os.path.exists(file_path):
         return []
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
-            return [line.rstrip() for line in lines[-num_lines:]]
+            return [line.rstrip() for line in lines[-num_lines:] if line.strip()]
     except Exception:
-        return []
+        try:
+            with open(file_path, "rb") as f:
+                content = f.read().decode("utf-8", errors="replace")
+                lines = content.splitlines()
+                return [line.rstrip() for line in lines[-num_lines:] if line.strip()]
+        except Exception:
+            return []
 
 
 def parse_error_diagnostics(log_path, service_name, port, config):
     """Parse log file to identify the failure cause and provide recovery commands."""
-    lines = read_last_log_lines(log_path, 35)
+    lines = read_last_log_lines(log_path, 40)
     full_text = "\n".join(lines).lower()
 
     active_settings = config.get("active_settings", {})
@@ -244,12 +281,12 @@ def parse_error_diagnostics(log_path, service_name, port, config):
         return summary, advice, manual_cmd, lines
 
     # Generic Fallback
-    summary = f"{service_name} stopped unexpectedly."
+    summary = f"{service_name} failed to respond on port {port}."
     advice = "Inspect the log lines below to identify the problem."
     if service_name == "Inference Engine":
         manual_cmd = f"bin\\llama-server.exe -m {model_fn} --port {port}"
     else:
-        manual_cmd = f"runtime\\python.exe -m uvicorn server:app --port {port}"
+        manual_cmd = f"runtime\\python.exe -m uvicorn server:app --host 127.0.0.1 --port {port}"
 
     return summary, advice, manual_cmd, lines
 
@@ -263,23 +300,22 @@ class StartupSupervisor:
         self.py_exe = py_exe
 
         self.root.title("Dot Assistant")
-        self.root.geometry("540x380")
+        self.root.geometry("540x390")
         self.root.resizable(False, False)
         self.root.configure(bg="#101012")
 
-        # Center on screen
-        self.center_window(540, 380)
-
+        self.center_window(540, 390)
         enable_dark_title_bar(self.root)
 
         self.is_expanded = False
         self.has_failed = False
         self.current_step = 0
-        self.log_tail_pos = 0
 
         self.eng_proc = None
         self.back_proc = None
         self.front_proc = None
+        self.eng_log_writer = None
+        self.back_log_writer = None
 
         self.build_ui()
         self.root.after(100, self.start_startup_flow)
@@ -320,7 +356,7 @@ class StartupSupervisor:
         self.lbl_title.pack(side="left")
 
         self.lbl_version = tk.Label(
-            title_row, text="v1.0.6", font=("Consolas", 10), fg="#71717a", bg="#101012"
+            title_row, text="v1.0.7", font=("Consolas", 10), fg="#71717a", bg="#101012"
         )
         self.lbl_version.pack(side="right")
 
@@ -463,7 +499,7 @@ class StartupSupervisor:
             self.is_expanded = True
         else:
             self.log_container.pack_forget()
-            self.root.geometry("540x380")
+            self.root.geometry("540x390")
             self.btn_toggle_log.configure(text="View Logs ▼")
             self.is_expanded = False
 
@@ -478,6 +514,9 @@ class StartupSupervisor:
 
     def run_startup(self):
         """Background thread executing the service startup sequence."""
+        # Clean any orphaned processes from previous aborted launches
+        kill_orphaned_servers()
+
         active_settings = self.config.get("active_settings", {})
         backend = active_settings.get("backend", "cuda")
         tier = active_settings.get("selected_tier", "4B")
@@ -540,19 +579,17 @@ class StartupSupervisor:
                 "--alias", "dot-engine",
             ] + gpu_args
 
-            manual_cmd = (
-                f"bin\\llama-server.exe -m {model_fn} --mmproj {mmproj_fn} --port {port} -c {context_size}"
-            )
+            self.eng_log_writer = open(ENGINE_LOG, "w", encoding="utf-8", errors="replace", buffering=1)
+            open_log_writers.append(self.eng_log_writer)
 
-            with open(ENGINE_LOG, "w", encoding="utf-8") as eng_log_file:
-                self.eng_proc = subprocess.Popen(
-                    engine_cmd,
-                    cwd=bin_dir,
-                    stdout=eng_log_file,
-                    stderr=subprocess.STDOUT,
-                    creationflags=no_window_flag,
-                )
-                running_processes.append(self.eng_proc)
+            self.eng_proc = subprocess.Popen(
+                engine_cmd,
+                cwd=bin_dir,
+                stdout=self.eng_log_writer,
+                stderr=subprocess.STDOUT,
+                creationflags=no_window_flag,
+            )
+            running_processes.append(self.eng_proc)
 
             # Telemetry loop with zero-wait failure detection
             start_t = time.time()
@@ -562,7 +599,6 @@ class StartupSupervisor:
             while time.time() - start_t < 90:
                 # 1. Instant crash detection
                 if self.eng_proc.poll() is not None:
-                    # Process died
                     summary, advice, cmd_hint, lines = parse_error_diagnostics(
                         ENGINE_LOG, "Inference Engine", port, self.config
                     )
@@ -640,27 +676,45 @@ class StartupSupervisor:
         self.root.after(0, lambda: self.set_ticker("Starting FastAPI backend server on port 3000..."))
 
         backend_dir = os.path.join(BASE_DIR, "backend")
-        backend_cmd = [self.py_exe, "-m", "uvicorn", "server:app", "--port", "3000"]
-        manual_backend_cmd = "runtime\\python.exe -m uvicorn server:app --port 3000"
+        backend_cmd = [
+            self.py_exe,
+            "-u",
+            "-m",
+            "uvicorn",
+            "server:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "3000",
+        ]
+        backend_env = dict(os.environ)
+        backend_env["PYTHONUNBUFFERED"] = "1"
+        backend_env["PYTHONIOENCODING"] = "utf-8"
+        backend_env["PYTHONUTF8"] = "1"
 
-        with open(BACKEND_LOG, "w", encoding="utf-8") as back_log_file:
-            self.back_proc = subprocess.Popen(
-                backend_cmd,
-                cwd=backend_dir,
-                stdout=back_log_file,
-                stderr=subprocess.STDOUT,
-                creationflags=no_window_flag,
-            )
-            running_processes.append(self.back_proc)
+        self.back_log_writer = open(BACKEND_LOG, "w", encoding="utf-8", errors="replace", buffering=1)
+        open_log_writers.append(self.back_log_writer)
+
+        self.back_proc = subprocess.Popen(
+            backend_cmd,
+            cwd=backend_dir,
+            stdout=self.back_log_writer,
+            stderr=subprocess.STDOUT,
+            creationflags=no_window_flag,
+            env=backend_env,
+        )
+        running_processes.append(self.back_proc)
 
         # Telemetry loop for backend
         start_t = time.time()
         backend_ready = False
         last_pos = 0
 
-        while time.time() - start_t < 60:
+        while time.time() - start_t < 90:
             # 1. Instant crash detection
             if self.back_proc.poll() is not None:
+                if self.back_log_writer:
+                    self.back_log_writer.flush()
                 summary, advice, cmd_hint, lines = parse_error_diagnostics(
                     BACKEND_LOG, "Backend Server", 3000, self.config
                 )
@@ -672,7 +726,7 @@ class StartupSupervisor:
                 )
                 return
 
-            # 2. Tail backend log
+            # 2. Tail backend log in real-time
             if os.path.exists(BACKEND_LOG):
                 try:
                     with open(BACKEND_LOG, "r", encoding="utf-8", errors="replace") as f:
@@ -697,6 +751,13 @@ class StartupSupervisor:
                                             "Syncing tool definitions to ChromaDB..."
                                         ),
                                     )
+                                elif "uvicorn running on" in line_clean.lower():
+                                    self.root.after(
+                                        0,
+                                        lambda: self.set_ticker(
+                                            "Backend running on port 3000. Ready."
+                                        ),
+                                    )
                 except Exception:
                     pass
 
@@ -705,11 +766,13 @@ class StartupSupervisor:
                 backend_ready = True
                 break
 
-            pct = min(60 + int((time.time() - start_t) * 0.5), 85)
+            pct = min(60 + int((time.time() - start_t) * 0.45), 88)
             self.root.after(0, lambda p=pct: self.set_progress(p))
             time.sleep(0.3)
 
         if not backend_ready:
+            if self.back_log_writer:
+                self.back_log_writer.flush()
             summary, advice, cmd_hint, lines = parse_error_diagnostics(
                 BACKEND_LOG, "Backend Server", 3000, self.config
             )
@@ -717,7 +780,7 @@ class StartupSupervisor:
                 0,
                 lambda: self.show_failure_screen(
                     "Backend Server Timeout",
-                    "Backend failed to bind to port 3000 within 60 seconds.",
+                    "Backend failed to bind to port 3000 within 90 seconds.",
                     advice,
                     cmd_hint,
                     lines,
@@ -750,9 +813,9 @@ class StartupSupervisor:
                 frontend_cmd = [cand]
                 frontend_cwd = os.path.dirname(cand)
                 res_path = os.path.join(frontend_cwd, "resources.neu")
-                if not os.path.exists(res_path):
-                    alt_res = os.path.join(frontend_dir, "out", "Dot", "resources.neu")
-                    if os.path.exists(alt_res):
+                alt_res = os.path.join(frontend_dir, "out", "Dot", "resources.neu")
+                if os.path.exists(alt_res):
+                    if not os.path.exists(res_path) or os.path.getsize(alt_res) != os.path.getsize(res_path):
                         try:
                             shutil.copy2(alt_res, res_path)
                         except Exception:
@@ -782,137 +845,16 @@ class StartupSupervisor:
     def show_failure_screen(self, title, summary, advice, manual_cmd, log_lines):
         """Transform window into the Diagnostic Error Screen."""
         self.has_failed = True
-        self.root.geometry("560x520")
-        self.center_window(560, 520)
+        self.root.geometry("580x560")
+        self.center_window(580, 560)
 
         # Clear main frame
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-        # Error Banner
-        err_header = tk.Frame(self.main_frame, bg="#101012")
-        err_header.pack(fill="x", pady=(0, 12))
-
-        title_row = tk.Frame(err_header, bg="#101012")
-        title_row.pack(fill="x")
-
-        tk.Label(title_row, text="✖", font=("Segoe UI", 12, "bold"), fg="#ef4444", bg="#101012").pack(
-            side="left", padx=(0, 8)
-        )
-        tk.Label(
-            title_row, text=title, font=("Segoe UI", 13, "bold"), fg="#ffffff", bg="#101012"
-        ).pack(side="left")
-
-        # Diagnostic Explanation Box
-        info_box = tk.Frame(
-            self.main_frame, bg="#1c1917", bd=1, relief="solid", highlightbackground="#7f1d1d", padx=12, pady=10
-        )
-        info_box.pack(fill="x", pady=(0, 12))
-
-        tk.Label(
-            info_box,
-            text=summary,
-            font=("Segoe UI", 9, "bold"),
-            fg="#f87171",
-            bg="#1c1917",
-            anchor="w",
-            wraplength=510,
-            justify="left",
-        ).pack(fill="x")
-
-        tk.Label(
-            info_box,
-            text=advice,
-            font=("Segoe UI", 8),
-            fg="#d6d3d1",
-            bg="#1c1917",
-            anchor="w",
-            wraplength=510,
-            justify="left",
-        ).pack(fill="x", pady=(4, 0))
-
-        # Manual Sync Command Row
-        cmd_box = tk.Frame(self.main_frame, bg="#141416", bd=1, relief="solid", highlightbackground="#27272a", padx=10, pady=8)
-        cmd_box.pack(fill="x", pady=(0, 12))
-
-        tk.Label(
-            cmd_box,
-            text="Manual Sync / Recovery Command:",
-            font=("Segoe UI", 8, "bold"),
-            fg="#a1a1aa",
-            bg="#141416",
-            anchor="w",
-        ).pack(fill="x")
-
-        cmd_entry_row = tk.Frame(cmd_box, bg="#141416")
-        cmd_entry_row.pack(fill="x", pady=(4, 0))
-
-        cmd_entry = tk.Entry(
-            cmd_entry_row,
-            font=("Consolas", 8),
-            fg="#ffffff",
-            bg="#09090b",
-            bd=1,
-            relief="solid",
-        )
-        cmd_entry.insert(0, manual_cmd)
-        cmd_entry.configure(state="readonly")
-        cmd_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        def copy_cmd():
-            self.root.clipboard_clear()
-            self.root.clipboard_append(manual_cmd)
-            btn_copy.configure(text="Copied!")
-            self.root.after(1200, lambda: btn_copy.configure(text="Copy"))
-
-        btn_copy = tk.Button(
-            cmd_entry_row,
-            text="Copy",
-            font=("Segoe UI", 8),
-            fg="#ffffff",
-            bg="#27272a",
-            activebackground="#3f3f46",
-            activeforeground="#ffffff",
-            bd=0,
-            padx=10,
-            pady=2,
-            cursor="hand2",
-            command=copy_cmd,
-        )
-        btn_copy.pack(side="right")
-
-        # Terminal Error Logs
-        tk.Label(
-            self.main_frame,
-            text="Error Log Traceback:",
-            font=("Segoe UI", 8, "bold"),
-            fg="#71717a",
-            bg="#101012",
-            anchor="w",
-        ).pack(fill="x", pady=(0, 4))
-
-        err_text_frame = tk.Frame(self.main_frame, bg="#0d0d0f", bd=1, relief="solid")
-        err_text_frame.pack(fill="both", expand=True, pady=(0, 14))
-
-        err_text = tk.Text(
-            err_text_frame,
-            font=("Consolas", 8),
-            fg="#ef4444",
-            bg="#0d0d0f",
-            bd=0,
-            padx=8,
-            pady=8,
-            wrap="none",
-        )
-        err_text.pack(fill="both", expand=True)
-
-        for line in log_lines:
-            err_text.insert("end", line + "\n")
-        err_text.see("end")
-
-        # Action Buttons Row
+        # Action Buttons Row (PACKED TO BOTTOM FIRST to guarantee visibility)
         actions_row = tk.Frame(self.main_frame, bg="#101012")
-        actions_row.pack(fill="x")
+        actions_row.pack(side="bottom", fill="x", pady=(10, 0))
 
         def open_setup():
             cleanup()
@@ -994,6 +936,132 @@ class StartupSupervisor:
             command=lambda: (cleanup(), self.root.destroy()),
         )
         btn_exit.pack(side="right")
+
+        # Error Banner at Top
+        err_header = tk.Frame(self.main_frame, bg="#101012")
+        err_header.pack(fill="x", pady=(0, 10))
+
+        title_row = tk.Frame(err_header, bg="#101012")
+        title_row.pack(fill="x")
+
+        tk.Label(title_row, text="✖", font=("Segoe UI", 12, "bold"), fg="#ef4444", bg="#101012").pack(
+            side="left", padx=(0, 8)
+        )
+        tk.Label(
+            title_row, text=title, font=("Segoe UI", 13, "bold"), fg="#ffffff", bg="#101012"
+        ).pack(side="left")
+
+        # Diagnostic Explanation Box
+        info_box = tk.Frame(
+            self.main_frame, bg="#1c1917", bd=1, relief="solid", highlightbackground="#7f1d1d", padx=12, pady=8
+        )
+        info_box.pack(fill="x", pady=(0, 10))
+
+        tk.Label(
+            info_box,
+            text=summary,
+            font=("Segoe UI", 9, "bold"),
+            fg="#f87171",
+            bg="#1c1917",
+            anchor="w",
+            wraplength=530,
+            justify="left",
+        ).pack(fill="x")
+
+        tk.Label(
+            info_box,
+            text=advice,
+            font=("Segoe UI", 8),
+            fg="#d6d3d1",
+            bg="#1c1917",
+            anchor="w",
+            wraplength=530,
+            justify="left",
+        ).pack(fill="x", pady=(3, 0))
+
+        # Manual Sync Command Row
+        cmd_box = tk.Frame(self.main_frame, bg="#141416", bd=1, relief="solid", highlightbackground="#27272a", padx=10, pady=6)
+        cmd_box.pack(fill="x", pady=(0, 10))
+
+        tk.Label(
+            cmd_box,
+            text="Manual Sync / Recovery Command:",
+            font=("Segoe UI", 8, "bold"),
+            fg="#a1a1aa",
+            bg="#141416",
+            anchor="w",
+        ).pack(fill="x")
+
+        cmd_entry_row = tk.Frame(cmd_box, bg="#141416")
+        cmd_entry_row.pack(fill="x", pady=(3, 0))
+
+        cmd_entry = tk.Entry(
+            cmd_entry_row,
+            font=("Consolas", 8),
+            fg="#ffffff",
+            bg="#09090b",
+            bd=1,
+            relief="solid",
+        )
+        cmd_entry.insert(0, manual_cmd)
+        cmd_entry.configure(state="readonly")
+        cmd_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        def copy_cmd():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(manual_cmd)
+            btn_copy.configure(text="Copied!")
+            self.root.after(1200, lambda: btn_copy.configure(text="Copy"))
+
+        btn_copy = tk.Button(
+            cmd_entry_row,
+            text="Copy",
+            font=("Segoe UI", 8),
+            fg="#ffffff",
+            bg="#27272a",
+            activebackground="#3f3f46",
+            activeforeground="#ffffff",
+            bd=0,
+            padx=10,
+            pady=2,
+            cursor="hand2",
+            command=copy_cmd,
+        )
+        btn_copy.pack(side="right")
+
+        # Terminal Error Logs (takes remaining space)
+        tk.Label(
+            self.main_frame,
+            text="Error Log Traceback:",
+            font=("Segoe UI", 8, "bold"),
+            fg="#71717a",
+            bg="#101012",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 2))
+
+        err_text_frame = tk.Frame(self.main_frame, bg="#0d0d0f", bd=1, relief="solid")
+        err_text_frame.pack(fill="both", expand=True, pady=(0, 4))
+
+        err_text = tk.Text(
+            err_text_frame,
+            font=("Consolas", 8),
+            fg="#ef4444",
+            bg="#0d0d0f",
+            bd=0,
+            padx=8,
+            pady=6,
+            wrap="none",
+        )
+        err_text.pack(fill="both", expand=True)
+
+        # If log_lines is empty, fallback to reading file directly
+        lines_to_show = log_lines if log_lines else read_last_log_lines(BACKEND_LOG if "backend" in title.lower() else ENGINE_LOG, 40)
+        if not lines_to_show:
+            lines_to_show = ["No traceback recorded in log file yet.", f"Log file path: {BACKEND_LOG if 'backend' in title.lower() else ENGINE_LOG}"]
+
+        for line in lines_to_show:
+            err_text.insert("end", line + "\n")
+        err_text.see("end")
 
 
 def main():

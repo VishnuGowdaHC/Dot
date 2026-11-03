@@ -205,6 +205,9 @@ class DotInstaller(ctk.CTk):
         server_exe = os.path.join(bin_dir, "llama-server.exe")
         tier = self.tier_var.get()
         model_info = self.config.get("models", {}).get(tier, {})
+        if not model_info and tier in DEFAULT_CONFIG.get("models", {}):
+            self.config.setdefault("models", {})[tier] = copy.deepcopy(DEFAULT_CONFIG["models"][tier])
+            model_info = self.config["models"][tier]
         model_fn = model_info.get("filename", "")
         model_path = os.path.join(bin_dir, model_fn) if model_fn else ""
         backend = self.backend_var.get()
@@ -222,6 +225,15 @@ class DotInstaller(ctk.CTk):
     # ----------------------------------------------------
     # CONFIG & HARDWARE PROBING
     # ----------------------------------------------------
+    def deep_merge(self, target, source):
+        """Recursively merge missing keys from source dictionary into target."""
+        for key, val in source.items():
+            if key not in target or target[key] is None:
+                target[key] = copy.deepcopy(val)
+            elif isinstance(val, dict) and isinstance(target[key], dict):
+                self.deep_merge(target[key], val)
+        return target
+
     def load_configuration(self):
         try:
             if not os.path.exists(CONFIG_FILE):
@@ -236,10 +248,15 @@ class DotInstaller(ctk.CTk):
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
 
-            # Ensure all required top-level sections exist
-            for key, val in DEFAULT_CONFIG.items():
-                if key not in cfg:
-                    cfg[key] = copy.deepcopy(val)
+            # Ensure all required sections and nested default keys exist
+            self.deep_merge(cfg, DEFAULT_CONFIG)
+
+            # Persist updated configuration
+            try:
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=4)
+            except Exception:
+                pass
 
             return cfg
         except Exception as e:
@@ -407,8 +424,17 @@ class DotInstaller(ctk.CTk):
         tier = self.tier_var.get()
         model_info = self.config.get("models", {}).get(tier, {})
         if not model_info:
-            self.show_fatal_error_screen(f"Configuration missing model specs for tier '{tier}'")
-            return
+            if tier in DEFAULT_CONFIG.get("models", {}):
+                self.config.setdefault("models", {})[tier] = copy.deepcopy(DEFAULT_CONFIG["models"][tier])
+                model_info = self.config["models"][tier]
+                try:
+                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(self.config, f, indent=4)
+                except Exception:
+                    pass
+            else:
+                self.show_fatal_error_screen(f"Configuration missing model specs for tier '{tier}'")
+                return
 
         model_fn, mmproj_fn = model_info["filename"], model_info["mmproj"]
         repo_id = model_info["repo_id"]

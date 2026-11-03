@@ -41,12 +41,18 @@ execSync('npx @neutralinojs/neu build --release', {
   stdio: 'inherit'
 });
 
-// 6. Sync generated resources.neu to frontend/bin for compatibility
+// 6. Sync generated resources.neu to frontend/bin and frontend root for compatibility
 const outRes = path.join(frontendDir, 'out', 'Dot', 'resources.neu');
 const binRes = path.join(frontendDir, 'bin', 'resources.neu');
-if (fs.existsSync(outRes) && fs.existsSync(path.dirname(binRes))) {
-  fs.copyFileSync(outRes, binRes);
-  console.log('[BUILD] Synced resources.neu to bin directory.');
+const rootRes = path.join(frontendDir, 'resources.neu');
+
+if (fs.existsSync(outRes)) {
+  if (fs.existsSync(path.dirname(binRes))) {
+    fs.copyFileSync(outRes, binRes);
+    console.log('[BUILD] Synced resources.neu to bin directory.');
+  }
+  fs.copyFileSync(outRes, rootRes);
+  console.log('[BUILD] Synced resources.neu to frontend root directory.');
 }
 
 console.log('[BUILD] Frontend build finished successfully.');

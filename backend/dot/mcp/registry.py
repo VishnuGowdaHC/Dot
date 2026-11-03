@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import sys
+import shutil
 
 from dot.config.paths import MCP_CONFIG_PATH, BACKEND_DIR
 from dot.config.settings import get_github_token
@@ -29,6 +30,7 @@ def load_server_config() -> dict:
     venv_py = os.path.join(str(BACKEND_DIR.parent), ".venv", "Scripts", "python.exe")
     active_py = venv_py if os.path.exists(venv_py) else sys.executable
 
+    valid_servers = {}
     for server_name, server_cfg in config_dict.get("mcpServers", {}).items():
         cmd = server_cfg.get("command", "")
         if cmd in ("py", "python", "python3"):
@@ -37,6 +39,13 @@ def load_server_config() -> dict:
             cand = os.path.join(base_dir, cmd)
             if os.path.exists(cand):
                 server_cfg["command"] = cand
+            elif shutil.which(cmd):
+                server_cfg["command"] = shutil.which(cmd)
+            else:
+                # Omit missing server executable to prevent startup delay
+                continue
+        elif not os.path.exists(cmd) and not shutil.which(cmd):
+            continue
 
         if "cwd" not in server_cfg:
             server_cfg["cwd"] = base_dir
@@ -46,6 +55,9 @@ def load_server_config() -> dict:
         existing_pythonpath = env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
         env["PYTHONPATH"] = f"{base_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else base_dir
 
+        valid_servers[server_name] = server_cfg
+
+    config_dict["mcpServers"] = valid_servers
     return config_dict
 
 
