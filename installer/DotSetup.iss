@@ -2,7 +2,7 @@
 ; Generates a single-file Windows installer for Dot.
 
 #define MyAppName "Dot"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.7"
 #define MyAppPublisher "Dot"
 #define MyAppURL "https://github.com/Vishnugowda8/Dot"
 #define MyAppExeName "Dot.exe"
