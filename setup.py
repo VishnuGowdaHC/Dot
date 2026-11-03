@@ -958,9 +958,47 @@ echo   (You can close this window)
         tier = self.config["active_settings"]["selected_tier"]
         backend = self.config["active_settings"]["backend"].upper()
 
-        summary = f"Configured Engine: {'Cloud (' + self.config['cloud']['provider'] + ')' if tier == 'cloud' else 'Gemma 4 (' + tier + ')'}\nHardware Backend: {backend}\nLauncher: start_dot.bat"
+        summary = f"Configured Engine: {'Cloud (' + self.config['cloud']['provider'] + ')' if tier == 'cloud' else 'Gemma 4 (' + tier + ')'}\nHardware Backend: {backend}\nReady to launch Dot Assistant."
         ctk.CTkLabel(self.container, text=summary, font=("Arial", 14), text_color=COLOR_TEXT, justify="center").pack(pady=10)
-        ctk.CTkButton(self.container, text="Finish & Exit", command=self.destroy, fg_color=COLOR_SUCCESS, hover_color=COLOR_SUCCESS_HOVER).pack(side="bottom", pady=25)
+
+        def launch_app():
+            self.destroy()
+            launcher_candidates = [
+                os.path.join(BASE_DIR, "Dot.exe"),
+                os.path.join(BASE_DIR, "launcher.pyw"),
+            ]
+            for cand in launcher_candidates:
+                if os.path.exists(cand):
+                    if cand.endswith(".exe"):
+                        subprocess.Popen([cand], cwd=BASE_DIR)
+                    else:
+                        py_bin = sys.executable
+                        subprocess.Popen([py_bin, cand], cwd=BASE_DIR)
+                    break
+
+        btn_row = ctk.CTkFrame(self.container, fg_color="transparent")
+        btn_row.pack(side="bottom", pady=25)
+
+        ctk.CTkButton(
+            btn_row,
+            text="Launch Dot Assistant",
+            command=launch_app,
+            fg_color=COLOR_SUCCESS,
+            hover_color=COLOR_SUCCESS_HOVER,
+            width=180,
+            height=36,
+        ).pack(side="left", padx=10)
+
+        ctk.CTkButton(
+            btn_row,
+            text="Exit",
+            command=self.destroy,
+            fg_color=COLOR_BACK_BTN,
+            hover_color=COLOR_BACK_BTN_HOVER,
+            text_color=COLOR_TEXT,
+            width=100,
+            height=36,
+        ).pack(side="left", padx=10)
 
     def show_fatal_error_screen(self, msg):
         self.clear_container()

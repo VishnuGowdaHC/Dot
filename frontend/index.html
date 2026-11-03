@@ -91,9 +91,9 @@
 
       <!-- Top Window Drag Handle & Minimal Header (Visible on hover) -->
       <div id="drag-handle" class="absolute top-0 left-0 right-0 h-7 flex items-center justify-between px-3 z-30 cursor-move opacity-0 hover:opacity-100 transition-opacity duration-200">
-        <div class="flex items-center gap-1.5 text-[9.5px] font-mono text-zinc-400">
-          <span class="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"></span>
-          <span>Dot Assistant</span>
+        <div id="header-connection-pill" class="flex items-center gap-1.5 text-[9.5px] font-mono text-zinc-400">
+          <span id="header-status-dot" class="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"></span>
+          <span id="header-status-text">Dot Assistant</span>
         </div>
         <div class="flex items-center gap-1">
           <button id="btn-minimize" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Minimize / Collapse">
@@ -453,6 +453,31 @@
             </div>
           </div>
 
+          <!-- Service Health & Synchronization -->
+          <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-xs font-semibold text-white">Service Health & Sync</h4>
+                <p class="text-[10px] text-zinc-400">Live verification of inference and orchestrator ports.</p>
+              </div>
+              <button id="btn-sync-check" type="button" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-[10px] font-mono cursor-pointer transition-colors">Verify Sync</button>
+            </div>
+            <div class="space-y-1 pt-1.5 border-t border-white/8 text-[10px] font-mono">
+              <div class="flex items-center justify-between text-zinc-400">
+                <span>Inference Engine (Port 11434):</span>
+                <span id="label-sync-engine" class="text-zinc-300">Checking...</span>
+              </div>
+              <div class="flex items-center justify-between text-zinc-400">
+                <span>Backend Server (Port 3000):</span>
+                <span id="label-sync-backend" class="text-zinc-300">Connected</span>
+              </div>
+            </div>
+            <div id="box-sync-instructions" class="hidden p-2 bg-black/40 border border-white/10 rounded text-[9.5px] font-mono text-zinc-300 space-y-1">
+              <div class="text-zinc-400 font-semibold">Manual Recovery Command:</div>
+              <div id="text-sync-command" class="text-white select-all bg-white/5 p-1 rounded break-all"></div>
+            </div>
+          </div>
+
           <!-- Desktop Position -->
           <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-2">
             <label class="block text-[10.5px] font-semibold text-zinc-300 uppercase tracking-wider">Desktop Dock Position</label>
@@ -806,6 +831,14 @@
 
         state.ws.onopen = () => {
           console.log("[WS] Connected to Dot backend server");
+          const dot = document.getElementById('header-status-dot');
+          const txt = document.getElementById('header-status-text');
+          if (dot && txt) {
+            dot.className = "w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]";
+            txt.textContent = "Dot Assistant";
+          }
+          const backLbl = document.getElementById('label-sync-backend');
+          if (backLbl) backLbl.textContent = "Connected";
         };
 
         state.ws.onmessage = (event) => {
@@ -865,6 +898,14 @@
         };
 
         state.ws.onclose = () => {
+          const dot = document.getElementById('header-status-dot');
+          const txt = document.getElementById('header-status-text');
+          if (dot && txt) {
+            dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-500 animate-pulse";
+            txt.textContent = "Reconnecting (Port 3000)...";
+          }
+          const backLbl = document.getElementById('label-sync-backend');
+          if (backLbl) backLbl.textContent = "Offline";
           setTimeout(connectWebSocket, 3000);
         };
         state.ws.onerror = () => {
@@ -1276,6 +1317,56 @@
         state.isNeutralinoReady = true;
         Neutralino.window.setDraggableRegion('drag-handle');
         dockWindow(state.idleHeight, true);
+      });
+    }
+
+    // Service Health & Sync Verification Logic
+    const btnSyncCheck = document.getElementById('btn-sync-check');
+    const labelSyncEngine = document.getElementById('label-sync-engine');
+    const labelSyncBackend = document.getElementById('label-sync-backend');
+    const boxSyncInstructions = document.getElementById('box-sync-instructions');
+    const textSyncCommand = document.getElementById('text-sync-command');
+
+    if (btnSyncCheck) {
+      btnSyncCheck.addEventListener('click', async () => {
+        btnSyncCheck.disabled = true;
+        btnSyncCheck.textContent = "Checking...";
+        boxSyncInstructions.classList.add('hidden');
+        let engineOk = false;
+        let backendOk = false;
+
+        try {
+          const engRes = await fetch('http://127.0.0.1:11434/health', { signal: AbortSignal.timeout(2000) });
+          engineOk = engRes.ok;
+        } catch (_) {}
+
+        try {
+          const backRes = await fetch('http://127.0.0.1:3000/api/settings', { signal: AbortSignal.timeout(2000) });
+          backendOk = backRes.ok;
+        } catch (_) {}
+
+        if (labelSyncEngine) {
+          labelSyncEngine.textContent = engineOk ? "Active (Port 11434)" : "Offline";
+          labelSyncEngine.className = engineOk ? "text-white font-semibold" : "text-red-400 font-semibold";
+        }
+        if (labelSyncBackend) {
+          labelSyncBackend.textContent = backendOk ? "Active (Port 3000)" : "Offline";
+          labelSyncBackend.className = backendOk ? "text-white font-semibold" : "text-red-400 font-semibold";
+        }
+
+        if (!engineOk || !backendOk) {
+          boxSyncInstructions.classList.remove('hidden');
+          if (!engineOk && !backendOk) {
+            textSyncCommand.textContent = "start_dot.bat";
+          } else if (!engineOk) {
+            textSyncCommand.textContent = "bin\\llama-server.exe --port 11434";
+          } else {
+            textSyncCommand.textContent = "runtime\\python.exe -m uvicorn server:app --port 3000";
+          }
+        }
+
+        btnSyncCheck.disabled = false;
+        btnSyncCheck.textContent = "Verify Sync";
       });
     }
 
