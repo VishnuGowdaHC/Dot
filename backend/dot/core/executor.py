@@ -14,23 +14,35 @@ from dot.core.context import append_or_update_error
 from dot.memory.vector_store import get_relevant_tools
 from dot.mcp.client import execute_mcp_tool
 from dot.memory.collections.native_tools_collection import NATIVE_TOOLS
+from dot.sandbox.tools import SANDBOX_TOOLS
 
 INSPECTION_TOOLS = {
     "browser_extract_text",
+    "browser_read",
+    "agent_browser_read",
     "browser_snapshot",
+    "agent_browser_snapshot",
     "browser_screenshot",
+    "agent_browser_screenshot",
     "os_take_screenshot",
     "os_get_active_window",
+    "sandbox_browser_navigate",
+    "sandbox_browser_search",
+    "sandbox_screenshot",
 }
 
 STATE_CHANGING_TOOLS = {
     "browser_navigate",
+    "browser_open",
+    "agent_browser_open",
     "browser_ai_background_load_page",
     "browser_open_in_browser",
     "browser_play_video",
     "browser_search_web",
     "browser_click",
+    "agent_browser_click",
     "browser_fill",
+    "agent_browser_fill",
     "browser_press_key",
     "browser_select_option",
     "browser_scroll",
@@ -38,6 +50,11 @@ STATE_CHANGING_TOOLS = {
     "os_send_hotkey",
     "os_type_text",
     "os_click_at",
+    "os_click_text",
+    "os_tools_os_click_text",
+    "os_mouse_click",
+    "os_tools_os_mouse_click",
+    "sandbox_exec",
 }
 
 
@@ -149,31 +166,24 @@ async def execute_tool_call(
         )
         return ExecutionResult(should_retry=True), last_tool_sig, loop_strikes
 
-    # Circuit breaker: detect duplicate executions
+    # Detect duplicate executions
     current_sig = f"{step_obj.tool_name}_{sorted(clean_args.items())}"
     is_inspection = step_obj.tool_name in INSPECTION_TOOLS
 
     is_duplicate = False
-    if is_inspection:
-        if current_sig == last_tool_sig:
-            is_duplicate = True
-    else:
-        if current_sig in executed_signatures:
-            is_duplicate = True
+    if current_sig == last_tool_sig:
+        is_duplicate = True
 
     if is_duplicate:
         loop_strikes += 1
-        if loop_strikes <= 3:
-            has_obs = any(h.get("role") == "observation" for h in history_parts)
-            hint = (
-                f"[Anti-Loop Warning (Attempt {loop_strikes}/3): You are calling '{step_obj.tool_name}' on the same page. Call 'browser_navigate' to read a different page or synthesize your answer with action='Final'.]"
-                if is_inspection else
-                f"[Anti-Loop Warning (Attempt {loop_strikes}/3): You already executed '{step_obj.tool_name}' with these arguments. {'Synthesize your final answer using action=\"Final\".' if has_obs else 'Try different arguments or another tool.'}]"
-            )
-            append_or_update_error(history_parts, hint)
-            return ExecutionResult(should_retry=True), last_tool_sig, loop_strikes
-        else:
-            return ExecutionResult(tripped_circuit_breaker=True), last_tool_sig, loop_strikes
+        has_obs = any(h.get("role") == "observation" for h in history_parts)
+        hint = (
+            f"[Notice: You are calling '{step_obj.tool_name}' with identical parameters on the same state. Call 'browser_navigate' to read a different page or proceed with your next action.]"
+            if is_inspection else
+            f"[Notice: You already executed '{step_obj.tool_name}' with these arguments. {'Synthesize your final answer using action=\"Final\".' if has_obs else 'Try different arguments or another tool.'}]"
+        )
+        append_or_update_error(history_parts, hint)
+        return ExecutionResult(should_retry=True), last_tool_sig, loop_strikes
 
     loop_strikes = 0
     executed_signatures.add(current_sig)
@@ -181,8 +191,17 @@ async def execute_tool_call(
     browser_used = False
     start_time = time.time()
 
-    # Execute tool on native handler or FastMCP client
-    if step_obj.tool_service == "native":
+    # Execute tool on sandbox, native handler, or FastMCP client
+    if step_obj.tool_service in ("sandbox", "sandbox_tools") or step_obj.tool_name in SANDBOX_TOOLS:
+        fn = SANDBOX_TOOLS.get(step_obj.tool_name)
+        try:
+            if fn:
+                observation = await fn(**clean_args)
+            else:
+                observation = f"Sandbox tool '{step_obj.tool_name}' not found."
+        except Exception as e:
+            observation = f"Sandbox tool failed: {e}"
+    elif step_obj.tool_service == "native":
         fn = NATIVE_TOOLS.get(step_obj.tool_name)
         try:
             observation = fn(**clean_args) if fn else f"Native tool '{step_obj.tool_name}' not found."
@@ -221,7 +240,7 @@ async def execute_tool_call(
     # Handle tools signaling terminal completion
     if isinstance(obs_dict, dict) and obs_dict.get("success") and obs_dict.get("terminal"):
         is_info_query = any(w in query.lower() for w in ["find", "search", "explain", "code", "example", "how", "what", "compare", "sample", "extract", "summarize", "look up", "docs"])
-        if is_info_query and step_num < max_steps - 1:
+        if is_info_query and (max_steps is None or step_num < max_steps - 1):
             history_parts.append({
                 "role": "observation",
                 "text": f"\n[Observation from {step_obj.tool_name}]: {obs_dict.get('detail')}\n[Note: You opened an external desktop tab, but the user requested information/code. Use browser_navigate and browser_extract_text to read the docs and provide a complete answer.]",

@@ -19,6 +19,8 @@ from dot.automation.desktop import (
     os_manage_process,
     os_keyboard_press,
     os_mouse_click,
+    os_click_text,
+    os_find_text_coordinates,
     load_allowed_processes,
 )
 
@@ -69,6 +71,39 @@ class TestDesktopTools(unittest.TestCase):
         self.assertIn("Mouse clicked at", res)
         mock_move.assert_called_once_with(100, 200, duration=0.2)
         mock_click.assert_called_once_with(button="left", clicks=1)
+
+    @patch("dot.automation.desktop._get_ocr_reader")
+    @patch("pyautogui.screenshot")
+    @patch("pyautogui.moveTo")
+    @patch("pyautogui.click")
+    def test_os_click_text_mocked(self, mock_click, mock_move, mock_snap, mock_get_reader):
+        """Verifies that os_click_text locates recognized text and clicks it."""
+        mock_reader = unittest.mock.MagicMock()
+        mock_reader.readtext.return_value = [
+            ([[100, 200], [200, 200], [200, 250], [100, 250]], "Ramaya Music Celebration Ravana Tandav", 0.95)
+        ]
+        mock_get_reader.return_value = mock_reader
+        mock_snap.return_value = unittest.mock.MagicMock()
+
+        res = os_click_text(text="Ravana Tandav")
+        self.assertIn("Successfully clicked on", res)
+        self.assertIn("Ramaya Music Celebration Ravana Tandav", res)
+        mock_move.assert_called_once_with(150, 225, duration=0.2)
+        mock_click.assert_called_once_with(clicks=1, button="left")
+
+    @patch("dot.automation.desktop._get_ocr_reader")
+    @patch("pyautogui.screenshot")
+    def test_os_find_text_coordinates_mocked(self, mock_snap, mock_get_reader):
+        """Verifies that os_find_text_coordinates returns center coordinates."""
+        mock_reader = unittest.mock.MagicMock()
+        mock_reader.readtext.return_value = [
+            ([[100, 200], [200, 200], [200, 250], [100, 250]], "Save Button", 0.98)
+        ]
+        mock_get_reader.return_value = mock_reader
+        mock_snap.return_value = unittest.mock.MagicMock()
+
+        res = os_find_text_coordinates(text="Save Button")
+        self.assertIn("Found 'Save Button' at coordinates: x=150, y=225", res)
 
 
 if __name__ == "__main__":

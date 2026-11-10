@@ -77,6 +77,7 @@ def _build_payload(
             {"role": "user", "content": user_content},
         ],
         "temperature": 0.0,
+        "max_tokens": 2048,
         "stream": stream,
     }
 

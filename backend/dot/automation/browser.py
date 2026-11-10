@@ -156,11 +156,13 @@ async def _prune_snapshot(node, max_depth=6, depth=0):
 
 @mcp.tool
 async def navigate(url: str) -> dict:
-    """Navigate the active browser page to a specified URL.
-    
+    """Navigate the active browser to a specified website or web address.
+
+    Use this to open URLs, visit domains, load web pages, or begin web research tasks.
+
     Args:
         url (str): The complete web address to navigate to.
-        
+
     Returns:
         dict: A status dictionary containing success, detail, and error keys.
     """
@@ -370,22 +372,25 @@ async def screenshot(ctx: Context = None, question: str = "Describe what's visib
 
         if not description and ctx and hasattr(ctx, "session") and ctx.session:
             try:
+                import warnings
                 from fastmcp.client.sampling import SamplingMessage
                 from mcp.types import ImageContent, TextContent
-                sample_res = await ctx.session.create_message(
-                    messages=[
-                        SamplingMessage(
-                            role="user",
-                            content=ImageContent(type="image", data=encoded, mimeType="image/png"),
-                        ),
-                        SamplingMessage(
-                            role="user",
-                            content=TextContent(type="text", text=question),
-                        ),
-                    ],
-                    system_prompt="Describe what is visible in this browser screenshot in 2-3 concise sentences.",
-                    max_tokens=200,
-                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    sample_res = await ctx.session.create_message(
+                        messages=[
+                            SamplingMessage(
+                                role="user",
+                                content=ImageContent(type="image", data=encoded, mime_type="image/png"),
+                            ),
+                            SamplingMessage(
+                                role="user",
+                                content=TextContent(type="text", text=question),
+                            ),
+                        ],
+                        system_prompt="Describe what is visible in this browser screenshot in 2-3 concise sentences.",
+                        max_tokens=200,
+                    )
                 if hasattr(sample_res, "content"):
                     description = sample_res.content.text if hasattr(sample_res.content, "text") else str(sample_res.content)
             except Exception:
@@ -401,13 +406,13 @@ async def screenshot(ctx: Context = None, question: str = "Describe what's visib
 
 @mcp.tool
 async def snapshot() -> dict:
-    """
-    Get the current state of the webpage. Use this to see search 
-    results, headings, and links before clicking or extracting text.
-    Returns a pruned list of interactive and structural DOM elements.
-    
+    """Inspect and return interactive elements on the current webpage.
+
+    Returns a list of links, buttons, headings, and input fields with roles and names.
+    Call this before clicking or filling to locate exact element identifiers.
+
     Returns:
-        dict: A status dictionary where 'detail' contains a list of up to 40 interactive elements (tag, text, href, name).
+        dict: A status dictionary where detail contains up to 40 interactive elements.
     """
     try:
         page = await _ensure_browser()
@@ -436,85 +441,261 @@ async def snapshot() -> dict:
 
 
 @mcp.tool
-async def click(role: str, name: str) -> dict:
-    """Click a button, link, or element on the active webpage.
-    
-    Use the snapshot tool first to inspect the element role and accessible name.
-    
+async def click(
+    role: Optional[str] = None,
+    name: Optional[str] = None,
+    selector: Optional[str] = None,
+    text: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict:
+    """Click a button, link, tab, or interactive element on the active webpage.
+
+    Specify either an ARIA role and accessible name, a CSS selector, or visible text.
+    Use this to follow links, submit forms, switch tabs, or activate controls.
+    Call the snapshot tool first to inspect available elements on the page.
+
     Args:
-        role (str): The HTML tag or ARIA role of the element to click.
-        name (str): The visible text or accessible name of the element.
-        
+        role (str, optional): The ARIA role of the element, such as link, button, or tab.
+        name (str, optional): The visible text or accessible label of the element.
+        selector (str, optional): A CSS selector targeting the element directly.
+        text (str, optional): The visible text of the link, button, or tab to click.
+        description (str, optional): A short description of the clicked element.
+
     Returns:
         dict: A status dictionary confirming the click action or error details.
     """
     try:
         page = await _ensure_browser()
-        locator = page.get_by_role(role, name=name)
-        await locator.click(timeout=5000)
-        await page.wait_for_load_state("domcontentloaded", timeout=5000)
-        return {"success": True, "detail": f"clicked {role} '{name}'", "error": None}
+        locator = None
+        target_desc = ""
+
+        # Normalize text and name parameters
+        target_text = name or text or description
+
+        # Handle selector if provided
+        if selector:
+            clean_selector = selector
+            if ":contains(" in clean_selector:
+                clean_selector = clean_selector.replace(":contains(", ":has-text(")
+            try:
+                cand = page.locator(clean_selector)
+                if await cand.count() > 0:
+                    locator = cand
+                    target_desc = f"selector '{clean_selector}'"
+            except Exception:
+                pass
+
+        # Try ARIA role and name
+        if not locator and role and target_text:
+            try:
+                cand = page.get_by_role(role, name=target_text)
+                if await cand.count() > 0:
+                    locator = cand
+                    target_desc = f"{role} '{target_text}'"
+            except Exception:
+                pass
+
+        # Try visible text matching
+        if not locator and target_text:
+            try:
+                cand = page.get_by_text(target_text)
+                if await cand.count() > 0:
+                    locator = cand
+                    target_desc = f"text '{target_text}'"
+            except Exception:
+                pass
+
+        # Try pure role if no text
+        if not locator and role:
+            try:
+                cand = page.get_by_role(role)
+                if await cand.count() > 0:
+                    locator = cand
+                    target_desc = f"role '{role}'"
+            except Exception:
+                pass
+
+        if not locator:
+            if selector:
+                clean_selector = selector.replace(":contains(", ":has-text(")
+                locator = page.locator(clean_selector)
+                target_desc = f"selector '{clean_selector}'"
+            elif target_text:
+                locator = page.get_by_text(target_text)
+                target_desc = f"text '{target_text}'"
+            else:
+                current_url = getattr(page, "url", "unknown") if page else "unknown"
+                return {
+                    "success": False,
+                    "detail": None,
+                    "error": (
+                        f"Provide a selector, role, name, or text to click an element on page '{current_url}'. "
+                        "To click a window, video, or button on your desktop monitor, use os_click_text."
+                    )
+                }
+
+        # Prefer visible elements to avoid targeting hidden dropdowns or menus.
+        try:
+            visible_cand = locator.locator("visible=true")
+            if await visible_cand.count() > 0:
+                locator = visible_cand
+        except Exception:
+            pass
+
+        # Click the first matching element to prevent strict mode violations.
+        target = locator.first
+        await target.click(timeout=5000)
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=4000)
+        except Exception:
+            pass
+        return {"success": True, "detail": f"clicked {target_desc}", "error": None}
     except Exception as e:
-        return {"success": False, "detail": f"click failed on {role} '{name}'", "error": str(e)}
+        current_url = getattr(page, "url", "unknown") if page else "unknown"
+        return {
+            "success": False,
+            "detail": None,
+            "error": (
+                f"Click failed on {target_desc or 'element'} on page '{current_url}': {str(e)}. "
+                "If the target window is open on the desktop monitor outside this browser, "
+                "use os_click_text or os_mouse_click."
+            )
+        }
 
 
 @mcp.tool
-async def fill(role: str, name: str, text: str) -> dict:
-    """Type text into an input field on the active webpage.
-    
-    Use the snapshot tool first to inspect the field role and accessible name.
-    
+async def fill(
+    text: str,
+    role: Optional[str] = None,
+    name: Optional[str] = None,
+    selector: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict:
+    """Type text into an input field or search box on the active webpage.
+
+    Specify either an ARIA role and accessible name, or a CSS selector.
+    Use this to enter search queries, login data, or form inputs.
+    Call the snapshot tool first to inspect available form inputs.
+
     Args:
-        role (str): The HTML tag or ARIA role of the input element.
-        name (str): The visible placeholder or accessible name of the input field.
-        text (str): The exact text string to enter.
-        
+        text (str): The text string to enter into the field.
+        role (str, optional): The ARIA role of the input, such as textbox or searchbox.
+        name (str, optional): The placeholder, label, or accessible name of the input.
+        selector (str, optional): A CSS selector targeting the input element directly.
+        description (str, optional): A short description of the input field.
+
     Returns:
         dict: A status dictionary confirming the fill action or error details.
     """
     try:
         page = await _ensure_browser()
-        locator = page.get_by_role(role, name=name)
+        locator = None
+        target_desc = ""
+
+        if selector:
+            clean_selector = selector.replace(":contains(", ":has-text(")
+            locator = page.locator(clean_selector).first
+            target_desc = f"selector '{clean_selector}'"
+        elif role and name:
+            effective_roles = [role]
+            if role in ("input", "search", "searchbox", "field"):
+                effective_roles = ["textbox", "combobox", "searchbox"]
+
+            for r in effective_roles:
+                try:
+                    candidate = page.get_by_role(r, name=name).first
+                    if await candidate.count() > 0:
+                        locator = candidate
+                        target_desc = f"{r} '{name}'"
+                        break
+                except Exception:
+                    continue
+
+            if not locator:
+                try:
+                    candidate = page.get_by_placeholder(name).first
+                    if await candidate.count() > 0:
+                        locator = candidate
+                        target_desc = f"placeholder '{name}'"
+                except Exception:
+                    pass
+                if not locator:
+                    locator = page.locator(f"input[name='{name}'], input#{name}, textarea[name='{name}']").first
+                    target_desc = f"input '{name}'"
+        elif name:
+            locator = page.get_by_placeholder(name).first
+            target_desc = f"placeholder '{name}'"
+        else:
+            return {
+                "success": False,
+                "detail": None,
+                "error": "Provide either (role and name) or selector to fill an input."
+            }
+
         await locator.fill(text, timeout=5000)
-        return {"success": True, "detail": f"filled {role} '{name}' with text", "error": None}
+        return {"success": True, "detail": f"filled {target_desc} with text", "error": None}
     except Exception as e:
-        return {"success": False, "detail": f"fill failed on {role} '{name}'", "error": str(e)}
+        return {"success": False, "detail": f"fill failed on {target_desc or 'input'}", "error": str(e)}
 
 
 @mcp.tool
-async def extract_text(role: str = None, name: str = None, url: str = None) -> dict:
-    """
-    Read and extract the visible text content from the active webpage.
-    To read the full article or page, call this with NO arguments.
-    Only provide role and name if targeting a specific heading/link found in snapshot.
-    
+async def extract_text(
+    role: Optional[str] = None,
+    name: Optional[str] = None,
+    url: Optional[str] = None,
+    selector: Optional[str] = None,
+    text: Optional[str] = None,
+    description: Optional[str] = None,
+) -> dict:
+    """Read and extract visible text content from the active webpage.
+
+    Call with no arguments to extract the full text of the current page or article.
+    Provide a selector, or a role and name, to extract text from a specific element or headline.
+    Use this to read search results, articles, documentation, or post-click webpage updates.
+
     Args:
-        role (str, optional): The HTML tag or role of a specific element to extract from. Defaults to None.
-        name (str, optional): The accessible name or text of a specific element to extract from. Defaults to None.
-        url (str, optional): Target URL to navigate to before extraction if different from active page.
-        
+        role (str, optional): The ARIA role of a specific element to extract.
+        name (str, optional): The accessible label or text of the target element.
+        url (str, optional): An optional web address to load before extracting text.
+        selector (str, optional): A CSS selector targeting specific text elements.
+        text (str, optional): Optional text filter for matching elements.
+        description (str, optional): A description of the target content to extract.
+
     Returns:
-        dict: A status dictionary where 'detail' contains the extracted text string.
+        dict: A status dictionary containing the extracted text in detail.
     """
     try:
         page = await _ensure_browser()
-        if url and (page.url != url and not (page.url or "").rstrip('/').endswith(url.rstrip('/'))):
+        if url and (page.url != url and not (page.url or "").rstrip("/").endswith(url.rstrip("/"))):
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=15000)
             except Exception:
                 pass
 
-        text = None
-        if role and name:
+        extracted = None
+        if selector:
+            clean_selector = selector.replace(":contains(", ":has-text(")
             try:
-                locator = page.get_by_role(role, name=name)
-                text = await locator.inner_text(timeout=3000)
+                loc = page.locator(clean_selector)
+                count = await loc.count()
+                if count > 1:
+                    texts = await loc.all_inner_texts()
+                    extracted = "\n".join(t.strip() for t in texts if t.strip())
+                elif count == 1:
+                    extracted = await loc.first.inner_text(timeout=3000)
             except Exception:
-                # If specific locator timed out or role doesn't exist, fall back to page body
-                pass
+                extracted = None
 
-        if not text:
-            text = await page.inner_text("body", timeout=5000)
+        target_name = name or text
+        if not extracted and role and target_name:
+            try:
+                locator = page.get_by_role(role, name=target_name).first
+                extracted = await locator.inner_text(timeout=3000)
+            except Exception:
+                extracted = None
+
+        if not extracted:
+            extracted = await page.inner_text("body", timeout=5000)
 
         current_url = page.url or "unknown"
         try:
@@ -527,7 +708,7 @@ async def extract_text(role: str = None, name: str = None, url: str = None) -> d
             "success": True,
             "url": current_url,
             "title": page_title,
-            "detail": f"{header}{text}",
+            "detail": f"{header}{extracted.strip()}",
             "error": None
         }
     except Exception as e:

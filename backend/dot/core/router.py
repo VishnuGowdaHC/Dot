@@ -57,13 +57,25 @@ async def intentRouter(websocket, text: str, active_session, active_client):
     best_score = float(np.max(score.numpy()))
     print(f"[Intent Router] Fast execution match score: {best_score:.4f}")
 
-    # Direct Execution Mode for desktop applications and media.
-    if best_score >= ROUTING_THRESHOLD:
+    # Direct execution mode applies only to short commands (under 6 words).
+    # Complex questions and conversational queries must route to the ReAct loop.
+    words = text.strip().split()
+    lower_text = text.lower()
+    is_conversational = any(
+        lower_text.startswith(prefix) for prefix in [
+            "how", "why", "what", "can you", "could you", "please explain", "help"
+        ]
+    ) or any(
+        keyword in lower_text for keyword in ["github", "pr", "pull request", "issue", "commit", "branch"]
+    )
+
+    if best_score >= ROUTING_THRESHOLD and len(words) <= 5 and not is_conversational:
         print(f"[Fast Execution Mode] Routing to routeAppOpener: '{text}'")
         res = await routeAppOpener(text)
-        if res and websocket:
-            await stream_response(websocket, res)
-        return res
+        if res:
+            if websocket:
+                await stream_response(websocket, res)
+            return res
 
     # Pre-retrieve speculative tools in worker thread for ReAct loop (<15ms).
     speculative_tools = await asyncio.to_thread(get_speculative_tools, text, 3)
@@ -75,7 +87,7 @@ async def intentRouter(websocket, text: str, active_session, active_client):
         text,
         session=active_session,
         active_client=active_client,
-        max_steps=8,
+        max_steps=None,
         speculative_tools=speculative_tools,
     )
 

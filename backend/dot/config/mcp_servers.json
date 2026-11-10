@@ -8,12 +8,8 @@
       }
     },
     "browser": {
-      "command": "py",
-      "args": ["-m", "dot.automation.browser"],
-      "env": {
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONUTF8": "1"
-      }
+      "command": "dot/mcp/bin/agent-browser.exe",
+      "args": ["mcp", "--tools", "core"]
     },
     "os_tools": {
       "command": "py",

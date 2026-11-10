@@ -179,7 +179,7 @@ async def os_take_screenshot(ctx: Context = None, question: str = "Describe what
                     messages=[
                         SamplingMessage(
                             role="user",
-                            content=ImageContent(type="image", data=encoded, mimeType="image/png"),
+                            content=ImageContent(type="image", data=encoded, mime_type="image/png"),
                         ),
                         SamplingMessage(
                             role="user",
@@ -252,37 +252,126 @@ def os_keyboard_press(keys):
     except Exception as e:
         return f"Failed to press key. Error: {str(e)}"
 
+def _calculate_text_match_score(target: str, candidate: str) -> int:
+    """Calculate the match quality between target text and candidate text."""
+    target_clean = target.lower().strip()
+    candidate_clean = candidate.lower().strip()
+    if not target_clean or not candidate_clean:
+        return 0
+    if target_clean == candidate_clean:
+        return 100
+    if target_clean in candidate_clean:
+        return 80 + len(target_clean)
+    if len(candidate_clean) >= 4 and candidate_clean in target_clean:
+        return 50 + len(candidate_clean)
+    target_words = set(w for w in target_clean.split() if len(w) >= 3)
+    candidate_words = set(w for w in candidate_clean.split() if len(w) >= 3)
+    overlap = target_words.intersection(candidate_words)
+    if overlap:
+        return 30 + sum(len(w) for w in overlap)
+    return 0
+
+
 @mcp.tool
-def os_find_text_coordinates(text: str) -> str:
-    """
-    Scans the current desktop screen for the specified text using OCR and returns its center coordinates.
+def os_find_text_coordinates(
+    text: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+) -> str:
+    """Scans the current desktop screen for the specified text using OCR and returns its center coordinates.
+
     Use this before clicking to find the exact X, Y location of a button or word.
 
     Args:
-        text (str): The text or word to search for on the screen.
+        text (str, optional): The text or word to search for on the screen.
+        title (str, optional): Alternative name for the target title or button label.
+        description (str, optional): Alternative description of the target text.
     """
+    target = text or title or description
+    if not target:
+        return "Provide target text to locate."
     try:
         reader = _get_ocr_reader()
         if not reader:
             return "OCR reader is not available."
 
         screenshot = pyautogui.screenshot()
-
         import numpy as np
-        # Read the text bounding boxes using the lazy reader.
         results = reader.readtext(np.array(screenshot))
-        
+
+        best_score = 0
+        best_match = None
         for (bbox, recognized_text, prob) in results:
-            if text.lower() in recognized_text.lower():
-                # Calculate the center of the bounding box
+            score = _calculate_text_match_score(target, recognized_text)
+            if score > best_score:
                 x = int((bbox[0][0] + bbox[1][0]) / 2)
                 y = int((bbox[0][1] + bbox[2][1]) / 2)
-                return f"Found '{text}' at coordinates: x={x}, y={y}"
-                
-        return f"Could not find the text '{text}' on the screen."
+                best_score = score
+                best_match = (x, y, recognized_text)
+
+        if best_match and best_score >= 30:
+            x, y, label = best_match
+            return f"Found '{label}' at coordinates: x={x}, y={y}"
+
+        return f"Could not find the text '{target}' on the screen."
     except Exception as e:
         return f"OCR failed: {str(e)}"
 
-    
+
+@mcp.tool
+def os_click_text(
+    text: Optional[str] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    clicks: int = 1,
+    button: str = "left",
+) -> str:
+    """Scans the desktop screen for the specified text using OCR and clicks it.
+
+    Use this to click buttons, video titles, links, or text visible on the monitor.
+
+    Args:
+        text (str, optional): The visible text or title to locate and click on the screen.
+        title (str, optional): Alternative name for the target title or button label.
+        description (str, optional): Alternative description of the target element.
+        clicks (int, optional): The number of clicks to perform. Defaults to 1.
+        button (str, optional): The mouse button to click. Defaults to left.
+    """
+    target = text or title or description
+    if not target:
+        return "Provide target text or title to click."
+    try:
+        reader = _get_ocr_reader()
+        if not reader:
+            return "OCR reader is not available."
+
+        screenshot = pyautogui.screenshot()
+        import numpy as np
+        results = reader.readtext(np.array(screenshot))
+
+        best_score = 0
+        best_match = None
+        for (bbox, recognized_text, prob) in results:
+            score = _calculate_text_match_score(target, recognized_text)
+            if score > best_score:
+                x = int((bbox[0][0] + bbox[1][0]) / 2)
+                y = int((bbox[0][1] + bbox[2][1]) / 2)
+                best_score = score
+                best_match = (x, y, recognized_text)
+
+        if best_match and best_score >= 30:
+            x, y, label = best_match
+            pyautogui.moveTo(x, y, duration=0.2)
+            pyautogui.click(clicks=clicks, button=button)
+            return f"Successfully clicked on '{label}' at screen coordinates ({x}, {y})."
+
+        return (
+            f"Could not find the text '{target}' on the screen to click. "
+            "Use os_take_screenshot to inspect the visible titles and labels first."
+        )
+    except Exception as e:
+        return f"Failed to click text on screen: {str(e)}"
+
+
 if __name__ == "__main__":
     mcp.run(show_banner=False)

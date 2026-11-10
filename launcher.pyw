@@ -365,7 +365,7 @@ class StartupSupervisor:
         self.lbl_title.pack(side="left")
 
         self.lbl_version = tk.Label(
-            title_row, text="v1.0.7", font=("Consolas", 10), fg="#71717a", bg="#101012"
+            title_row, text="v1.0.11", font=("Consolas", 10), fg="#71717a", bg="#101012"
         )
         self.lbl_version.pack(side="right")
 
@@ -579,11 +579,12 @@ class StartupSupervisor:
                 "--mmproj", mmproj_fn,
                 "--port", str(port),
                 "-c", str(context_size),
+                "-np", "1",
                 "-fa", "on",
                 "-ctk", "q8_0",
                 "-ctv", "q8_0",
-                "-b", "512",
-                "-ub", "256",
+                "-b", "2048",
+                "-ub", "1024",
                 "--temp", "0.0",
                 "--alias", "dot-engine",
             ] + gpu_args

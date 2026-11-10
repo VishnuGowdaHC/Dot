@@ -27,7 +27,12 @@ async def fetch_server_tools(server: str, server_settings: dict) -> list:
             for tool in tools_arr:
                 schema = tool.input_schema if hasattr(tool, "input_schema") else getattr(tool, "inputSchema", {})
                 tool_name = tool.name
-                if not tool_name.startswith(f"{server}_"):
+                if server == "browser" and tool_name.startswith("agent_browser_"):
+                    clean_name = tool_name[len("agent_browser_"):]
+                    if clean_name == "open":
+                        clean_name = "navigate"
+                    tool_name = f"browser_{clean_name}"
+                elif not tool_name.startswith(f"{server}_"):
                     tool_name = f"{server}_{tool_name}"
                 server_tools.append({
                     "service": server,

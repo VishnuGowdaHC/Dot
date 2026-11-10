@@ -19,7 +19,6 @@ from dot.core.context import (
 from dot.core.executor import (
     execute_tool_discovery,
     execute_tool_call,
-    cleanup_browser,
 )
 from dot.core.llm import async_llm
 from dot.core.utils import render_history, log_agent_context
@@ -32,7 +31,7 @@ async def reAct_loop(
     llm: Any = None,
     session: Any = None,
     active_client: Any = None,
-    max_steps: int = 12,
+    max_steps: Optional[int] = None,
     speculative_tools: Optional[list] = None,
 ) -> str:
     """Executes the autonomous ReAct cycle for a single user query."""
@@ -62,13 +61,14 @@ async def reAct_loop(
     browser_used = False
 
     async def finish_turn(text: str) -> str:
-        if browser_used and active_client:
-            await cleanup_browser(active_client)
+        # Keep the browser open on the desktop for user inspection.
         return await stream_response(websocket, text)
 
-    for step in range(max_steps):
+    step = 0
+    raw_failures = 0
+    while max_steps is None or step < max_steps:
         # Compress older steps if unpinned tokens exceed threshold
-        history_parts = await compress_if_needed(history_parts, session)
+        history_parts = await compress_if_needed(history_parts, session, custom_system_prompt)
 
         # Emit active token telemetry for this step
         await emit_token_telemetry(websocket, session, custom_system_prompt, history_parts)
@@ -97,18 +97,38 @@ async def reAct_loop(
 
         extracted = extract_json(raw)
         if not extracted:
+            print(f"[Engine Warning] Failed to extract JSON from raw model output: {raw!r}")
+            raw_failures += 1
+            if raw_failures < 3:
+                append_or_update_error(
+                    history_parts,
+                    "[Output was not valid JSON. Emit ONLY a single JSON object with 'thought', 'action', 'tool_service', and 'payload'.]"
+                )
+                step += 1
+                continue
             fallback = "I encountered an internal error processing that. Please try rephrasing."
             await record_session_turn(session, query, fallback)
             return await finish_turn(fallback)
+        raw_failures = 0
 
         try:
             step_obj = parse_agent_step(extracted)
         except Exception as val_err:
             append_or_update_error(history_parts, f"[Invalid JSON: {val_err}. Retry with valid JSON.]")
+            step += 1
+            continue
+
+        if not step_obj.action:
+            append_or_update_error(
+                history_parts,
+                "[Incomplete step: 'action' is required. Specify action='Tool-exec' with payload, or action='Final' with final_answer.]"
+            )
+            step += 1
             continue
 
         # Format and display step telemetry cleanly in the console
-        print(f"\n--- [ReAct Step {step + 1}/{max_steps}] ---")
+        step_label = f"{step + 1}/{max_steps}" if max_steps else f"{step + 1}"
+        print(f"\n--- [ReAct Step {step_label}] ---")
         if step_obj.thought:
             print(f"[Thought] {step_obj.thought}")
 
@@ -145,7 +165,7 @@ async def reAct_loop(
                 executed_signatures=executed_signatures,
                 last_tool_sig=last_tool_sig,
                 loop_strikes=loop_strikes,
-                max_steps=max_steps,
+                max_steps=max_steps or 999999,
             )
             if res.observation:
                 obs_prev = res.observation.replace("\n", " ")[:100]
@@ -161,6 +181,8 @@ async def reAct_loop(
                 fallback = "Tool execution limit reached. I could not complete the operation."
                 await record_session_turn(session, query, fallback)
                 return await finish_turn(fallback)
+
+        step += 1
 
     # Max steps reached: attempt final synthesis from gathered observations
     has_obs = any(h.get("role") == "observation" for h in history_parts)

@@ -11,7 +11,7 @@ from pydantic import BaseModel, field_validator, model_validator
 class AgentStep(BaseModel):
     """Represents a single ReAct step produced by the language model."""
     thought: str
-    action: Literal["Tool", "Tool-exec", "Final"] = None
+    action: Literal["Tool", "Tool-exec", "Final"]
     tool_service: Optional[str] = None
     payload: Optional[Dict[str, Any]] = None
     final_answer: Optional[str] = None
@@ -72,18 +72,58 @@ class AgentStep(BaseModel):
         return val or {}
 
 
+def heal_truncated_json(text: str) -> str:
+    """Heal truncated JSON text by closing open strings, brackets, and braces."""
+    in_string = False
+    escape = False
+    stack = []
+
+    for char in text:
+        if escape:
+            escape = False
+            continue
+        if char == '\\' and in_string:
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if char in ('{', '['):
+                stack.append('}' if char == '{' else ']')
+            elif char in ('}', ']'):
+                if stack and stack[-1] == char:
+                    stack.pop()
+
+    healed = text
+    if in_string:
+        healed += '"'
+    while stack:
+        healed += stack.pop()
+    return healed
+
+
 def extract_json(raw: str) -> Optional[str]:
-    """Extracts a valid JSON string from raw model text."""
+    """Extracts and heals a valid JSON string from model text."""
+    # Match complete markdown fenced code blocks.
     match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
     if match:
-        return match.group(1).strip()
+        return heal_truncated_json(match.group(1).strip())
+
+    # Match incomplete markdown fenced code blocks where output was cut off.
+    incomplete_match = re.search(r"```(?:json)?\s*(\{.*)", raw, re.DOTALL)
+    if incomplete_match:
+        return heal_truncated_json(incomplete_match.group(1).strip())
 
     stripped = raw.strip()
     if stripped.startswith("{"):
-        # Auto-heal missing closing braces if model generation truncated
-        if not stripped.endswith("}"):
-            stripped += "}"
-        return stripped
+        return heal_truncated_json(stripped)
+
+    # Locate the first opening brace if text contains leading commentary.
+    brace_idx = raw.find("{")
+    if brace_idx != -1:
+        return heal_truncated_json(raw[brace_idx:].strip())
+
     return None
 
 

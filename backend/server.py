@@ -19,6 +19,7 @@ import warnings
 import traceback
 import threading
 from pathlib import Path
+from typing import Optional, Any, Dict
 from contextlib import asynccontextmanager
 
 # Suppress harmless upstream PyTorch and HuggingFace Hub startup warnings.
@@ -54,9 +55,41 @@ from dot.memory.collections.session_collection import embed_session_to_chroma
 from dot.memory.vector_store import get_all_services
 from dot.mcp.client import get_multi_server_client
 from dot.mcp.registry import sync_registry, load_server_config
+from dot.sandbox.manager import (
+    is_docker_available,
+    is_sandbox_running,
+    is_sandbox_paused,
+    start_sandbox,
+    stop_sandbox,
+    pause_sandbox,
+    unpause_sandbox,
+)
+from dot.sandbox.executor import exec_in_sandbox
+from dot.sandbox.intervention import get_intervention_manager
 
 # Global state dictionary shared across active WebSocket connections.
 app_state = {}
+
+_turn_lock = asyncio.Lock()
+_active_turn_task: Optional[asyncio.Task] = None
+
+
+async def execute_turn_safely(websocket, text: str, session, client):
+    """Executes a user turn and cancels any active previous turn to prevent collisions."""
+    global _active_turn_task
+    current_task = asyncio.current_task()
+
+    if _active_turn_task and not _active_turn_task.done() and _active_turn_task != current_task:
+        print(f"[Turn Dispatcher] Cancelling previous turn for new input: '{text}'")
+        _active_turn_task.cancel()
+        try:
+            await _active_turn_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    _active_turn_task = current_task
+    async with _turn_lock:
+        return await intentRouter(websocket, text, session, client)
 
 
 def handle_voice_transcription(text: str) -> None:
@@ -75,8 +108,8 @@ def handle_voice_transcription(text: str) -> None:
             try:
                 # Send transcribed voice input to the client user interface.
                 await ws.send_text(json.dumps({"type": "voice_input", "text": text}))
-                # Route through intentRouter which streams output to the WebSocket.
-                data = await intentRouter(ws, text, session, client)
+                # Route through execute_turn_safely to prevent parallel collisions.
+                data = await execute_turn_safely(ws, text, session, client)
                 if data:
                     print(f"Received from dot: {data}")
             except Exception as err:
@@ -268,6 +301,42 @@ async def mcp_sync_registry():
         return {"status": "error", "message": str(e)}
 
 
+@app.get("/api/sandbox/status")
+async def get_sandbox_status():
+    """Returns sandbox container and Docker status."""
+    docker_ok = await is_docker_available()
+    running = await is_sandbox_running() if docker_ok else False
+    paused = await is_sandbox_paused() if running else False
+    return {
+        "docker_available": docker_ok,
+        "running": running,
+        "paused": paused,
+    }
+
+
+@app.post("/api/sandbox/start")
+async def api_start_sandbox():
+    """Starts the Docker sandbox container."""
+    success = await start_sandbox()
+    return {"status": "ok" if success else "error"}
+
+
+@app.post("/api/sandbox/stop")
+async def api_stop_sandbox():
+    """Stops the Docker sandbox container."""
+    success = await stop_sandbox()
+    return {"status": "ok" if success else "error"}
+
+
+@app.post("/api/sandbox/exec")
+async def api_exec_sandbox(request: Request):
+    """Executes a command inside the sandbox."""
+    payload = await request.json()
+    command = payload.get("command", "")
+    code, output = await exec_in_sandbox(command)
+    return {"exit_code": code, "output": output}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handles bidirectional communication with the frontend client."""
@@ -315,8 +384,41 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             text = await websocket.receive_text()
             try:
-                # Execute turn through intentRouter which streams output to the WebSocket.
-                data = await intentRouter(websocket, text, active_session, active_client)
+                # Handle structured JSON control messages from UI
+                parsed_msg = None
+                if text.strip().startswith("{"):
+                    try:
+                        parsed_msg = json.loads(text)
+                    except Exception:
+                        parsed_msg = None
+
+                if parsed_msg and isinstance(parsed_msg, dict) and "type" in parsed_msg:
+                    msg_type = parsed_msg.get("type")
+                    if msg_type == "intervention_approve":
+                        feedback = parsed_msg.get("feedback")
+                        get_intervention_manager().submit_resolution(feedback)
+                        await websocket.send_text(json.dumps({"type": "intervention_resolved"}))
+                        continue
+                    elif msg_type == "intervention_cli_exec":
+                        cli_cmd = parsed_msg.get("command", "")
+                        code, out = await exec_in_sandbox(cli_cmd)
+                        await websocket.send_text(json.dumps({
+                            "type": "cli_output",
+                            "data": {"command": cli_cmd, "exit_code": code, "output": out}
+                        }))
+                        continue
+                    elif msg_type == "sandbox_status":
+                        running = await is_sandbox_running()
+                        docker_ok = await is_docker_available()
+                        paused = await is_sandbox_paused() if running else False
+                        await websocket.send_text(json.dumps({
+                            "type": "sandbox_status",
+                            "data": {"docker_available": docker_ok, "running": running, "paused": paused}
+                        }))
+                        continue
+
+                # Execute turn through execute_turn_safely to prevent parallel collisions.
+                data = await execute_turn_safely(websocket, text, active_session, active_client)
                 if data:
                     print(f"Processed input: {text}")
 

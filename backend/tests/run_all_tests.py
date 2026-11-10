@@ -31,6 +31,12 @@ TEST_MODULES = [
     "tests.test_logging",
     "tests.test_memory_compactor",
     "tests.test_github_guardrails",
+    "tests.test_rolling_memory",
+    "tests.test_sandbox_manager",
+    "tests.test_sandbox_executor",
+    "tests.test_intervention",
+    "tests.test_tool_wiring",
+    "tests.test_agent_browser_integration",
 ]
 
 

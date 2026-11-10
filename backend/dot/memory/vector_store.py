@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from typing import Optional
 from dot.memory.client import get_collection
 
 tools_collection = get_collection('mcp_tools')
@@ -11,6 +12,8 @@ CASUAL_PATTERNS = {
     "tell me a joke", "thanks", "thank you", "ok", "okay", "bye", "goodbye", "lol"
 }
 
+BYPASS_SERVICES = {"browser", "native", "os_tools", "sandbox"}
+
 
 def is_casual_query(query: str) -> bool:
     """Detects whether a query is a greeting or casual chat requiring no tools."""
@@ -18,12 +21,25 @@ def is_casual_query(query: str) -> bool:
     return clean in CASUAL_PATTERNS or len(clean.split()) <= 1 and clean in {"hi", "hello", "hey", "sup", "yo"}
 
 
-def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=1.40):
+def detect_service_hint(query: str) -> Optional[str]:
+    """Detects the primary service category from query keywords."""
+    clean = query.lower()
+    if any(k in clean for k in ["sandbox", "container", "isolated"]):
+        return "sandbox"
+    if any(k in clean for k in ["github", "repo", "commit", "pull request", "pr ", "issue", "branch"]):
+        return "github"
+    if any(k in clean for k in ["http://", "https://", "wikipedia", "website", "news", "youtube", "browse", "webpage", "article", "tab", "link", "web", "site", "button"]):
+        return "browser"
+    if any(k in clean for k in ["window", "process", "desktop", "monitor", "hotkey", "volume", "screen"]):
+        return "os_tools"
+    return None
+
+
+def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=1.85):
     """Retrieves relevant tools matching query and optional service hint."""
     selected_tool = []
 
     # If no query is provided, return all tools for the requested service
-    BYPASS_SERVICES = {"browser", "native", "os_tools"}
     if service_hint in BYPASS_SERVICES and not query:
         results = tools_collection.get(
             where={"service": service_hint}
@@ -88,11 +104,26 @@ def format_compact_tool(tool: dict) -> str:
     return f"- {tool['tool_name']}({args_str})"
 
 
-def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.40) -> list[dict]:
+def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.85) -> list[dict]:
     """Retrieves top-k relevant tools for Turn 0 prompt injection with threshold gating."""
     if not query or is_casual_query(query):
         return []
-    return get_relevant_tools(query=query, service_hint=None, k=k, distance_threshold=distance_threshold)
+
+    hint = detect_service_hint(query)
+    tools = get_relevant_tools(query=query, service_hint=hint, k=k, distance_threshold=distance_threshold)
+
+    # Backfill with general search when service-filtered results are below k
+    if len(tools) < k and hint:
+        seen = {t["tool_name"] for t in tools}
+        fallback_tools = get_relevant_tools(query=query, service_hint=None, k=k, distance_threshold=distance_threshold)
+        for ft in fallback_tools:
+            if ft["tool_name"] not in seen:
+                tools.append(ft)
+                seen.add(ft["tool_name"])
+            if len(tools) >= k:
+                break
+
+    return tools
 
 
 _available_services_cache = None

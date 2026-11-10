@@ -91,9 +91,15 @@
 
       <!-- Top Window Drag Handle & Minimal Header (Visible on hover) -->
       <div id="drag-handle" class="absolute top-0 left-0 right-0 h-7 flex items-center justify-between px-3 z-30 cursor-move opacity-0 hover:opacity-100 transition-opacity duration-200">
-        <div id="header-connection-pill" class="flex items-center gap-1.5 text-[9.5px] font-mono text-zinc-400">
-          <span id="header-status-dot" class="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"></span>
-          <span id="header-status-text">Dot Assistant</span>
+        <div class="flex items-center gap-2 font-mono text-[9.5px]">
+          <div id="header-connection-pill" class="flex items-center gap-1.5 text-zinc-400">
+            <span id="header-status-dot" class="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]"></span>
+            <span id="header-status-text">Dot</span>
+          </div>
+          <div id="sandbox-pill" class="flex items-center gap-1 bg-white/5 border border-white/8 px-1.5 py-0.2 rounded text-zinc-400 cursor-pointer hover:bg-white/10" title="Docker Sandbox (0 MB VRAM, 1.5GB RAM Cap). Click to open terminal.">
+            <span id="sandbox-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span id="sandbox-text">Sandbox</span>
+          </div>
         </div>
         <div class="flex items-center gap-1">
           <button id="btn-minimize" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Minimize / Collapse">
@@ -124,6 +130,21 @@
         <div class="bg-zinc-900 border border-white/20 text-white px-2.5 py-1 rounded-xl text-[11px] font-mono flex items-center justify-between animate-pulse">
           <span>Recording audio...</span>
           <span>Release <kbd class="px-1 py-0.2 rounded bg-white/10 border border-white/20 text-white text-[9px]">Alt</kbd></span>
+        </div>
+      </div>
+
+      <!-- Active Human Intervention Banner -->
+      <div id="intervention-banner" class="hidden px-4 py-1 z-20">
+        <div class="bg-amber-950/90 border border-amber-500/40 text-amber-200 px-3 py-2 rounded-xl text-[11px] font-mono flex flex-col gap-1.5 shadow-lg">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-amber-300">Confirmation Required</span>
+            <span class="text-[9px] text-amber-400/80">Container Paused</span>
+          </div>
+          <div id="intervention-reason" class="text-zinc-200 text-[10.5px]">Action requires confirmation.</div>
+          <div class="flex items-center gap-1.5 mt-0.5 justify-end">
+            <button id="btn-intervention-term" type="button" class="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white text-[9.5px] cursor-pointer">Open CLI</button>
+            <button id="btn-intervention-approve" type="button" class="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[9.5px] cursor-pointer">Approve</button>
+          </div>
         </div>
       </div>
 
@@ -503,6 +524,27 @@
     </div>
   </div>
 
+  <!-- Sandbox Interactive CLI Modal -->
+  <div id="sandbox-cli-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md items-center justify-center p-3 animate-in fade-in duration-150">
+    <div class="w-full max-w-md bg-[#111113] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] font-mono text-xs">
+      <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-white/8 bg-[#18181b]">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+          <span class="font-semibold text-white text-xs">Sandbox Terminal (/workspace)</span>
+        </div>
+        <button id="btn-close-cli-modal" type="button" class="text-zinc-400 hover:text-white text-sm cursor-pointer px-1">&times;</button>
+      </div>
+      <div id="sandbox-terminal-output" class="p-3 h-52 overflow-y-auto bg-black/60 text-zinc-300 text-[11px] leading-relaxed select-text space-y-1 chat-scroll font-mono">
+        <div class="text-zinc-500">Connected to dot-sandbox (0 MB VRAM, 1.5GB RAM Cap).</div>
+      </div>
+      <div class="p-2.5 border-t border-white/8 bg-[#18181b] flex items-center gap-2">
+        <span class="text-zinc-500 font-bold">$</span>
+        <input id="input-sandbox-cmd" type="text" placeholder="e.g. ls -la, git status, python test.py..." class="flex-1 bg-transparent text-white placeholder-zinc-500 outline-none font-mono text-xs" />
+        <button id="btn-run-sandbox-cmd" type="button" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-[10.5px] cursor-pointer">Run</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Neutralino Client Library -->
   <script src="./neutralino.js"></script>
 
@@ -816,12 +858,32 @@
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    // Simple markdown code formatting
+    // Markdown formatter with syntax code blocks, inline code, bold, and italics
     function formatMarkdown(text) {
       if (!text) return '';
-      const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return escaped.replace(/`([^`]+)`/g, '<code class="bg-white/10 border border-white/15 px-1 py-0.2 rounded text-[10.5px] text-zinc-200 font-mono">$1</code>')
-                    .replace(/\n/g, '<br/>');
+      let escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      // Fenced code blocks ```lang\ncode\n```
+      escaped = escaped.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        return `<div class="my-2 rounded-xl bg-[#0e0e10] border border-white/10 overflow-hidden font-mono text-[11px] shadow-sm">
+          <div class="flex items-center justify-between px-3 py-1 bg-white/5 border-b border-white/5 text-[9.5px] text-zinc-400">
+            <span class="font-semibold text-zinc-300 uppercase">${lang || 'code'}</span>
+            <button type="button" class="hover:text-white cursor-pointer px-1 py-0.2 rounded hover:bg-white/10 transition-colors" onclick="navigator.clipboard.writeText(this.closest('div').nextElementSibling.innerText)">Copy</button>
+          </div>
+          <pre class="p-2.5 overflow-x-auto text-zinc-200 leading-normal select-text"><code>${code.trim()}</code></pre>
+        </div>`;
+      });
+
+      // Inline code `code`
+      escaped = escaped.replace(/`([^`]+)`/g, '<code class="bg-white/10 border border-white/15 px-1 py-0.2 rounded text-[10.5px] text-zinc-200 font-mono">$1</code>');
+      // Bold **text**
+      escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-white">$1</strong>');
+      // Italic *text*
+      escaped = escaped.replace(/\*([^*]+)\*/g, '<em class="italic text-zinc-300">$1</em>');
+      // Line breaks
+      escaped = escaped.replace(/\n/g, '<br/>');
+
+      return escaped;
     }
 
     // WebSocket Client
@@ -863,20 +925,34 @@
             state.isLoading = false;
             state.isStreaming = true;
             thinkingContainer.classList.add('hidden');
-            state.messages.push({ role: "dot", content: "" });
-            renderMessages();
+            const newMsg = { role: "dot", content: "" };
+            state.messages.push(newMsg);
+
+            // Append single streaming bubble directly to DOM without full re-render
+            const bubble = document.createElement('div');
+            bubble.className = 'self-start max-w-[90%] bg-[#18181b]/92 border border-white/8 text-zinc-200 px-3 py-2 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed backdrop-blur-md shadow-sm font-mono';
+            bubble.innerHTML = '<span class="inline-block w-1.5 h-3 bg-white/60 animate-pulse"></span>';
+            chatContainer.appendChild(bubble);
+            state.activeStreamBubble = bubble;
             updateShellExpansion();
+            chatContainer.scrollTop = chatContainer.scrollHeight;
           } else if (payload.type === "stream") {
             if (state.messages.length > 0) {
               const last = state.messages[state.messages.length - 1];
               if (last.role === "dot") {
                 last.content += payload.data;
-                renderMessages();
+                if (state.activeStreamBubble) {
+                  state.activeStreamBubble.innerHTML = formatMarkdown(last.content);
+                  chatContainer.scrollTop = chatContainer.scrollHeight;
+                } else {
+                  renderMessages();
+                }
               }
             }
           } else if (payload.type === "stream_end" || payload.type === "result") {
             state.isLoading = false;
             state.isStreaming = false;
+            state.activeStreamBubble = null;
             thinkingContainer.classList.add('hidden');
             if (payload.type === "result") {
               const last = state.messages[state.messages.length - 1];
@@ -886,6 +962,43 @@
             }
             renderMessages();
             updateShellExpansion();
+          } else if (payload.type === "intervention_required") {
+            const data = payload.data || {};
+            const reasonElem = document.getElementById('intervention-reason');
+            const banner = document.getElementById('intervention-banner');
+            if (reasonElem) reasonElem.textContent = data.reason || 'Action requires user confirmation.';
+            if (banner) banner.classList.remove('hidden');
+            updateShellExpansion();
+          } else if (payload.type === "intervention_resolved") {
+            const banner = document.getElementById('intervention-banner');
+            if (banner) banner.classList.add('hidden');
+            updateShellExpansion();
+          } else if (payload.type === "cli_output") {
+            const termOut = document.getElementById('sandbox-terminal-output');
+            if (termOut) {
+              const d = payload.data || {};
+              const line = document.createElement('div');
+              line.className = 'border-t border-white/5 pt-1 mt-1';
+              line.innerHTML = `<span class="text-emerald-400">$ ${d.command || ''}</span><pre class="text-zinc-300 text-[10.5px] whitespace-pre-wrap">${d.output || '(No output)'}</pre>`;
+              termOut.appendChild(line);
+              termOut.scrollTop = termOut.scrollHeight;
+            }
+          } else if (payload.type === "sandbox_status") {
+            const sData = payload.data || {};
+            const sDot = document.getElementById('sandbox-dot');
+            const sTxt = document.getElementById('sandbox-text');
+            if (sDot && sTxt) {
+              if (sData.paused) {
+                sDot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400';
+                sTxt.textContent = 'Paused';
+              } else if (sData.running) {
+                sDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+                sTxt.textContent = 'Running';
+              } else {
+                sDot.className = 'w-1.5 h-1.5 rounded-full bg-zinc-500';
+                sTxt.textContent = 'Idle';
+              }
+            }
           } else if (payload.type === "token_usage") {
             state.tokenUsage = payload.data;
             tokenVal.textContent = (payload.data.total_tokens || 924).toLocaleString();
@@ -1280,6 +1393,58 @@
     btnCancelSettings.addEventListener('click', closeSettingsModal);
     btnSaveSettings.addEventListener('click', saveSettings);
     btnSyncMcp.addEventListener('click', syncMcpRegistry);
+
+    // Sandbox and Intervention UI controls
+    const sandboxPill = document.getElementById('sandbox-pill');
+    const sandboxCliModal = document.getElementById('sandbox-cli-modal');
+    const btnCloseCliModal = document.getElementById('btn-close-cli-modal');
+    const btnRunSandboxCmd = document.getElementById('btn-run-sandbox-cmd');
+    const inputSandboxCmd = document.getElementById('input-sandbox-cmd');
+    const btnInterventionApprove = document.getElementById('btn-intervention-approve');
+    const btnInterventionTerm = document.getElementById('btn-intervention-term');
+
+    function openSandboxCli() {
+      if (sandboxCliModal) {
+        sandboxCliModal.classList.remove('hidden');
+        sandboxCliModal.classList.add('flex');
+        inputSandboxCmd?.focus();
+      }
+    }
+
+    function closeSandboxCli() {
+      if (sandboxCliModal) {
+        sandboxCliModal.classList.remove('flex');
+        sandboxCliModal.classList.add('hidden');
+      }
+    }
+
+    if (sandboxPill) sandboxPill.addEventListener('click', openSandboxCli);
+    if (btnInterventionTerm) btnInterventionTerm.addEventListener('click', openSandboxCli);
+    if (btnCloseCliModal) btnCloseCliModal.addEventListener('click', closeSandboxCli);
+
+    if (btnInterventionApprove) {
+      btnInterventionApprove.addEventListener('click', () => {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+          state.ws.send(JSON.stringify({ type: "intervention_approve" }));
+        }
+      });
+    }
+
+    function runSandboxCommand() {
+      const cmd = inputSandboxCmd?.value.trim();
+      if (!cmd) return;
+      if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ type: "intervention_cli_exec", command: cmd }));
+        inputSandboxCmd.value = '';
+      }
+    }
+
+    if (btnRunSandboxCmd) btnRunSandboxCmd.addEventListener('click', runSandboxCommand);
+    if (inputSandboxCmd) {
+      inputSandboxCmd.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') runSandboxCommand();
+      });
+    }
 
     // Dock selection
     btnDockBottom.addEventListener('click', () => {

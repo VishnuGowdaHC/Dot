@@ -1,0 +1,32 @@
+FROM python:3.12-slim-bookworm
+
+# Avoid interactive prompts during apt operations.
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    CHROME_BIN=/usr/bin/chromium \
+    CHROMIUM_PATH=/usr/bin/chromium
+
+# Install minimal system utilities and Chromium headless runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    curl \
+    git \
+    procps \
+    ca-certificates \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up isolated workspace directory.
+WORKDIR /workspace
+
+# Install standalone agent-browser binary for headless automation.
+COPY dot/mcp/bin/agent-browser-linux-x64 /usr/local/bin/agent-browser
+RUN chmod +x /usr/local/bin/agent-browser
+
+# Install lightweight python utilities.
+RUN pip install --no-cache-dir httpx playwright || true
+
+# Keep container active for asynchronous commands.
+CMD ["tail", "-f", "/dev/null"]
+

@@ -13,7 +13,21 @@ from dot.config.settings import get_github_token
 from dot.mcp.client_core import fetch_server_tools
 from dot.memory.collections.tools_collection import upsert_tools
 from dot.memory.collections.native_tools_collection import sync_native_tools
+from dot.sandbox.tools import SANDBOX_TOOL_SCHEMAS
 from dot.memory.vector_store import get_all_services
+
+
+def sync_sandbox_tools() -> None:
+    """Indexes sandbox tool schemas into the ChromaDB tool catalog."""
+    tool_list = []
+    for tool_name, schema_def in SANDBOX_TOOL_SCHEMAS.items():
+        tool_list.append({
+            "service": "sandbox",
+            "toolName": tool_name,
+            "description": schema_def.get("description", ""),
+            "inputSchema": schema_def.get("inputSchema", {}),
+        })
+    upsert_tools(tool_list, clear_before=True)
 
 
 def load_server_config() -> dict:
@@ -61,8 +75,76 @@ def load_server_config() -> dict:
     return config_dict
 
 
+# Whitelist of high-signal browser tools indexed in ChromaDB.
+ALLOWED_BROWSER_TOOLS = {
+    "browser_navigate",
+    "browser_read",
+    "browser_snapshot",
+    "browser_click",
+    "browser_fill",
+    "browser_press",
+    "browser_tab_close",
+    "browser_screenshot",
+    "browser_close",
+}
+
+# Explicit high-clarity descriptions for whitelisted browser tools to avoid semantic collision.
+BROWSER_TOOL_DESCRIPTIONS = {
+    "browser_navigate": "Open, visit, or navigate to a website or URL in the automation browser. Use this to open web pages, Wikipedia, search results, or documentation for reading and clicking.",
+    "browser_read": "Read and extract clean text or markdown content from the active webpage or a specified URL. Provide url to directly read a page.",
+    "browser_snapshot": "Inspect and return interactive elements on the current webpage with reusable @ref identifiers (@e1, @e2). Call this before clicking or filling.",
+    "browser_click": "Click an interactive element, link, or button on the webpage using a @ref identifier (e.g. @e1), text, or CSS selector.",
+    "browser_fill": "Clear and enter text into an input field or search box using a @ref identifier (e.g. @e2) or label.",
+    "browser_press": "Press a keyboard key or hotkey (e.g. 'Enter', 'Tab', 'Escape', 'Backspace', 'Control+A') in the active automation browser window.",
+    "browser_tab_close": "Close the active automation browser tab.",
+    "browser_screenshot": "Capture a screenshot of the automated browser webpage.",
+    "browser_close": "Close the active automation browser session and free resources.",
+}
+
+# Preserved native fast-path browser utilities.
+PRESERVED_BROWSER_TOOLS = [
+    {
+        "service": "browser",
+        "toolName": "browser_search_web",
+        "description": "Search the web for links and information. Returns organic results with titles, URLs, and snippets.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The search keywords or question."},
+                "max_results": {"type": "integer", "description": "Maximum search results to return. Defaults to 4."}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "service": "browser",
+        "toolName": "browser_play_video",
+        "description": "Find and play a video or song on YouTube directly in the default desktop player.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The video or song name to find and play."}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "service": "browser",
+        "toolName": "browser_open_in_browser",
+        "description": "Open a URL or search query in the external desktop browser window for the human user to view. Do NOT use this tool for agent web research, scraping, or automation; use browser_navigate instead.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Web address or search term to show to the human user."}
+            },
+            "required": ["target"]
+        }
+    }
+]
+
+
 async def sync_registry(active_client=None):
-    """Synchronizes all MCP and native tools into the ChromaDB catalog."""
+    """Synchronizes curated MCP and native tools into the ChromaDB catalog."""
     mcp_config = load_server_config()
     servers_dict = mcp_config.get("mcpServers", {})
     server_names = list(servers_dict.keys())
@@ -72,12 +154,29 @@ async def sync_registry(active_client=None):
         tools_resp = await active_client.list_tools()
         tools_list = getattr(tools_resp, "tools", tools_resp)
         for t in tools_list:
-            service = next((s for s in server_names if t.name.startswith(f"{s}_")), "unknown")
+            tool_name = t.name
+            if tool_name.startswith("browser_agent_browser_"):
+                clean = tool_name[len("browser_agent_browser_"):]
+                clean = "navigate" if clean == "open" else clean
+                tool_name = f"browser_{clean}"
+                service = "browser"
+            elif tool_name.startswith("agent_browser_"):
+                clean = tool_name[len("agent_browser_"):]
+                clean = "navigate" if clean == "open" else clean
+                tool_name = f"browser_{clean}"
+                service = "browser"
+            else:
+                service = next((s for s in server_names if tool_name.startswith(f"{s}_")), "unknown")
+
+            if service == "browser" and tool_name not in ALLOWED_BROWSER_TOOLS:
+                continue
+
             schema = t.input_schema if hasattr(t, "input_schema") else getattr(t, "inputSchema", {})
+            desc = BROWSER_TOOL_DESCRIPTIONS.get(tool_name, t.description)
             all_tools.append({
                 "service": service,
-                "toolName": t.name,
-                "description": t.description,
+                "toolName": tool_name,
+                "description": desc,
                 "inputSchema": schema,
             })
     else:
@@ -88,11 +187,22 @@ async def sync_registry(active_client=None):
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for server_list in results:
             if isinstance(server_list, list):
-                all_tools.extend(server_list)
+                for t in server_list:
+                    tool_name = t.get("toolName", "")
+                    if t.get("service") == "browser":
+                        if tool_name not in ALLOWED_BROWSER_TOOLS:
+                            continue
+                        if tool_name in BROWSER_TOOL_DESCRIPTIONS:
+                            t["description"] = BROWSER_TOOL_DESCRIPTIONS[tool_name]
+                    all_tools.append(t)
 
-    upsert_tools(all_tools)
-    get_all_services(force_refresh=True)
+    # Register preserved native fast-path tools
+    all_tools.extend(PRESERVED_BROWSER_TOOLS)
+
+    upsert_tools(all_tools, clear_before=True)
     sync_native_tools()
+    sync_sandbox_tools()
+    get_all_services(force_refresh=True)
 
 
 if __name__ == "__main__":

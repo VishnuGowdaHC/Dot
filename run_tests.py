@@ -11,7 +11,13 @@ ROOT_DIR = Path(__file__).resolve().parent
 RUNNER = ROOT_DIR / "backend" / "tests" / "run_all_tests.py"
 
 if __name__ == "__main__":
-    py_exe = sys.executable
+    # Locate the virtual environment executable.
+    venv_py = ROOT_DIR / ".venv" / "Scripts" / "python.exe"
+    if venv_py.exists():
+        py_exe = str(venv_py)
+    else:
+        py_exe = sys.executable
+
     ret = subprocess.run([py_exe, str(RUNNER)])
     sys.exit(ret.returncode)
 

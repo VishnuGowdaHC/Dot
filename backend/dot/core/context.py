@@ -18,6 +18,7 @@ SERVICE_MAP = {
     "browser": "browser automation/YouTube/web search",
     "os_tools": "OS management/processes",
     "native": "local session memory only",
+    "sandbox": "isolated container (shell CLI, test runs, sandboxed browser, git)",
 }
 
 
@@ -125,15 +126,23 @@ async def stream_response(websocket: Any, text: str) -> str:
 async def compress_if_needed(
     history_parts: List[Dict[str, Any]],
     session: Any,
+    custom_system_prompt: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Compresses unpinned history when total tokens exceed the compaction threshold."""
+    """Compresses unpinned history when total tokens exceed the context limit."""
     if not session:
         return history_parts
 
-    current_tokens = session.count_tokens(render_history(history_parts))
-    loop_limit = getattr(session, "compaction_threshold", MAX_LOOP_TOKENS)
+    sys_text = f"<|think|> {custom_system_prompt or get_system_prompt()}"
+    sys_tokens = session.count_tokens(sys_text)
+    hist_tokens = session.count_tokens(render_history(history_parts))
+    total_tokens = sys_tokens + hist_tokens
 
-    if current_tokens > loop_limit:
-        return await async_compress_history(history_parts, session, target_tokens=loop_limit)
+    # Reserve 2000 tokens for model output generation within the context limit.
+    generation_reserve = 2000
+    safe_limit = max(session.context_size - generation_reserve, MAX_LOOP_TOKENS)
+
+    if total_tokens > safe_limit:
+        target_hist = max(safe_limit - sys_tokens, 1500)
+        return await async_compress_history(history_parts, session, target_tokens=target_hist)
     return history_parts
 

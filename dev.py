@@ -178,11 +178,12 @@ def build_engine_cmd(config: dict, tier_override: Optional[str], backend_overrid
         "--mmproj", mmproj_fn,
         "--port", str(port),
         "-c", str(context_size),
+        "-np", "1",
         "-fa", "on",
         "-ctk", "q8_0",
         "-ctv", "q8_0",
-        "-b", "512",
-        "-ub", "256",
+        "-b", "2048",
+        "-ub", "1024",
         "--temp", "0.0",
         "--alias", "dot-engine"
     ] + gpu_args
@@ -298,7 +299,7 @@ def main():
         npx_bin = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
         frontend_cmd = [npx_bin, "@neutralinojs/neu", "run"]
 
-        print(f"{COLOR_FRONTEND}[FRONTEND]{COLOR_RESET} Starting Neutralino with Vite HMR...")
+        print(f"{COLOR_FRONTEND}[FRONTEND]{COLOR_RESET} Starting Neutralino desktop shell...")
         front_proc = subprocess.Popen(
             frontend_cmd,
             cwd=FRONTEND_DIR,

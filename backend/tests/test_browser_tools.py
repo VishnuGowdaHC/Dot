@@ -14,12 +14,15 @@ if str(BACKEND_DIR) not in sys.path:
 import unittest
 from unittest.mock import patch
 import asyncio
+import urllib.parse
 
 from dot.automation.browser import (
     search_web,
     open_in_browser,
     navigate,
     extract_text,
+    click,
+    fill,
     snapshot,
     close_browser,
 )
@@ -63,6 +66,60 @@ class TestBrowserTools(unittest.IsolatedAsyncioTestCase):
         # Close browser to verify clean teardown
         close_res = await close_browser()
         self.assertTrue(close_res.get("success"))
+
+    async def test_click_and_extract_by_selector(self):
+        """Verifies clicking and extracting text using CSS selectors."""
+        raw_html = (
+            "<!DOCTYPE html><html><body>"
+            "<a id='test-link' href='#target'>Click Me</a>"
+            "<div id='target-content' style='display:none;'>Target Loaded</div>"
+            "<script>"
+            "document.getElementById('test-link').addEventListener('click', function(e) {"
+            "  e.preventDefault();"
+            "  document.getElementById('target-content').style.display = 'block';"
+            "});"
+            "</script>"
+            "</body></html>"
+        )
+        data_url = f"data:text/html;charset=utf-8,{urllib.parse.quote(raw_html)}"
+        await navigate(data_url)
+        click_res = await click(selector="#test-link")
+        self.assertTrue(click_res.get("success"))
+
+        extract_res = await extract_text(selector="#target-content")
+        self.assertTrue(extract_res.get("success"))
+        self.assertIn("Target Loaded", extract_res.get("detail", ""))
+        await close_browser()
+
+    async def test_fill_and_click_with_roles(self):
+        """Verifies form input fill and button click with ARIA roles."""
+        raw_html = (
+            "<!DOCTYPE html><html><body>"
+            "<input type='text' placeholder='Search Query' id='query-input'>"
+            "<button id='submit-btn'>Search</button>"
+            "<p id='result' style='display:none;'></p>"
+            "<script>"
+            "document.getElementById('submit-btn').addEventListener('click', function(e) {"
+            "  const val = document.getElementById('query-input').value;"
+            "  const p = document.getElementById('result');"
+            "  p.innerText = 'Searched: ' + val;"
+            "  p.style.display = 'block';"
+            "});"
+            "</script>"
+            "</body></html>"
+        )
+        data_url = f"data:text/html;charset=utf-8,{urllib.parse.quote(raw_html)}"
+        await navigate(data_url)
+        fill_res = await fill(text="playwright testing", role="textbox", name="Search Query")
+        self.assertTrue(fill_res.get("success"))
+
+        click_res = await click(role="button", name="Search")
+        self.assertTrue(click_res.get("success"))
+
+        extract_res = await extract_text(selector="#result")
+        self.assertTrue(extract_res.get("success"))
+        self.assertIn("Searched: playwright testing", extract_res.get("detail", ""))
+        await close_browser()
 
 
 if __name__ == "__main__":
