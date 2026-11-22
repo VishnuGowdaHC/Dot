@@ -108,18 +108,18 @@ async def record_session_turn(session: Any, query: str, answer: str) -> None:
                 pass
 
 
-async def stream_response(websocket: Any, text: str) -> str:
+async def stream_response(websocket: Any, text: str, thoughts: Optional[str] = None) -> str:
     """Sends model response in small WebSocket chunks for genuine streaming."""
     if not websocket:
         return text
 
-    await websocket.send_text(json.dumps({"type": "stream_start"}))
+    await websocket.send_text(json.dumps({"type": "stream_start", "thoughts": thoughts}))
     for i in range(0, len(text), STREAM_CHUNK_SIZE):
         chunk = text[i:i + STREAM_CHUNK_SIZE]
         await websocket.send_text(json.dumps({"type": "stream", "data": chunk}))
         if STREAM_DELAY > 0:
             await asyncio.sleep(STREAM_DELAY)
-    await websocket.send_text(json.dumps({"type": "stream_end"}))
+    await websocket.send_text(json.dumps({"type": "stream_end", "thoughts": thoughts}))
     return text
 
 

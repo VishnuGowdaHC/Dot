@@ -76,6 +76,12 @@ def os_manage_process(action: str, process_name: Optional[str] = "") -> str:
     action = action.lower() if action else ""
     process_name = process_name.lower() if process_name else ""
 
+    # Normalize executable name when the extension is omitted.
+    if process_name and not process_name.endswith(".exe"):
+        exe_candidate = f"{process_name}.exe"
+        if exe_candidate in ALLOWED_PROCESSES:
+            process_name = exe_candidate
+
     if action == "list":
         running = {p.info['name'] for p in psutil.process_iter(['name']) if p.info['name']}
         
@@ -114,9 +120,11 @@ def os_manage_process(action: str, process_name: Optional[str] = "") -> str:
             return f"{process_name} is not currently running."
         
         if action == "start":
-            # Very basic start wrapper (you may need to add actual path mappings later)
+            # Start executable using native Windows file launcher.
             try:
-                os.startfile(process_name) # Works cleanly on Windows for apps in PATH
+                os.startfile(process_name)
+                # Pause briefly to allow the application window to initialize.
+                time.sleep(0.5)
                 return f"Successfully launched {process_name}."
             except Exception as e:
                 return f"Failed to start {process_name}. Make sure it is in the system PATH. Error: {str(e)}"

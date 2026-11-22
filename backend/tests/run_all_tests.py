@@ -37,6 +37,7 @@ TEST_MODULES = [
     "tests.test_intervention",
     "tests.test_tool_wiring",
     "tests.test_agent_browser_integration",
+    "tests.test_cloud_and_guardrails",
 ]
 
 

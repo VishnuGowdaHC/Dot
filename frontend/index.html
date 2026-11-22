@@ -102,6 +102,12 @@
           </div>
         </div>
         <div class="flex items-center gap-1">
+          <button id="btn-clear-chat" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-white/10 transition-colors cursor-pointer" title="Clear Chat History (Ctrl+L)">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
           <button id="btn-minimize" type="button" class="w-4.5 h-4.5 rounded flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer" title="Minimize / Collapse">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           </button>
@@ -135,15 +141,15 @@
 
       <!-- Active Human Intervention Banner -->
       <div id="intervention-banner" class="hidden px-4 py-1 z-20">
-        <div class="bg-amber-950/90 border border-amber-500/40 text-amber-200 px-3 py-2 rounded-xl text-[11px] font-mono flex flex-col gap-1.5 shadow-lg">
+        <div class="bg-red-950/90 border border-red-500/50 text-red-200 px-3 py-2 rounded-xl text-[11px] font-mono flex flex-col gap-1.5 shadow-lg">
           <div class="flex items-center justify-between">
-            <span class="font-semibold text-amber-300">Confirmation Required</span>
-            <span class="text-[9px] text-amber-400/80">Container Paused</span>
+            <span class="font-semibold text-red-300">Confirmation Required</span>
+            <span class="text-[9px] text-red-400/80">Action Paused</span>
           </div>
           <div id="intervention-reason" class="text-zinc-200 text-[10.5px]">Action requires confirmation.</div>
           <div class="flex items-center gap-1.5 mt-0.5 justify-end">
             <button id="btn-intervention-term" type="button" class="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white text-[9.5px] cursor-pointer">Open CLI</button>
-            <button id="btn-intervention-approve" type="button" class="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[9.5px] cursor-pointer">Approve</button>
+            <button id="btn-intervention-approve" type="button" class="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-semibold text-[9.5px] cursor-pointer">Approve</button>
           </div>
         </div>
       </div>
@@ -151,30 +157,30 @@
       <!-- The Control Shelf: Token Bar + 3-Dots + Input Pill -->
       <div class="relative z-10 px-3.5 pt-1.5 pb-2.5 flex flex-col gap-2">
 
-        <!-- Upper Tier: Compact Token Bar + 3-Dots Button -->
-        <div class="flex items-center justify-between gap-2 font-mono">
+        <!-- Upper Tier: Compact Token Bar + Active Model Pill + 3-Dots Button -->
+        <div class="flex items-center justify-between gap-1.5 font-mono">
 
           <!-- Token Bar -->
-          <div class="flex-1 h-7 px-2.5 bg-[#1a1a1d]/80 border border-white/8 rounded-xl backdrop-blur-md flex items-center justify-between text-xs shadow-sm">
-            <div class="flex items-center gap-1.5">
-              <span class="relative flex h-1.5 w-1.5">
+          <div class="flex-1 h-7 px-2 bg-[#1a1a1d]/80 border border-white/8 rounded-xl backdrop-blur-md flex items-center justify-between text-xs shadow-sm min-w-0">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="relative flex h-1.5 w-1.5 shrink-0">
                 <span class="pulse-anim absolute inline-flex h-full w-full rounded-full opacity-60 bg-emerald-400"></span>
                 <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400"></span>
               </span>
-              <span class="text-zinc-400 text-[10px]">Context:</span>
-              <span class="text-white font-semibold text-[10px]">
+              <span class="text-zinc-400 text-[9.5px] shrink-0">Context:</span>
+              <span class="text-white font-semibold text-[9.5px] truncate">
                 <span id="token-val">924</span>
                 <span class="text-zinc-500 font-normal"> / <span id="token-limit">8,192</span></span>
               </span>
-              <span id="typing-badge" class="hidden text-[9px] bg-white/10 text-white border border-white/20 px-1 rounded animate-pulse">
+              <span id="typing-badge" class="hidden text-[8.5px] bg-white/10 text-white border border-white/20 px-1 rounded animate-pulse">
                 +0
               </span>
             </div>
 
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1 shrink-0">
               <!-- Browser Toggle Button (SVG Icon, Zero Emoji) -->
-              <button id="btn-browser-toggle" type="button" class="group flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] bg-white/5 border border-white/8 text-zinc-300 hover:bg-white/10 hover:text-white transition-all cursor-pointer" title="Toggle Browser Headless / GUI Mode">
-                <svg class="w-3 h-3 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <button id="btn-browser-toggle" type="button" class="group flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] bg-white/5 border border-white/8 text-zinc-300 hover:bg-white/10 hover:text-white transition-all cursor-pointer" title="Toggle Browser Headless / GUI Mode">
+                <svg class="w-2.5 h-2.5 text-zinc-400 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"></circle>
                   <line x1="2" y1="12" x2="22" y2="12"></line>
                   <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
@@ -184,8 +190,14 @@
             </div>
           </div>
 
+          <!-- Active Model Pill (Quick Toggle between Local and Cloud) -->
+          <button id="btn-model-quicktoggle" type="button" class="h-7 px-2 bg-[#1a1a1d]/80 border border-white/8 rounded-xl backdrop-blur-md flex items-center gap-1 text-[9px] font-mono text-zinc-300 hover:text-white hover:border-white/20 transition-all cursor-pointer shadow-sm shrink-0" title="Click to toggle Local / Cloud or switch model">
+            <span id="model-status-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span id="label-active-model" class="truncate max-w-[90px]">Gemma 4B</span>
+          </button>
+
           <!-- 3-Dots Settings Button -->
-          <button id="btn-settings" type="button" class="w-7 h-7 rounded-xl bg-[#1a1a1d]/80 border border-white/8 backdrop-blur-md flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer shadow-sm shrink-0" title="Settings (Model, Cloud, MCP)">
+          <button id="btn-settings" type="button" class="w-7 h-7 rounded-xl bg-[#1a1a1d]/80 border border-white/8 backdrop-blur-md flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer shadow-sm shrink-0" title="Settings (Model, Cloud, MCP, Workspace)">
             <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
               <circle cx="12" cy="5" r="2" />
               <circle cx="12" cy="12" r="2" />
@@ -349,7 +361,8 @@
             <div>
               <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">Provider Preset</label>
               <div id="preset-buttons-container" class="flex flex-wrap gap-1.5">
-                <button type="button" data-preset="openai" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white text-black font-semibold cursor-pointer">OpenAI</button>
+                <button type="button" data-preset="gemini" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white text-black font-semibold cursor-pointer">Google Gemini</button>
+                <button type="button" data-preset="openai" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">OpenAI</button>
                 <button type="button" data-preset="openrouter" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">OpenRouter</button>
                 <button type="button" data-preset="groq" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">Groq</button>
                 <button type="button" data-preset="deepseek" class="preset-btn px-2 py-1 rounded-md text-[10.5px] font-mono bg-white/5 border border-white/10 text-zinc-300 hover:text-white cursor-pointer">DeepSeek</button>
@@ -360,7 +373,7 @@
             <!-- Base URL -->
             <div>
               <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">Base URL</label>
-              <input id="input-cloud-baseurl" type="text" placeholder="https://api.openai.com/v1" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
+              <input id="input-cloud-baseurl" type="text" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
             </div>
 
             <!-- Model Name -->
@@ -369,7 +382,7 @@
                 <label class="block text-[10.5px] font-medium text-zinc-300">Model Name</label>
                 <span class="text-[9.5px] text-zinc-500">Customizable</span>
               </div>
-              <input id="input-cloud-model" type="text" placeholder="e.g. gpt-4o-mini" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
+              <input id="input-cloud-model" type="text" placeholder="e.g. gemini-2.5-flash" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
               <!-- Suggestion Chips Container -->
               <div id="model-suggestions-container" class="flex flex-wrap gap-1 mt-1.5">
                 <!-- Dynamically updated -->
@@ -380,11 +393,38 @@
             <div>
               <label class="block text-[10.5px] font-medium text-zinc-300 mb-1">API Key</label>
               <div class="relative">
-                <input id="input-cloud-apikey" type="password" placeholder="sk-..." class="w-full bg-[#0f0f11] border border-white/10 rounded-lg pl-2.5 pr-12 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
+                <input id="input-cloud-apikey" type="password" placeholder="AIzaSy..." class="w-full bg-[#0f0f11] border border-white/10 rounded-lg pl-2.5 pr-12 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
                 <button id="btn-toggle-apikey" type="button" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-[10px] px-1 py-0.5 cursor-pointer">Show</button>
               </div>
-              <p class="text-[9.5px] text-zinc-500 mt-1">Stored locally in appConfig.json and never logged.</p>
             </div>
+
+            <!-- Test Connection and API Key Info -->
+            <div class="flex items-center justify-between pt-0.5">
+              <button id="btn-test-cloud" type="button" class="px-2.5 py-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded text-[10.5px] font-mono cursor-pointer transition-all flex items-center gap-1.5">
+                <span>Test Connection</span>
+              </button>
+              <span id="cloud-test-status" class="text-[10px] font-mono text-zinc-400"></span>
+            </div>
+            <div class="flex items-center justify-between text-[9.5px] text-zinc-500 pt-0.5">
+              <span>Saved locally in appConfig.json</span>
+              <a id="link-get-api-key" href="https://aistudio.google.com/app/apikey" target="_blank" class="text-zinc-300 hover:text-white underline inline-flex items-center gap-1">
+                <span>Get Gemini Key</span>
+                <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="7" y1="17" x2="17" y2="7"></line>
+                  <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+              </a>
+            </div>
+          </div>
+
+          <!-- Allowed Workspace Guardrail -->
+          <div class="p-3 bg-[#141416] border border-white/8 rounded-xl space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="block text-[10.5px] font-semibold text-zinc-300 uppercase tracking-wider">Allowed Workspace Folder</label>
+              <span class="text-[9px] font-mono px-1.5 py-0.2 rounded border bg-red-950/40 text-red-300 border-red-500/30">Guardrail</span>
+            </div>
+            <p class="text-[10px] text-zinc-400">Destructive commands (rm, del, rmdir) are blocked outside this directory.</p>
+            <input id="input-allowed-workspace" type="text" placeholder="e.g. E:\Projects\Projects\Dot" class="w-full bg-[#0f0f11] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-white focus:ring-1 focus:ring-white/20" />
           </div>
 
         </div>
@@ -553,6 +593,13 @@
     // Provider presets for Cloud API configuration
     const PROVIDER_PRESETS = [
       {
+        id: "gemini",
+        name: "Google Gemini",
+        baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+        suggestedModels: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+        keyPlaceholder: "AIzaSy..."
+      },
+      {
         id: "openai",
         name: "OpenAI",
         baseUrl: "https://api.openai.com/v1",
@@ -613,10 +660,11 @@
         backend: "cuda",
         selected_tier: "4B",
         browser_headless: true,
+        allowed_workspace: "",
         cloud: {
-          provider: "openai",
-          base_url: "https://api.openai.com/v1",
-          model: "gpt-4o-mini",
+          provider: "gemini",
+          base_url: "https://generativelanguage.googleapis.com/v1beta/openai/",
+          model: "gemini-2.5-flash",
           api_key: ""
         },
         github_token: "",
@@ -637,6 +685,10 @@
     const typingBadge = document.getElementById('typing-badge');
     const browserLabel = document.getElementById('browser-label');
     const btnBrowserToggle = document.getElementById('btn-browser-toggle');
+    const btnModelQuicktoggle = document.getElementById('btn-model-quicktoggle');
+    const labelActiveModel = document.getElementById('label-active-model');
+    const modelStatusDot = document.getElementById('model-status-dot');
+    const btnClearChat = document.getElementById('btn-clear-chat');
     const btnSettings = document.getElementById('btn-settings');
     const settingsModal = document.getElementById('settings-modal');
     const btnCloseSettings = document.getElementById('btn-close-settings');
@@ -666,6 +718,10 @@
     const inputCloudModel = document.getElementById('input-cloud-model');
     const inputCloudApiKey = document.getElementById('input-cloud-apikey');
     const btnToggleApiKey = document.getElementById('btn-toggle-apikey');
+    const btnTestCloud = document.getElementById('btn-test-cloud');
+    const cloudTestStatus = document.getElementById('cloud-test-status');
+    const linkGetApiKey = document.getElementById('link-get-api-key');
+    const inputAllowedWorkspace = document.getElementById('input-allowed-workspace');
     const presetButtonsContainer = document.getElementById('preset-buttons-container');
     const modelSuggestionsContainer = document.getElementById('model-suggestions-container');
 
@@ -841,9 +897,47 @@
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
+    // Escape HTML utility
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Render empty state with suggested action chips
+    function renderEmptyState() {
+      chatContainer.innerHTML = '';
+      const box = document.createElement('div');
+      box.className = 'flex flex-col items-center justify-center py-4 space-y-2 font-mono';
+      box.innerHTML = `
+        <div class="text-[10px] text-zinc-400 uppercase tracking-wider mb-0.5">Suggested Prompts</div>
+        <div class="w-full flex flex-col gap-1.5">
+          <button type="button" class="starter-chip text-left px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-[11px] text-zinc-300 hover:text-white transition-colors cursor-pointer" data-prompt="Play relaxing music on YouTube">
+            [Browser] Play relaxing music on YouTube
+          </button>
+          <button type="button" class="starter-chip text-left px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-[11px] text-zinc-300 hover:text-white transition-colors cursor-pointer" data-prompt="Search latest AI and technology news">
+            [Search] Search latest tech news
+          </button>
+          <button type="button" class="starter-chip text-left px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/8 text-[11px] text-zinc-300 hover:text-white transition-colors cursor-pointer" data-prompt="Open Programiz online Python compiler and test bubble sort">
+            [Automation] Open Python compiler and test sort
+          </button>
+        </div>
+      `;
+      box.querySelectorAll('.starter-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          userInput.value = btn.dataset.prompt;
+          sendPrompt();
+        });
+      });
+      chatContainer.appendChild(box);
+    }
+
     // Render message bubbles
     function renderMessages() {
       chatContainer.innerHTML = '';
+      if (state.messages.length === 0) {
+        renderEmptyState();
+        return;
+      }
       state.messages.forEach((msg) => {
         const bubble = document.createElement('div');
         if (msg.role === 'user') {
@@ -851,7 +945,15 @@
           bubble.textContent = msg.content;
         } else {
           bubble.className = 'self-start max-w-[90%] bg-[#18181b]/92 border border-white/8 text-zinc-200 px-3 py-2 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed backdrop-blur-md shadow-sm font-mono';
-          bubble.innerHTML = formatMarkdown(msg.content);
+          let html = '';
+          if (msg.thoughts) {
+            html += `<details class="mb-1.5 rounded-lg bg-black/40 border border-white/8 p-1.5 text-[10px] font-mono text-zinc-400">
+              <summary class="cursor-pointer text-zinc-400 hover:text-zinc-200 select-none font-semibold">[Reasoning Process]</summary>
+              <div class="mt-1 text-zinc-300 whitespace-pre-wrap text-[9.5px] pl-1 border-l border-white/10">${escapeHtml(msg.thoughts)}</div>
+            </details>`;
+          }
+          html += formatMarkdown(msg.content);
+          bubble.innerHTML = html;
         }
         chatContainer.appendChild(bubble);
       });
@@ -868,7 +970,7 @@
         return `<div class="my-2 rounded-xl bg-[#0e0e10] border border-white/10 overflow-hidden font-mono text-[11px] shadow-sm">
           <div class="flex items-center justify-between px-3 py-1 bg-white/5 border-b border-white/5 text-[9.5px] text-zinc-400">
             <span class="font-semibold text-zinc-300 uppercase">${lang || 'code'}</span>
-            <button type="button" class="hover:text-white cursor-pointer px-1 py-0.2 rounded hover:bg-white/10 transition-colors" onclick="navigator.clipboard.writeText(this.closest('div').nextElementSibling.innerText)">Copy</button>
+            <button type="button" class="hover:text-white cursor-pointer px-1 py-0.2 rounded hover:bg-white/10 transition-colors" onclick="navigator.clipboard.writeText(this.closest('div').nextElementSibling.innerText); this.textContent='Copied'; setTimeout(() => this.textContent='Copy', 1200);">Copy</button>
           </div>
           <pre class="p-2.5 overflow-x-auto text-zinc-200 leading-normal select-text"><code>${code.trim()}</code></pre>
         </div>`;
@@ -925,7 +1027,7 @@
             state.isLoading = false;
             state.isStreaming = true;
             thinkingContainer.classList.add('hidden');
-            const newMsg = { role: "dot", content: "" };
+            const newMsg = { role: "dot", content: "", thoughts: payload.thoughts || "" };
             state.messages.push(newMsg);
 
             // Append single streaming bubble directly to DOM without full re-render
@@ -942,7 +1044,15 @@
               if (last.role === "dot") {
                 last.content += payload.data;
                 if (state.activeStreamBubble) {
-                  state.activeStreamBubble.innerHTML = formatMarkdown(last.content);
+                  let html = '';
+                  if (last.thoughts) {
+                    html += `<details class="mb-1.5 rounded-lg bg-black/40 border border-white/8 p-1.5 text-[10px] font-mono text-zinc-400">
+                      <summary class="cursor-pointer text-zinc-400 hover:text-zinc-200 select-none font-semibold">[Reasoning Process]</summary>
+                      <div class="mt-1 text-zinc-300 whitespace-pre-wrap text-[9.5px] pl-1 border-l border-white/10">${escapeHtml(last.thoughts)}</div>
+                    </details>`;
+                  }
+                  html += formatMarkdown(last.content);
+                  state.activeStreamBubble.innerHTML = html;
                   chatContainer.scrollTop = chatContainer.scrollHeight;
                 } else {
                   renderMessages();
@@ -957,9 +1067,18 @@
             if (payload.type === "result") {
               const last = state.messages[state.messages.length - 1];
               if (!last || last.role !== "dot" || last.content !== payload.data) {
-                state.messages.push({ role: "dot", content: payload.data });
+                state.messages.push({ role: "dot", content: payload.data, thoughts: payload.thoughts || "" });
+              } else if (payload.thoughts && !last.thoughts) {
+                last.thoughts = payload.thoughts;
               }
             }
+            renderMessages();
+            updateShellExpansion();
+          } else if (payload.type === "agent_action") {
+            thinkingContainer.classList.remove('hidden');
+            thinkingText.textContent = payload.data || "executing action...";
+          } else if (payload.type === "chat_cleared") {
+            state.messages = [];
             renderMessages();
             updateShellExpansion();
           } else if (payload.type === "intervention_required") {
@@ -1064,6 +1183,8 @@
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendPrompt();
+      } else if (e.key === 'Escape' && !userInput.value.trim() && state.isExpanded && state.messages.length === 0) {
+        setExpandedState(false);
       }
     });
 
@@ -1112,6 +1233,21 @@
     tabBtnMcp.addEventListener('click', () => switchSettingsTab('mcp'));
     tabBtnBrowser.addEventListener('click', () => switchSettingsTab('browser'));
 
+    // Update Active Model Pill on Top Shelf
+    function updateModelBadge() {
+      if (!labelActiveModel || !modelStatusDot) return;
+      if (state.settings.backend === 'cloud') {
+        modelStatusDot.className = "w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]";
+        const modelName = state.settings.cloud?.model || "Gemini";
+        labelActiveModel.textContent = modelName.length > 12 ? modelName.slice(0, 10) + '..' : modelName;
+        if (btnModelQuicktoggle) btnModelQuicktoggle.title = `Cloud Mode: ${modelName}. Click to toggle Local.`;
+      } else {
+        modelStatusDot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]";
+        labelActiveModel.textContent = `Local ${state.settings.selected_tier || '4B'}`;
+        if (btnModelQuicktoggle) btnModelQuicktoggle.title = `Local Mode: Tier ${state.settings.selected_tier || '4B'}. Click to toggle Cloud.`;
+      }
+    }
+
     // Backend Switcher
     function setBackendMode(mode) {
       state.settings.backend = mode;
@@ -1130,6 +1266,7 @@
         paneLocalConfig.classList.remove('hidden');
         paneCloudConfig.classList.add('hidden');
       }
+      updateModelBadge();
     }
 
     btnBackendLocal.addEventListener('click', () => setBackendMode('cuda'));
@@ -1154,6 +1291,33 @@
         state.settings.cloud.base_url = preset.baseUrl;
       }
       inputCloudApiKey.placeholder = preset.keyPlaceholder || "sk-...";
+
+      // Update external key link
+      if (linkGetApiKey) {
+        if (presetId === 'gemini') {
+          linkGetApiKey.href = "https://aistudio.google.com/app/apikey";
+          linkGetApiKey.querySelector('span').textContent = "Get Gemini Key";
+          linkGetApiKey.classList.remove('hidden');
+        } else if (presetId === 'openai') {
+          linkGetApiKey.href = "https://platform.openai.com/api-keys";
+          linkGetApiKey.querySelector('span').textContent = "Get OpenAI Key";
+          linkGetApiKey.classList.remove('hidden');
+        } else if (presetId === 'openrouter') {
+          linkGetApiKey.href = "https://openrouter.ai/keys";
+          linkGetApiKey.querySelector('span').textContent = "Get OpenRouter Key";
+          linkGetApiKey.classList.remove('hidden');
+        } else if (presetId === 'groq') {
+          linkGetApiKey.href = "https://console.groq.com/keys";
+          linkGetApiKey.querySelector('span').textContent = "Get Groq Key";
+          linkGetApiKey.classList.remove('hidden');
+        } else if (presetId === 'deepseek') {
+          linkGetApiKey.href = "https://platform.deepseek.com/api_keys";
+          linkGetApiKey.querySelector('span').textContent = "Get DeepSeek Key";
+          linkGetApiKey.classList.remove('hidden');
+        } else {
+          linkGetApiKey.classList.add('hidden');
+        }
+      }
 
       // Render model suggestions
       renderModelSuggestions(preset.suggestedModels || []);
@@ -1218,11 +1382,12 @@
           state.settings.selected_tier = active.selected_tier || "4B";
           state.settings.browser_headless = Boolean(active.browser_headless);
           state.settings.github_token = data.github_token || "";
+          state.settings.allowed_workspace = data.allowed_workspace || "";
 
           state.settings.cloud = {
-            provider: cloud.provider || "openai",
-            base_url: cloud.base_url || "https://api.openai.com/v1",
-            model: cloud.model || "gpt-4o-mini",
+            provider: cloud.provider || "gemini",
+            base_url: cloud.base_url || "https://generativelanguage.googleapis.com/v1beta/openai/",
+            model: cloud.model || "gemini-2.5-flash",
             api_key: cloud.api_key || ""
           };
 
@@ -1236,6 +1401,10 @@
           inputCloudApiKey.value = state.settings.cloud.api_key;
           selectCloudPreset(state.settings.cloud.provider);
 
+          if (inputAllowedWorkspace) {
+            inputAllowedWorkspace.value = state.settings.allowed_workspace;
+          }
+
           inputGithubToken.value = state.settings.github_token;
           if (state.settings.github_token) {
             badgeGithubStatus.className = "text-[9px] font-mono px-1.5 py-0.2 rounded border bg-white/20 text-white border-white/40";
@@ -1248,6 +1417,7 @@
           chkBrowserHeadless.checked = state.settings.browser_headless;
           state.browserHeadless = state.settings.browser_headless;
           browserLabel.textContent = state.browserHeadless ? "Headless" : "GUI";
+          updateModelBadge();
         }
 
         if (serversRes && serversRes.ok) {
@@ -1288,6 +1458,7 @@
         backend: state.settings.backend,
         selected_tier: selectTier.value,
         browser_headless: chkBrowserHeadless.checked,
+        allowed_workspace: inputAllowedWorkspace ? inputAllowedWorkspace.value.trim() : "",
         cloud: {
           provider: state.settings.cloud.provider,
           base_url: inputCloudBaseUrl.value.trim(),
@@ -1305,6 +1476,8 @@
         });
 
         if (res.ok) {
+          state.settings.allowed_workspace = inputAllowedWorkspace ? inputAllowedWorkspace.value.trim() : "";
+          updateModelBadge();
           settingsStatus.className = "text-[10px] font-mono text-white truncate max-w-[190px]";
           settingsStatus.textContent = "Saved successfully!";
           btnSaveSettings.textContent = "Saved";
@@ -1393,6 +1566,85 @@
     btnCancelSettings.addEventListener('click', closeSettingsModal);
     btnSaveSettings.addEventListener('click', saveSettings);
     btnSyncMcp.addEventListener('click', syncMcpRegistry);
+
+    // Quick-toggle Local vs Cloud Backend
+    if (btnModelQuicktoggle) {
+      btnModelQuicktoggle.addEventListener('click', async () => {
+        const nextMode = state.settings.backend === 'cloud' ? 'cuda' : 'cloud';
+        setBackendMode(nextMode);
+        updateModelBadge();
+        try {
+          await fetch("http://localhost:3000/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ backend: nextMode })
+          });
+        } catch (err) {
+          console.warn("Failed to switch backend mode:", err);
+        }
+      });
+    }
+
+    // Cloud Connection Test Action
+    if (btnTestCloud) {
+      btnTestCloud.addEventListener('click', async () => {
+        btnTestCloud.disabled = true;
+        cloudTestStatus.className = "text-[10px] font-mono text-zinc-400";
+        cloudTestStatus.textContent = "Testing...";
+
+        const payload = {
+          provider: state.settings.cloud.provider,
+          base_url: inputCloudBaseUrl.value.trim(),
+          model: inputCloudModel.value.trim(),
+          api_key: inputCloudApiKey.value.trim()
+        };
+
+        try {
+          const res = await fetch("http://localhost:3000/api/cloud/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            cloudTestStatus.className = "text-[10px] font-mono text-emerald-400 font-semibold";
+            cloudTestStatus.textContent = `Connected (${data.latency_ms || 0}ms)`;
+          } else {
+            cloudTestStatus.className = "text-[10px] font-mono text-red-400 font-semibold";
+            cloudTestStatus.textContent = data.error || "Connection failed";
+          }
+        } catch (err) {
+          cloudTestStatus.className = "text-[10px] font-mono text-red-400 font-semibold";
+          cloudTestStatus.textContent = `Error: ${err.message}`;
+        } finally {
+          btnTestCloud.disabled = false;
+        }
+      });
+    }
+
+    // Clear Chat History Action
+    async function clearChat() {
+      state.messages = [];
+      renderMessages();
+      updateShellExpansion();
+      try {
+        await fetch("http://localhost:3000/api/chat/clear", { method: "POST" });
+      } catch (err) {
+        console.warn("Clear chat error:", err);
+      }
+    }
+
+    if (btnClearChat) {
+      btnClearChat.addEventListener('click', clearChat);
+    }
+
+    // Keyboard shortcut: Ctrl+L clears chat history
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        clearChat();
+      }
+    });
 
     // Sandbox and Intervention UI controls
     const sandboxPill = document.getElementById('sandbox-pill');
@@ -1535,8 +1787,9 @@
       });
     }
 
-    // Connect WebSocket to Dot backend
+    // Connect WebSocket to Dot backend and load initial settings
     connectWebSocket();
+    loadSettings();
     updateShellExpansion();
   </script>
 </body>

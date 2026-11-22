@@ -4,3 +4,9 @@ os_automation:
     - discord.exe
     - chrome.exe
     - code.exe
+    - notepad.exe
+    - msedge.exe
+    - firefox.exe
+    - spotify.exe
+    - calc.exe
+    - explorer.exe

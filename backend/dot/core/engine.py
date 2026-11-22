@@ -59,10 +59,12 @@ async def reAct_loop(
     last_tool_sig = None
     loop_strikes = 0
     browser_used = False
+    collected_thoughts: list[str] = []
 
     async def finish_turn(text: str) -> str:
         # Keep the browser open on the desktop for user inspection.
-        return await stream_response(websocket, text)
+        thoughts_payload = "\n".join(collected_thoughts).strip() if collected_thoughts else None
+        return await stream_response(websocket, text, thoughts=thoughts_payload)
 
     step = 0
     raw_failures = 0
@@ -131,6 +133,19 @@ async def reAct_loop(
         print(f"\n--- [ReAct Step {step_label}] ---")
         if step_obj.thought:
             print(f"[Thought] {step_obj.thought}")
+            collected_thoughts.append(step_obj.thought)
+            if websocket:
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "agent_action",
+                        "data": {
+                            "thought": step_obj.thought,
+                            "action": step_obj.action,
+                            "tool_name": step_obj.tool_name,
+                        }
+                    }))
+                except Exception:
+                    pass
 
         history_parts.append({"role": "model", "text": extracted, "pinned": False})
         if step_obj.thought:
@@ -146,6 +161,7 @@ async def reAct_loop(
         # 2. Tool Discovery Action
         if step_obj.action == "Tool":
             print(f"[Discovery Search] {step_obj.tool_service} -> '{step_obj.get_tool}'")
+            collected_thoughts.append(f"Searching tools for: {step_obj.get_tool}")
             res = await execute_tool_discovery(step_obj, history_parts, executed_signatures)
             if res.tripped_circuit_breaker:
                 fallback = "I cannot find the required tools to complete this request."
@@ -155,6 +171,19 @@ async def reAct_loop(
         # 3. Tool Execution Action
         elif step_obj.action == "Tool-exec":
             print(f"[Tool Action] {step_obj.tool_service}.{step_obj.tool_name}({step_obj.tool_args or {}})")
+            collected_thoughts.append(f"Action: {step_obj.tool_name}")
+            if websocket:
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "agent_action",
+                        "data": {
+                            "thought": f"Executing {step_obj.tool_name}...",
+                            "action": "Tool-exec",
+                            "tool_name": step_obj.tool_name,
+                        }
+                    }))
+                except Exception:
+                    pass
             res, last_tool_sig, loop_strikes = await execute_tool_call(
                 step_obj=step_obj,
                 step_num=step,

@@ -97,7 +97,7 @@ async def execute_tool_discovery(
         return ExecutionResult(should_retry=True)
 
     executed_signatures.add(discovery_sig)
-    results = get_relevant_tools(query=step_obj.get_tool, k=1, service_hint=step_obj.tool_service)
+    results = get_relevant_tools(query=step_obj.get_tool, k=3, service_hint=step_obj.tool_service)
 
     if results:
         lines = []
@@ -249,7 +249,7 @@ async def execute_tool_call(
             })
             return ExecutionResult(browser_used=browser_used), last_tool_sig, loop_strikes
         else:
-            final_msg = f"Done — {obs_dict.get('detail', 'action completed')}."
+            final_msg = f"Done: {obs_dict.get('detail', 'action completed')}."
             return ExecutionResult(is_terminal=True, terminal_message=final_msg, browser_used=browser_used), last_tool_sig, loop_strikes
 
     log_path = dump_observation(observation, step_num, step_obj.tool_name)

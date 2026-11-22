@@ -165,6 +165,10 @@ async def sync_registry(active_client=None):
                 clean = "navigate" if clean == "open" else clean
                 tool_name = f"browser_{clean}"
                 service = "browser"
+            elif tool_name.startswith("os_tools_"):
+                # Remove redundant server prefix for OS tools.
+                tool_name = tool_name[len("os_tools_"):]
+                service = "os_tools"
             else:
                 service = next((s for s in server_names if tool_name.startswith(f"{s}_")), "unknown")
 
@@ -194,6 +198,10 @@ async def sync_registry(active_client=None):
                             continue
                         if tool_name in BROWSER_TOOL_DESCRIPTIONS:
                             t["description"] = BROWSER_TOOL_DESCRIPTIONS[tool_name]
+                    elif t.get("service") == "os_tools":
+                        if tool_name.startswith("os_tools_"):
+                            tool_name = tool_name[len("os_tools_"):]
+                            t["toolName"] = tool_name
                     all_tools.append(t)
 
     # Register preserved native fast-path tools

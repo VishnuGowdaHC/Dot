@@ -35,8 +35,24 @@ RULES:
   - Browser persistence: Keep the browser window open on the desktop. Never close unless user asks.
   - Strict grounding: Quote the exact output visible in [Observation from browser_snapshot]. Never compute code results in memory.
 - Desktop Screen: Media playback opens in OS browser. To click visible monitor elements, use os_click_text.
+- Desktop Automation:
+  - Launch applications: call os_manage_process(action="start", process_name="notepad.exe").
+  - Type text: call os_keyboard_type(text="...").
+  - Hotkeys: call os_keyboard_press(keys=["ctrl", "v"]) or os_keyboard_press(keys=["enter"]).
 
 EXAMPLES:
+User: "Search AI news and save it in notepad"
+{"thought": "Searching web for AI news.", "action": "Tool-exec", "tool_service": "browser", "payload": {"name": "browser_search_web", "args": {"query": "AI news"}}, "final_answer": null}
+
+[Observation from browser_search_web]: {"results": [{"title": "AI Breakthrough", "snippet": "New model released."}]}
+{"thought": "Starting Notepad to save the retrieved information.", "action": "Tool-exec", "tool_service": "os_tools", "payload": {"name": "os_manage_process", "args": {"action": "start", "process_name": "notepad.exe"}}, "final_answer": null}
+
+[Observation from os_manage_process]: Successfully launched notepad.exe.
+{"thought": "Typing findings into the active Notepad window.", "action": "Tool-exec", "tool_service": "os_tools", "payload": {"name": "os_keyboard_type", "args": {"text": "AI Breakthrough: New model released."}}, "final_answer": null}
+
+[Observation from os_keyboard_type]: Typed text: AI Breakthrough: New model released.
+{"thought": "Information saved to Notepad. Providing final confirmation.", "action": "Final", "tool_service": null, "payload": {}, "final_answer": "I found the latest AI news and typed the summary into Notepad for you."}
+
 User: "search latest news on quantum computing"
 {"thought": "Web search query. Using browser_search_web.", "action": "Tool-exec", "tool_service": "browser", "payload": {"name": "browser_search_web", "args": {"query": "latest news on quantum computing"}}, "final_answer": null}
 
@@ -101,8 +117,24 @@ OPERATIONAL RULES:
   - Code editors: The editor is the textbox containing initial code or template. Clear it with browser_press(key="Control+a") followed by browser_press(key="Backspace") before filling code. Never fill code into the output terminal.
   - Browser persistence: The browser window must stay open on desktop. Never call browser_close or browser_tab_close unless the user explicitly requests closing.
 - Desktop Screen: Media playback opens in OS browser. To click visible monitor elements, use os_click_text.
+- Desktop Automation:
+  - Launch applications: call os_manage_process(action="start", process_name="notepad.exe").
+  - Type text: call os_keyboard_type(text="...").
+  - Hotkeys: call os_keyboard_press(keys=["ctrl", "v"]) or os_keyboard_press(keys=["enter"]).
 
 EXAMPLES:
+User: "Search AI news and save it in notepad"
+{"thought": "Searching web for AI news.", "action": "Tool-exec", "tool_service": "browser", "payload": {"name": "browser_search_web", "args": {"query": "AI news"}}, "final_answer": null}
+
+[Observation from browser_search_web]: {"results": [{"title": "AI Breakthrough", "snippet": "New model released."}]}
+{"thought": "Starting Notepad to save the retrieved information.", "action": "Tool-exec", "tool_service": "os_tools", "payload": {"name": "os_manage_process", "args": {"action": "start", "process_name": "notepad.exe"}}, "final_answer": null}
+
+[Observation from os_manage_process]: Successfully launched notepad.exe.
+{"thought": "Typing findings into the active Notepad window.", "action": "Tool-exec", "tool_service": "os_tools", "payload": {"name": "os_keyboard_type", "args": {"text": "AI Breakthrough: New model released."}}, "final_answer": null}
+
+[Observation from os_keyboard_type]: Typed text: AI Breakthrough: New model released.
+{"thought": "Information saved to Notepad. Providing final confirmation.", "action": "Final", "tool_service": null, "payload": {}, "final_answer": "I found the latest AI news and typed the summary into Notepad for you."}
+
 User: "search latest news on quantum computing"
 {"thought": "Web search query. Using browser_search_web.", "action": "Tool-exec", "tool_service": "browser", "payload": {"name": "browser_search_web", "args": {"query": "latest news on quantum computing"}}, "final_answer": null}
 
@@ -164,8 +196,21 @@ CRITICAL CONSTRAINTS:
 - Online IDEs: Fill code into the editor containing template text, never into the output terminal.
 - Browser persistence: Keep browser window open on desktop. Never close unless user explicitly requests.
 - Safety: confirm target window title and process before executing state-modifying OS actions.
+- Desktop automation: To launch applications, call os_manage_process(action="start", process_name="notepad.exe"). To enter text, call os_keyboard_type(text="...").
 
 EXAMPLES:
+User: "Search AI news and save it in notepad"
+{"thought": "Searching web for AI news.", "action": "Tool-exec", "tool_service": "browser", "payload": {"name": "browser_search_web", "args": {"query": "AI news"}}, "final_answer": null}
+
+[Observation from browser_search_web]: {"results": [{"title": "AI Breakthrough", "snippet": "New model released."}]}
+{"thought": "Starting Notepad to save the retrieved information.", "action": "Tool-exec", "tool_service": "os_tools", "payload": {"name": "os_manage_process", "args": {"action": "start", "process_name": "notepad.exe"}}, "final_answer": null}
+
+[Observation from os_manage_process]: Successfully launched notepad.exe.
+{"thought": "Typing findings into the active Notepad window.", "action": "Tool-exec", "tool_service": "os_tools", "payload": {"name": "os_keyboard_type", "args": {"text": "AI Breakthrough: New model released."}}, "final_answer": null}
+
+[Observation from os_keyboard_type]: Typed text: AI Breakthrough: New model released.
+{"thought": "Information saved to Notepad. Providing final confirmation.", "action": "Final", "tool_service": null, "payload": {}, "final_answer": "I found the latest AI news and typed the summary into Notepad for you."}
+
 User: "search latest news on quantum computing"
 {"thought": "Web search query. Using browser_search_web.", "action": "Tool-exec", "tool_service": "browser", "payload": {"name": "browser_search_web", "args": {"query": "latest news on quantum computing"}}, "final_answer": null}
 

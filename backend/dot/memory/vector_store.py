@@ -21,17 +21,70 @@ def is_casual_query(query: str) -> bool:
     return clean in CASUAL_PATTERNS or len(clean.split()) <= 1 and clean in {"hi", "hello", "hey", "sup", "yo"}
 
 
+def detect_service_hints(query: str) -> list[str]:
+    """Detects matching service categories from query keywords."""
+    clean = query.lower()
+    hints = []
+
+    # Browser automation and search keywords
+    browser_keywords = [
+        "search", "google", "bing", "look up", "find online", "research",
+        "browse", "browser", "website", "webpage", "web", "site", "tab", "link",
+        "url", "http://", "https://", "wikipedia", "youtube", "video", "article"
+    ]
+    if any(k in clean for k in browser_keywords):
+        hints.append("browser")
+
+    # OS tools and desktop automation keywords
+    os_keywords = [
+        "notepad", "calculator", "calc", "explorer", "paint", "word", "excel",
+        "app", "application", "program", "desktop", "window", "monitor", "screen",
+        "screenshot", "process", "task", "kill", "launch", "open app",
+        "type", "typing", "paste", "keyboard", "hotkey", "press key", "mouse", "click"
+    ]
+    if any(k in clean for k in os_keywords):
+        hints.append("os_tools")
+
+    # GitHub API keywords
+    github_keywords = [
+        "github", "repo", "repository", "commit", "pull request", "pr ", "issue", "branch"
+    ]
+    if any(k in clean for k in github_keywords):
+        hints.append("github")
+
+    # Sandbox environment keywords
+    sandbox_keywords = [
+        "sandbox", "container", "isolated", "docker"
+    ]
+    if any(k in clean for k in sandbox_keywords):
+        hints.append("sandbox")
+
+    return hints
+
+
 def detect_service_hint(query: str) -> Optional[str]:
     """Detects the primary service category from query keywords."""
-    clean = query.lower()
-    if any(k in clean for k in ["sandbox", "container", "isolated"]):
-        return "sandbox"
-    if any(k in clean for k in ["github", "repo", "commit", "pull request", "pr ", "issue", "branch"]):
-        return "github"
-    if any(k in clean for k in ["http://", "https://", "wikipedia", "website", "news", "youtube", "browse", "webpage", "article", "tab", "link", "web", "site", "button"]):
-        return "browser"
-    if any(k in clean for k in ["window", "process", "desktop", "monitor", "hotkey", "volume", "screen"]):
-        return "os_tools"
+    hints = detect_service_hints(query)
+    return hints[0] if hints else None
+
+
+def get_tool_by_name(tool_name: str) -> Optional[dict]:
+    """Retrieves a specific tool entry directly from the collection."""
+    candidates = [tool_name, f"os_tools_{tool_name}"]
+    for candidate in candidates:
+        try:
+            results = tools_collection.get(where={"toolName": candidate})
+            if results and results.get("metadatas"):
+                meta = results["metadatas"][0]
+                return {
+                    "tool_name": meta["toolName"],
+                    "tool_service": meta["service"],
+                    "schema": json.loads(meta["inputSchema"]),
+                    "description": meta.get("description", ""),
+                    "distance": 0.0,
+                }
+        except Exception:
+            continue
     return None
 
 
@@ -105,25 +158,56 @@ def format_compact_tool(tool: dict) -> str:
 
 
 def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.85) -> list[dict]:
-    """Retrieves top-k relevant tools for Turn 0 prompt injection with threshold gating."""
+    """Retrieves top relevant tools for Turn 0 prompt injection with multi-service support."""
     if not query or is_casual_query(query):
         return []
 
-    hint = detect_service_hint(query)
-    tools = get_relevant_tools(query=query, service_hint=hint, k=k, distance_threshold=distance_threshold)
+    clean = query.lower()
+    hints = detect_service_hints(query)
+    tools: list[dict] = []
+    seen: set[str] = set()
 
-    # Backfill with general search when service-filtered results are below k
-    if len(tools) < k and hint:
-        seen = {t["tool_name"] for t in tools}
-        fallback_tools = get_relevant_tools(query=query, service_hint=None, k=k, distance_threshold=distance_threshold)
-        for ft in fallback_tools:
-            if ft["tool_name"] not in seen:
-                tools.append(ft)
-                seen.add(ft["tool_name"])
-            if len(tools) >= k:
-                break
+    def add_tool(t: Optional[dict]) -> None:
+        if t and t["tool_name"] not in seen:
+            tools.append(t)
+            seen.add(t["tool_name"])
 
-    return tools
+    # High-precision action keyword tool pinning.
+    if any(keyword in clean for keyword in ["search", "google", "bing", "look up", "research"]):
+        add_tool(get_tool_by_name("browser_search_web"))
+
+    if any(keyword in clean for keyword in ["notepad", "calc", "calculator", "launch", "open app", "start program", "start process", "kill"]):
+        add_tool(get_tool_by_name("os_manage_process"))
+
+    if any(keyword in clean for keyword in ["type", "paste", "keyboard", "enter text"]):
+        add_tool(get_tool_by_name("os_keyboard_type"))
+
+    if any(keyword in clean for keyword in ["http://", "https://", "wikipedia", "url", "navigate", "website"]):
+        add_tool(get_tool_by_name("browser_navigate"))
+
+    # When multiple service domains match, retrieve vector candidates per service.
+    if len(hints) > 1:
+        k_per_hint = max(2, (k + 1) // len(hints))
+        for hint in hints:
+            service_tools = get_relevant_tools(query=query, service_hint=hint, k=k_per_hint, distance_threshold=distance_threshold)
+            for st in service_tools:
+                add_tool(st)
+    elif len(hints) == 1:
+        service_tools = get_relevant_tools(query=query, service_hint=hints[0], k=k, distance_threshold=distance_threshold)
+        for st in service_tools:
+            add_tool(st)
+        if len(tools) < k:
+            fallback = get_relevant_tools(query=query, service_hint=None, k=k, distance_threshold=distance_threshold)
+            for ft in fallback:
+                add_tool(ft)
+                if len(tools) >= k:
+                    break
+    else:
+        general_tools = get_relevant_tools(query=query, service_hint=None, k=k, distance_threshold=distance_threshold)
+        for gt in general_tools:
+            add_tool(gt)
+
+    return tools[:5]
 
 
 _available_services_cache = None

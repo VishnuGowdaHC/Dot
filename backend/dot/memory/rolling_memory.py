@@ -82,3 +82,22 @@ class RollingMemory:
 
         return "\n".join(lines)
 
+    def clear(self) -> None:
+        """Clears all rolling memory records."""
+        self.goal = ""
+        self.hypotheses.clear()
+        self.completed_steps.clear()
+        self.known_errors.clear()
+        self.created_files.clear()
+
+
+_ROLLING_MEMORY_INSTANCE: Optional[RollingMemory] = None
+
+
+def get_rolling_memory() -> RollingMemory:
+    """Returns the singleton rolling memory instance."""
+    global _ROLLING_MEMORY_INSTANCE
+    if _ROLLING_MEMORY_INSTANCE is None:
+        _ROLLING_MEMORY_INSTANCE = RollingMemory()
+    return _ROLLING_MEMORY_INSTANCE
+

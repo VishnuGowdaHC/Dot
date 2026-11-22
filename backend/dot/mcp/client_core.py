@@ -32,6 +32,9 @@ async def fetch_server_tools(server: str, server_settings: dict) -> list:
                     if clean_name == "open":
                         clean_name = "navigate"
                     tool_name = f"browser_{clean_name}"
+                elif server == "os_tools" and tool_name.startswith("os_"):
+                    # Preserve clean OS tool names without double prefix.
+                    pass
                 elif not tool_name.startswith(f"{server}_"):
                     tool_name = f"{server}_{tool_name}"
                 server_tools.append({

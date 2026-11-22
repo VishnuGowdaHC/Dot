@@ -6,6 +6,7 @@ import webbrowser
 import urllib.parse
 import re
 import httpx
+import base64
 from bs4 import BeautifulSoup
 from typing import Optional
 import socket
@@ -35,8 +36,8 @@ def _is_port_open(port: int = 9222, host: str = "127.0.0.1", timeout: float = 0.
 
 mcp = FastMCP(name="Dot Browser Automation")
 
-# Single persistent browser/page for the session — automation tools
-# act on this shared state, not a fresh browser per call.
+# Single persistent browser session for automation tools.
+# Automation tools act on this shared state.
 _playwright = None
 _browser = None
 _page = None
@@ -224,62 +225,124 @@ async def play_video(query: str) -> dict:
         return {"success": False, "detail": None, "error": str(e), "terminal": False}
 
 
+def _decode_bing_url(url: str) -> str:
+    """Decodes Bing redirect links to obtain direct target URLs."""
+    if "u=" in url:
+        b64 = url.split("u=")[1].split("&")[0]
+        if b64.startswith("a1"):
+            b64 = b64[2:]
+        b64 += "=" * (-len(b64) % 4)
+        try:
+            return base64.b64decode(b64).decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+    return url
+
+
 @mcp.tool
 async def search_web(query: str, max_results: int = 4) -> dict:
-    """Search the web for links and information.
-    
-    Args:
-        query (str): The search keywords or question.
-        max_results (int, optional): Maximum search results to return. Defaults to 4.
-        
-    Returns:
-        dict: A dictionary containing search results with titles, URLs, and snippets.
+    """Searches the web for links and information.
+
+    Returns organic search results with titles, URLs, and snippets.
     """
+    clean_query = query.strip()
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     }
-    
-    # Fast organic search via DuckDuckGo HTML endpoint.
+
+    # 1. Fast organic search via DuckDuckGo Lite HTTP request.
     try:
-        from bs4 import BeautifulSoup
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
             resp = await client.post(
-                "https://html.duckduckgo.com/html/",
-                data={"q": query},
+                "https://lite.duckduckgo.com/lite/",
+                data={"q": clean_query},
                 headers=headers
             )
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            items = []
-            for div in soup.select("div.result"):
-                title_a = div.select_one("a.result__a")
-                snippet_a = div.select_one("a.result__snippet")
-                if title_a:
-                    href = title_a.get("href", "")
-                    if "uddg=" in href:
-                        href = urllib.parse.unquote(href.split("uddg=")[1].split("&")[0])
-                    title = title_a.get_text(strip=True)
-                    snippet = snippet_a.get_text(strip=True) if snippet_a else ""
-                    if href and title and not href.startswith("/"):
-                        items.append({"title": title, "url": href, "snippet": snippet[:250]})
-            if items:
-                return {
-                    "success": True,
-                    "query": query,
-                    "results": items[:max_results],
-                    "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
-                    "error": None
-                }
-    except Exception as e:
-        print(f"[Warning] Fast search failed ({e}), falling back to Playwright...", file=sys.stderr)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                items = []
+                for tr in soup.select("table tr"):
+                    link = tr.select_one("a.result-link")
+                    snippet_td = tr.select_one("td.result-snippet")
+                    if link and link.get_text(strip=True):
+                        raw_href = link.get("href", "")
+                        title_text = link.get_text(strip=True)
+                        items.append({"title": title_text, "url": raw_href, "snippet": ""})
+                    elif snippet_td and items:
+                        snippet_text = snippet_td.get_text(strip=True)[:250]
+                        items[-1]["snippet"] = snippet_text
 
-    # 2. Playwright Fallback via Bing
+                if items:
+                    return {
+                        "success": True,
+                        "query": clean_query,
+                        "results": items[:max_results],
+                        "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
+                        "error": None
+                    }
+    except Exception as e:
+        print(f"[Warning] DuckDuckGo Lite search failed: {e}", file=sys.stderr)
+
+    # 2. Secondary fallback via direct Bing HTTP request.
+    try:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+            resp = await client.get(
+                f"https://www.bing.com/search?q={urllib.parse.quote_plus(clean_query)}",
+                headers=headers
+            )
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                items = []
+                for li in soup.select("li.b_algo"):
+                    title_a = li.select_one("h2 a")
+                    snippet_p = li.select_one("div.b_caption p, p")
+                    if title_a and title_a.get_text(strip=True):
+                        raw_href = title_a.get("href", "")
+                        clean_url = _decode_bing_url(raw_href)
+                        title_text = title_a.get_text(strip=True)
+                        snippet_text = snippet_p.get_text(strip=True)[:250] if snippet_p else ""
+                        items.append({"title": title_text, "url": clean_url, "snippet": snippet_text})
+                if items:
+                    return {
+                        "success": True,
+                        "query": clean_query,
+                        "results": items[:max_results],
+                        "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
+                        "error": None
+                    }
+    except Exception as e:
+        print(f"[Warning] Direct Bing search failed: {e}", file=sys.stderr)
+
+    # 3. Tertiary fallback via Wikipedia OpenSearch API.
+    try:
+        wiki_headers = {"User-Agent": "DotAssistant/1.0 (Desktop Agent; contact: dev@dot.ai)"}
+        async with httpx.AsyncClient(timeout=4.0, follow_redirects=True, headers=wiki_headers) as client:
+            wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote_plus(clean_query)}&limit={max_results}&format=json"
+            wiki_resp = await client.get(wiki_url)
+            if wiki_resp.status_code == 200:
+                wiki_data = wiki_resp.json()
+                if len(wiki_data) >= 4 and wiki_data[1]:
+                    wiki_items = []
+                    for w_title, w_desc, w_link in zip(wiki_data[1], wiki_data[2], wiki_data[3]):
+                        wiki_items.append({"title": w_title, "url": w_link, "snippet": w_desc or w_title})
+                    if wiki_items:
+                        return {
+                            "success": True,
+                            "query": clean_query,
+                            "results": wiki_items[:max_results],
+                            "instruction": "Search completed via Wikipedia. Pick the best URL or use snippets to answer.",
+                            "error": None
+                        }
+    except Exception as e:
+        print(f"[Warning] Wikipedia fallback search failed: {e}", file=sys.stderr)
+
+    # 4. Quaternary fallback via Playwright.
     try:
         page = await _ensure_browser()
-        q = urllib.parse.quote_plus(query)
+        q = urllib.parse.quote_plus(clean_query)
         await page.goto(f"https://www.bing.com/search?q={q}", wait_until="domcontentloaded", timeout=12000)
         await page.wait_for_timeout(1000)
-        
+
         results = await page.evaluate('''() => {
             const items = [];
             for (const li of document.querySelectorAll('li.b_algo')) {
@@ -295,16 +358,19 @@ async def search_web(query: str, max_results: int = 4) -> dict:
             }
             return items;
         }''')
-        
+
+        for item in results:
+            item["url"] = _decode_bing_url(item.get("url", ""))
+
         return {
             "success": True,
-            "query": query,
+            "query": clean_query,
             "results": results[:max_results],
             "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
             "error": None
         }
     except Exception as e:
-        return {"success": False, "query": query, "results": [], "error": str(e)}
+        return {"success": False, "query": clean_query, "results": [], "error": str(e)}
 
 
 @mcp.tool

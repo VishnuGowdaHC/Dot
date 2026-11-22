@@ -35,7 +35,12 @@ def upsert_tools(all_tools: list, clear_before: bool = False):
 
     for tool in all_tools:
         tool_name = tool["toolName"]
-        canonical_name = tool_name if tool_name.startswith(f"{tool['service']}_") else f"{tool['service']}_{tool_name}"
+        if tool.get("service") == "os_tools" and tool_name.startswith("os_tools_os_"):
+            tool_name = tool_name[len("os_tools_"):]
+        is_prefixed = tool_name.startswith(f"{tool['service']}_") or (
+            tool.get("service") == "os_tools" and tool_name.startswith("os_")
+        )
+        canonical_name = tool_name if is_prefixed else f"{tool['service']}_{tool_name}"
         if canonical_name in seen_ids:
             continue
         seen_ids.add(canonical_name)

@@ -12,7 +12,7 @@ from dot.config.paths import CONFIG_PATH
 from dot.core.prompts import get_system_prompt
 
 
-def _load_clients() -> Tuple[AsyncOpenAI, OpenAI, str]:
+def _load_clients() -> Tuple[AsyncOpenAI, OpenAI, str, bool, str]:
     """Loads configuration and returns initialized OpenAI client instances."""
     backend = "cuda"
     cloud_cfg = {}
@@ -27,27 +27,33 @@ def _load_clients() -> Tuple[AsyncOpenAI, OpenAI, str]:
             pass
 
     if backend == "cloud":
-        base_url = cloud_cfg.get("base_url") or os.environ.get("DOT_CLOUD_BASE_URL", "https://api.openai.com/v1")
+        provider = (cloud_cfg.get("provider") or "openai").lower()
+        if provider == "gemini":
+            base_url = cloud_cfg.get("base_url") or "https://generativelanguage.googleapis.com/v1beta/openai/"
+            model = cloud_cfg.get("model") or "gemini-2.5-flash"
+        else:
+            base_url = cloud_cfg.get("base_url") or os.environ.get("DOT_CLOUD_BASE_URL", "https://api.openai.com/v1")
+            model = cloud_cfg.get("model") or os.environ.get("DOT_CLOUD_MODEL", "gpt-4o-mini")
+
         api_key = cloud_cfg.get("api_key") or os.environ.get("DOT_CLOUD_API_KEY", "")
-        model = cloud_cfg.get("model") or os.environ.get("DOT_CLOUD_MODEL", "gpt-4o-mini")
         async_cl = AsyncOpenAI(base_url=base_url, api_key=api_key)
         sync_cl = OpenAI(base_url=base_url, api_key=api_key)
-        return async_cl, sync_cl, model
+        return async_cl, sync_cl, model, True, provider
 
     # Local backend defaults to local llama-server endpoint.
     local_url = "http://127.0.0.1:11434/v1"
     async_cl = AsyncOpenAI(base_url=local_url, api_key="not-needed")
     sync_cl = OpenAI(base_url=local_url, api_key="not-needed")
-    return async_cl, sync_cl, "dot-engine"
+    return async_cl, sync_cl, "dot-engine", False, "local"
 
 
-async_client, client, _model_name = _load_clients()
+async_client, client, _model_name, _is_cloud, _cloud_provider = _load_clients()
 
 
 def reload_llm_clients() -> Tuple[AsyncOpenAI, OpenAI, str]:
     """Reloads configuration and updates initialized OpenAI client instances."""
-    global async_client, client, _model_name
-    async_client, client, _model_name = _load_clients()
+    global async_client, client, _model_name, _is_cloud, _cloud_provider
+    async_client, client, _model_name, _is_cloud, _cloud_provider = _load_clients()
     return async_client, client, _model_name
 
 
@@ -60,7 +66,8 @@ def _build_payload(
 ) -> dict:
     """Builds the request dictionary for model inference."""
     base_prompt = system_prompt if system_prompt is not None else get_system_prompt()
-    system_message = f"<|think|> {base_prompt}"
+    # Omit local thinking token when using cloud providers.
+    system_message = base_prompt if _is_cloud else f"<|think|> {base_prompt}"
 
     if image_url:
         user_content = [
@@ -82,14 +89,17 @@ def _build_payload(
     }
 
     if schema and not stream:
-        kwargs["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "dot_action_schema",
-                "schema": schema,
-                "strict": True,
-            },
-        }
+        if _is_cloud and _cloud_provider in ("gemini", "groq", "deepseek"):
+            kwargs["response_format"] = {"type": "json_object"}
+        else:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "dot_action_schema",
+                    "schema": schema,
+                    "strict": True,
+                },
+            }
 
     return kwargs
 

@@ -44,6 +44,8 @@ from dot.config.settings import (
     update_github_token,
     is_browser_headless,
     set_browser_headless,
+    get_allowed_workspace,
+    set_allowed_workspace,
 )
 from dot.voice.listener import startVoiceListener
 from dot.core.router import intentRouter
@@ -198,6 +200,7 @@ async def get_settings():
         "models": cfg.get("models", {}),
         "backends": cfg.get("backends", {}),
         "github_token": gh_token,
+        "allowed_workspace": get_allowed_workspace(),
     }
 
 
@@ -221,6 +224,8 @@ async def update_settings(request: Request):
     if "github_token" in payload:
         gh_token = str(payload["github_token"]).strip()
         update_github_token(gh_token)
+    if "allowed_workspace" in payload:
+        set_allowed_workspace(str(payload["allowed_workspace"]).strip())
 
     save_config(cfg)
 
@@ -233,7 +238,7 @@ async def update_settings(request: Request):
         tier = active.get("selected_tier", "4B")
         backend = active.get("backend", "cuda")
         if backend == "cloud":
-            active_session.context_size = 16384
+            active_session.context_size = 32768
         else:
             model_info = cfg.get("models", {}).get(tier, {})
             active_session.context_size = model_info.get("context_size", 8192)
@@ -248,6 +253,7 @@ async def update_settings(request: Request):
                     "active_settings": active,
                     "cloud": cloud,
                     "github_token": get_github_token(),
+                    "allowed_workspace": get_allowed_workspace(),
                 }
             }))
         except Exception:
@@ -258,7 +264,85 @@ async def update_settings(request: Request):
         "active_settings": active,
         "cloud": cloud,
         "github_token": get_github_token(),
+        "allowed_workspace": get_allowed_workspace(),
     }
+
+
+@app.post("/api/cloud/test")
+async def test_cloud_connection(request: Request):
+    """Validates the cloud API credentials and returns connection status."""
+    import time
+    from openai import AsyncOpenAI
+    payload = await request.json()
+    provider = str(payload.get("provider", "openai")).lower()
+    base_url = str(payload.get("base_url", "")).strip()
+    api_key = str(payload.get("api_key", "")).strip()
+    model = str(payload.get("model", "")).strip()
+
+    if not api_key:
+        return {"success": False, "error": "API key is required."}
+
+    if provider == "gemini" and not base_url:
+        base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    elif not base_url:
+        base_url = "https://api.openai.com/v1"
+
+    if not model:
+        model = "gemini-2.5-flash" if provider == "gemini" else "gpt-4o-mini"
+
+    start_time = time.time()
+    try:
+        test_client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=10.0)
+        resp = await test_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=5,
+        )
+        latency_ms = int((time.time() - start_time) * 1000)
+        reply = resp.choices[0].message.content or ""
+        return {
+            "success": True,
+            "provider": provider,
+            "model": model,
+            "latency_ms": latency_ms,
+            "reply": reply.strip(),
+        }
+    except Exception as err:
+        err_msg = str(err)
+        if "401" in err_msg or "invalid_api_key" in err_msg or "API_KEY_INVALID" in err_msg:
+            clean_err = "Invalid API key. Verify your credentials."
+        elif "quota" in err_msg.lower() or "429" in err_msg:
+            clean_err = "API rate limit or quota exceeded."
+        elif "connection" in err_msg.lower():
+            clean_err = "Network connection failed. Verify Base URL."
+        else:
+            clean_err = f"Connection failed: {err_msg[:80]}"
+        return {"success": False, "error": clean_err}
+
+
+@app.post("/api/chat/clear")
+async def clear_chat_session():
+    """Resets the active conversation session and rolling memory."""
+    active_session = app_state.get("active_session")
+    if active_session:
+        active_session.history = []
+        active_session.executed_signatures = set()
+
+    try:
+        from dot.memory.rolling_memory import get_rolling_memory
+        rolling_mem = get_rolling_memory()
+        rolling_mem.clear()
+    except Exception:
+        pass
+
+    ws = app_state.get("active_websocket")
+    if ws:
+        try:
+            await ws.send_text(json.dumps({"type": "chat_cleared"}))
+        except Exception:
+            pass
+
+    return {"status": "ok", "message": "Conversation history cleared."}
 
 
 @app.post("/api/browser/toggle")

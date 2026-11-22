@@ -89,3 +89,20 @@ def set_browser_headless(headless: bool) -> None:
     active["browser_headless"] = bool(headless)
     save_config(cfg)
 
+
+def get_allowed_workspace() -> str:
+    """Returns the allowed workspace directory path for file modifications."""
+    cfg = load_config()
+    ws = cfg.get("allowed_workspace", "").strip()
+    if ws and os.path.exists(ws):
+        return os.path.realpath(os.path.abspath(ws))
+    from pathlib import Path
+    return str(Path(__file__).resolve().parent.parent.parent.parent)
+
+
+def set_allowed_workspace(workspace_path: str) -> None:
+    """Updates the allowed workspace path in configuration."""
+    cfg = load_config()
+    cfg["allowed_workspace"] = workspace_path.strip()
+    save_config(cfg)
+
