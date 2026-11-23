@@ -13,6 +13,8 @@ if hasattr(sys.stderr, "reconfigure"):
 
 import json
 import uuid
+import socket
+import subprocess
 import asyncio
 import logging
 import warnings
@@ -27,6 +29,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch.ao.nn.quan
 warnings.filterwarnings("ignore", message=".*unauthenticated requests to the HF Hub.*")
 warnings.filterwarnings("ignore", message=".*quantized tensor creation functions.*")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -42,6 +46,8 @@ from dot.config.settings import (
     save_config,
     get_github_token,
     update_github_token,
+    get_cloud_api_key,
+    update_cloud_api_key,
     is_browser_headless,
     set_browser_headless,
     get_allowed_workspace,
@@ -194,9 +200,12 @@ async def get_settings():
     """Returns current active system and cloud settings."""
     cfg = load_config()
     gh_token = get_github_token()
+    cloud_cfg = dict(cfg.get("cloud", {}))
+    if not cloud_cfg.get("api_key"):
+        cloud_cfg["api_key"] = get_cloud_api_key()
     return {
         "active_settings": cfg.get("active_settings", {}),
-        "cloud": cfg.get("cloud", {}),
+        "cloud": cloud_cfg,
         "models": cfg.get("models", {}),
         "backends": cfg.get("backends", {}),
         "github_token": gh_token,
@@ -221,6 +230,17 @@ async def update_settings(request: Request):
     if "cloud" in payload and isinstance(payload["cloud"], dict):
         for k, v in payload["cloud"].items():
             cloud[k] = v
+    if "cloud_provider" in payload and payload["cloud_provider"]:
+        cloud["provider"] = str(payload["cloud_provider"]).strip()
+    if "cloud_base_url" in payload and payload["cloud_base_url"]:
+        cloud["base_url"] = str(payload["cloud_base_url"]).strip()
+    if "cloud_model" in payload and payload["cloud_model"]:
+        cloud["model"] = str(payload["cloud_model"]).strip()
+    if "cloud_api_key" in payload and payload["cloud_api_key"]:
+        cloud["api_key"] = str(payload["cloud_api_key"]).strip()
+        update_cloud_api_key(str(payload["cloud_api_key"]).strip())
+    elif "cloud" in payload and isinstance(payload["cloud"], dict) and payload["cloud"].get("api_key"):
+        update_cloud_api_key(str(payload["cloud"]["api_key"]).strip())
     if "github_token" in payload:
         gh_token = str(payload["github_token"]).strip()
         update_github_token(gh_token)
@@ -238,7 +258,7 @@ async def update_settings(request: Request):
         tier = active.get("selected_tier", "4B")
         backend = active.get("backend", "cuda")
         if backend == "cloud":
-            active_session.context_size = 32768
+            active_session.context_size = 16384
         else:
             model_info = cfg.get("models", {}).get(tier, {})
             active_session.context_size = model_info.get("context_size", 8192)
@@ -266,6 +286,110 @@ async def update_settings(request: Request):
         "github_token": get_github_token(),
         "allowed_workspace": get_allowed_workspace(),
     }
+
+
+def check_engine_port_open(port: int = 11434, host: str = "127.0.0.1") -> bool:
+    """Checks if the local engine port is accepting connections."""
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            return True
+    except (ConnectionRefusedError, socket.timeout, OSError):
+        return False
+
+
+def get_engine_command_str(cfg: dict, tier: str = "4B", port: int = 11434) -> str:
+    """Assembles the display command string for llama-server."""
+    model_info = cfg.get("models", {}).get(tier, {})
+    model_fn = model_info.get("filename", "gemma-4-E4B_q4_0-it.gguf")
+    mmproj_fn = model_info.get("mmproj", "gemma-4-E4B-it-mmproj.gguf")
+    context_size = model_info.get("context_size", 8192)
+    return (
+        f"bin\\llama-server.exe -m {model_fn} --mmproj {mmproj_fn} --port {port} "
+        f"-c {context_size} -np 1 -fa on -ctk q8_0 -ctv q8_0 -ngl 99 --temp 0.0 --alias dot-engine"
+    )
+
+
+@app.get("/api/engine/status")
+async def get_engine_status():
+    """Returns the running status and launch command of the local inference engine."""
+    cfg = load_config()
+    active = cfg.get("active_settings", {})
+    tier = active.get("selected_tier", "4B")
+    port = int(active.get("port", 11434))
+    running = check_engine_port_open(port)
+    cmd = get_engine_command_str(cfg, tier, port)
+    return {
+        "running": running,
+        "port": port,
+        "tier": tier,
+        "command": cmd,
+    }
+
+
+@app.post("/api/engine/start")
+async def start_engine_endpoint():
+    """Starts the local llama-server in the background if not already running."""
+    cfg = load_config()
+    active = cfg.get("active_settings", {})
+    tier = active.get("selected_tier", "4B")
+    port = int(active.get("port", 11434))
+
+    if check_engine_port_open(port):
+        return {"status": "ok", "message": f"Engine is already running on port {port}."}
+
+    bin_dir = Path(__file__).resolve().parent.parent / "bin"
+    server_exe = bin_dir / "llama-server.exe"
+    if not server_exe.exists():
+        return {"status": "error", "message": "llama-server.exe not found in bin directory."}
+
+    model_info = cfg.get("models", {}).get(tier, {})
+    model_fn = model_info.get("filename", "")
+    mmproj_fn = model_info.get("mmproj", "")
+    context_size = model_info.get("context_size", 8192)
+
+    cmd = [
+        str(server_exe),
+        "-m", model_fn,
+        "--mmproj", mmproj_fn,
+        "--port", str(port),
+        "-c", str(context_size),
+        "-np", "1",
+        "-fa", "on",
+        "-ctk", "q8_0",
+        "-ctv", "q8_0",
+        "-ngl", "99",
+        "-b", "2048",
+        "-ub", "1024",
+        "--temp", "0.0",
+        "--alias", "dot-engine",
+    ]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(bin_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        )
+        app_state["engine_process"] = proc
+        return {"status": "starting", "message": f"Starting engine on port {port}..."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/engine/stop")
+async def stop_engine_endpoint():
+    """Terminates the local engine process."""
+    proc = app_state.get("engine_process")
+    if proc and proc.poll() is None:
+        try:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        except Exception:
+            pass
+        app_state["engine_process"] = None
+        return {"status": "ok", "message": "Engine process stopped."}
+    return {"status": "ok", "message": "No active managed engine process."}
 
 
 @app.post("/api/cloud/test")
@@ -463,6 +587,23 @@ async def websocket_endpoint(websocket: WebSocket):
         }))
     except Exception:
         pass
+
+    # Broadcast initial settings and active model information.
+    try:
+        cfg = load_config()
+        active = cfg.get("active_settings", {})
+        cloud = cfg.get("cloud", {})
+        await websocket.send_text(json.dumps({
+            "type": "settings_updated",
+            "data": {
+                "active_settings": active,
+                "cloud": cloud,
+                "github_token": get_github_token(),
+                "allowed_workspace": get_allowed_workspace(),
+            }
+        }))
+    except Exception as e:
+        print(f"[Initial Settings Broadcast Warning]: {e}")
 
     try:
         while True:

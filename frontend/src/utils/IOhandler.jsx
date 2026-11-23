@@ -1,3 +1,8 @@
+/**
+ * WebSocket dispatcher for Dot backend.
+ * Complies with ASD-STE100 writing rules.
+ */
+
 let ws = null;
 
 export function closeWS() {
@@ -11,62 +16,123 @@ export function closeWS() {
   }
 }
 
-export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus, setTokenUsage, setBrowserHeadless) {
+export function initWS(handlers) {
   closeWS();
-  console.log("In IOhandler.js initWS");
+  const {
+    addMessage,
+    appendStreamChunk,
+    setMessages,
+    setIsLoading,
+    setIsStreaming,
+    setActiveThoughts,
+    setLastMessageThoughts,
+    setActionText,
+    setVoiceStatus,
+    setSandboxStatus,
+    setIntervention,
+    setTokenUsage,
+    setBrowserHeadless,
+    setActiveModel,
+    setIsCloudModel,
+  } = handlers;
+
   try {
     ws = new WebSocket("ws://localhost:3000/ws");
+
     ws.onopen = () => {
-      console.log("Connected to server");
+      console.log("[WS] Connected to Dot backend server");
     };
+
     ws.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      if (payload.type === "voice_status") {
-        if (setVoiceStatus) setVoiceStatus(payload.status);
-      } else if (payload.type === "voice_input") {
-        setMessages((prev) => [...prev, { role: "user", content: payload.text }]);
-        if (setIsLoading) setIsLoading(true);
-      } else if (payload.type === "result") {
-        // Prevent duplicate bubbles if content is already rendered from stream.
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last && last.role === "dot" && last.content === payload.data) {
-            return prev;
+      try {
+        const payload = JSON.parse(event.data);
+        const { type, data } = payload;
+
+        if (type === "voice_status") {
+          if (setVoiceStatus) setVoiceStatus(payload.status);
+        } else if (type === "voice_input") {
+          if (addMessage) addMessage("user", payload.text);
+          if (setIsLoading) setIsLoading(true);
+        } else if (type === "stream_start") {
+          if (setIsLoading) setIsLoading(false);
+          if (setIsStreaming) setIsStreaming(true);
+          if (setActiveThoughts) setActiveThoughts(payload.thoughts || "");
+          if (setActionText) setActionText("");
+          if (addMessage) addMessage("dot", "", payload.thoughts || "");
+        } else if (type === "stream") {
+          if (appendStreamChunk) appendStreamChunk(data);
+        } else if (type === "stream_end") {
+          if (setIsStreaming) setIsStreaming(false);
+          if (setIsLoading) setIsLoading(false);
+          if (setActionText) setActionText("");
+        } else if (type === "result") {
+          if (setIsLoading) setIsLoading(false);
+          if (setIsStreaming) setIsStreaming(false);
+          if (setActionText) setActionText("");
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === "dot") {
+              if (last.content === data) return prev;
+              return [...prev.slice(0, -1), { ...last, content: data, thoughts: payload.thoughts || last.thoughts || "" }];
+            }
+            return [...prev, { role: "dot", content: data, thoughts: payload.thoughts || "" }];
+          });
+        } else if (type === "agent_action") {
+          if (setIsLoading) setIsLoading(true);
+          if (setActionText) setActionText(data || "Executing action...");
+        } else if (type === "chat_cleared") {
+          if (setMessages) setMessages([]);
+          if (setActiveThoughts) setActiveThoughts("");
+          if (setActionText) setActionText("");
+          if (setIntervention) setIntervention(null);
+        } else if (type === "intervention_required") {
+          if (setIntervention) setIntervention(data || { reason: "Confirmation required." });
+        } else if (type === "intervention_resolved") {
+          if (setIntervention) setIntervention(null);
+        } else if (type === "sandbox_status") {
+          if (setSandboxStatus) setSandboxStatus(data?.status || "idle");
+        } else if (type === "token_usage") {
+          if (setTokenUsage) setTokenUsage(data);
+        } else if (type === "browser_status") {
+          if (setBrowserHeadless && data?.browser_headless !== undefined) {
+            setBrowserHeadless(data.browser_headless);
           }
-          return [...prev, { role: "dot", content: payload.data }];
-        });
-        if (setIsLoading) setIsLoading(false);
-        if (setIsStreaming) setIsStreaming(false);
-      } else if (payload.type === "stream_start") {
-        if (setIsLoading) setIsLoading(false);
-        if (setIsStreaming) setIsStreaming(true);
-      } else if (payload.type === "stream") {
-        if (appendStreamChunk) appendStreamChunk(payload.data);
-      } else if (payload.type === "stream_end") {
-        if (setIsStreaming) setIsStreaming(false);
-      } else if (payload.type === "token_usage") {
-        if (setTokenUsage) setTokenUsage(payload.data);
-      } else if (payload.type === "browser_status") {
-        if (setBrowserHeadless && payload.data?.browser_headless !== undefined) {
-          setBrowserHeadless(payload.data.browser_headless);
+        } else if (type === "settings_updated") {
+          if (data?.active_settings) {
+            if (setBrowserHeadless && data.active_settings.browser_headless !== undefined) {
+              setBrowserHeadless(data.active_settings.browser_headless);
+            }
+            if (setActiveModel && setIsCloudModel) {
+              const backend = data.active_settings.backend || "cuda";
+              if (backend === "cloud") {
+                const modelName = data.cloud?.model || "Cloud Model";
+                setActiveModel(modelName);
+                setIsCloudModel(true);
+              } else {
+                setActiveModel(`${data.active_settings.selected_tier || "4B"} Local`);
+                setIsCloudModel(false);
+              }
+            }
+          }
         }
-      } else if (payload.type === "settings_updated") {
-        if (setBrowserHeadless && payload.data?.active_settings?.browser_headless !== undefined) {
-          setBrowserHeadless(payload.data.active_settings.browser_headless);
-        }
+      } catch (err) {
+        console.error("[WS] Message parsing error:", err);
       }
     };
+
     ws.onerror = (err) => {
-      console.error("WS Error:", err);
+      console.error("[WS] Connection error:", err);
       if (setIsLoading) setIsLoading(false);
       if (setIsStreaming) setIsStreaming(false);
     };
+
     ws.onclose = () => {
+      console.log("[WS] Disconnected from server");
       if (setIsLoading) setIsLoading(false);
       if (setIsStreaming) setIsStreaming(false);
     };
   } catch (error) {
-    console.log("Error In IOhandler.js: " + error);
+    console.error("[WS] Initialization error:", error);
     if (setIsLoading) setIsLoading(false);
     if (setIsStreaming) setIsStreaming(false);
   }
@@ -75,15 +141,14 @@ export function initWS(addMessage, setMessages, setIsLoading, setIsStreaming, ap
 export async function toDot(text, setIsLoading) {
   try {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      console.error("WS not ready");
+      console.error("[WS] Cannot send text: socket closed");
       if (setIsLoading) setIsLoading(false);
       return;
     }
-    console.log("in toDot sending the text: " + text);
     if (setIsLoading) setIsLoading(true);
     ws.send(JSON.stringify(text));
   } catch (e) {
-    console.error(e);
+    console.error("[WS] Send error:", e);
     if (setIsLoading) setIsLoading(false);
   }
 }

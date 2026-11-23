@@ -9,6 +9,7 @@ import json
 from typing import AsyncGenerator, Optional, Tuple, Any
 from openai import OpenAI, AsyncOpenAI
 from dot.config.paths import CONFIG_PATH
+from dot.config.settings import get_cloud_api_key
 from dot.core.prompts import get_system_prompt
 
 
@@ -35,7 +36,7 @@ def _load_clients() -> Tuple[AsyncOpenAI, OpenAI, str, bool, str]:
             base_url = cloud_cfg.get("base_url") or os.environ.get("DOT_CLOUD_BASE_URL", "https://api.openai.com/v1")
             model = cloud_cfg.get("model") or os.environ.get("DOT_CLOUD_MODEL", "gpt-4o-mini")
 
-        api_key = cloud_cfg.get("api_key") or os.environ.get("DOT_CLOUD_API_KEY", "")
+        api_key = cloud_cfg.get("api_key") or get_cloud_api_key() or "not-configured"
         async_cl = AsyncOpenAI(base_url=base_url, api_key=api_key)
         sync_cl = OpenAI(base_url=base_url, api_key=api_key)
         return async_cl, sync_cl, model, True, provider

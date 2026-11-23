@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
   "applicationId": "ai.dot.assistant",
-  "version": "1.0.0",
+  "version": "1.0.12",
   "defaultMode": "window",
   "port": 0,
   "documentRoot": "/dist/",
@@ -35,7 +35,7 @@
       "borderless": true,
       "alwaysOnTop": true,
       "icon": "/resources/icons/appIcon.png",
-      "enableInspector": false,
+      "enableInspector": true,
       "hidden": false,
       "resizable": true,
       "exitProcessOnClose": true

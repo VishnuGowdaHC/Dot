@@ -1,373 +1,437 @@
-import { useEffect, useState, useRef } from "react";
-import initConfig from "./utils/initConfig";
-import { toDot, initWS, closeWS } from "./utils/IOhandler";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useMessage } from "./utils/messageContext";
-import TokenMeter from "./components/TokenMeter";
+import { initWS, closeWS, toDot } from "./utils/IOhandler";
+import {
+  dockWindow,
+  updateNativeWindowSize,
+  minimizeWindow,
+  closeApp,
+} from "./utils/neutralinoWindow";
+import ChatContainer from "./components/ChatContainer";
+import ThinkingPill from "./components/ThinkingPill";
+import ControlShelf from "./components/ControlShelf";
+import InputPill from "./components/InputPill";
 import SettingsModal from "./components/SettingsModal";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-const THINKING_PHRASES = [
-  "hallucinating...",
-  "na just kidding...",
-  "finding bs to tell...",
-  "nah chill out...",
-  "consulting the silicon oracle...",
-  "pretending to work hard...",
-  "brewing some sarcasm...",
-  "overthinking your request...",
-  "downloading common sense...",
-  "firing up the neurons...",
-  "hold up, let me cook...",
-  "questioning my life choices...",
-];
-
+/**
+ * Main application HUD component.
+ * Renders the compact floating desktop companion.
+ * Complies with ASD-STE100 rules.
+ */
 export default function App() {
-  const [value, setValue] = useState("");
-  const [typedText, setTypedText] = useState("");
-  const [voiceStatus, setVoiceStatus] = useState("idle");
+  const [inputValue, setInputValue] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const chatRef = useRef(null);
+  const inputRef = useRef(null);
+
   const {
     messages,
     addMessage,
     appendStreamChunk,
     setMessages,
+    clearChat,
     isLoading,
     setIsLoading,
     isStreaming,
     setIsStreaming,
+    activeThoughts,
+    setActiveThoughts,
+    setLastMessageThoughts,
+    actionText,
+    setActionText,
+    voiceStatus,
+    setVoiceStatus,
+    sandboxStatus,
+    setSandboxStatus,
+    intervention,
+    setIntervention,
+    browserHeadless,
+    setBrowserHeadless,
+    activeModel,
+    setActiveModel,
+    isCloudModel,
+    setIsCloudModel,
     tokenUsage,
     setTokenUsage,
-    browserHeadless,
-    setBrowserHeadless
   } = useMessage();
 
-  const now = new Date();
-  const day = now.toLocaleDateString('en-US', { weekday: 'long' });
-  const date = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric' });
+  const windowMode = isSettingsOpen
+    ? "settings"
+    : messages.length > 0 || Boolean(intervention)
+    ? "chat"
+    : "idle";
+  const shellHeight = windowMode === "settings" ? 530 : windowMode === "chat" ? 430 : 154;
+  const isExpanded = windowMode === "chat";
 
+  // Fetch initial system settings from the server.
   useEffect(() => {
-    initConfig();
-    initWS(addMessage, setMessages, setIsLoading, setIsStreaming, appendStreamChunk, setVoiceStatus, setTokenUsage, setBrowserHeadless);
+    async function loadInitialSettings() {
+      try {
+        const res = await fetch("http://localhost:3000/api/settings");
+        if (res.ok) {
+          const data = await res.json();
+          const active = data.active_settings || {};
+          const cloud = data.cloud || {};
+          if (active.backend === "cloud") {
+            setActiveModel(cloud.model || "Cloud Model");
+            setIsCloudModel(true);
+          } else {
+            setActiveModel(`${active.selected_tier || "4B"} Local`);
+            setIsCloudModel(false);
+          }
+          if (active.browser_headless !== undefined) {
+            setBrowserHeadless(active.browser_headless);
+          }
+        }
+      } catch (e) {
+        console.warn("Initial settings load warning:", e);
+      }
+    }
+    loadInitialSettings();
+  }, [setActiveModel, setIsCloudModel, setBrowserHeadless]);
+
+  // Initialize WebSocket and native Neutralino window
+  useEffect(() => {
+    initWS({
+      addMessage,
+      appendStreamChunk,
+      setMessages,
+      setIsLoading,
+      setIsStreaming,
+      setActiveThoughts,
+      setLastMessageThoughts,
+      setActionText,
+      setVoiceStatus,
+      setSandboxStatus,
+      setIntervention,
+      setTokenUsage,
+      setBrowserHeadless,
+      setActiveModel,
+      setIsCloudModel,
+    });
+
+    const initWindow = async () => {
+      if (typeof window !== "undefined" && window.Neutralino) {
+        try {
+          await window.Neutralino.window?.setDraggableRegion("drag-handle");
+          await dockWindow("idle");
+        } catch (e) {
+          console.warn("Native window setup warning:", e);
+        }
+      }
+    };
+
+    if (typeof window !== "undefined" && window.Neutralino?.events) {
+      window.Neutralino.events.on("ready", initWindow);
+    }
+    initWindow();
+
     return () => {
       closeWS();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    addMessage,
+    appendStreamChunk,
+    setMessages,
+    setIsLoading,
+    setIsStreaming,
+    setActiveThoughts,
+    setLastMessageThoughts,
+    setActionText,
+    setVoiceStatus,
+    setSandboxStatus,
+    setIntervention,
+    setTokenUsage,
+    setBrowserHeadless,
+    setActiveModel,
+    setIsCloudModel,
+  ]);
+
+  // Adjust native window dimensions when expanding or collapsing
+  useEffect(() => {
+    updateNativeWindowSize(windowMode);
+  }, [windowMode]);
+
+  // Keyboard shortcuts (Ctrl+L for clear chat)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        clearChat();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [clearChat]);
+
+  // Send user message
+  const handleSendPrompt = useCallback(
+    async (text) => {
+      const prompt = (text || inputValue).trim();
+      if (!prompt || isLoading) return;
+
+      addMessage("user", prompt);
+      setInputValue("");
+      setIsLoading(true);
+
+      await toDot(prompt, setIsLoading);
+    },
+    [inputValue, isLoading, addMessage, setIsLoading]
+  );
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendPrompt();
+    }
+  };
 
   const handleToggleBrowser = async () => {
     try {
-      const res = await fetch("http://localhost:3000/api/browser/toggle", { method: "POST" });
+      const res = await fetch("http://localhost:3000/api/browser/toggle", {
+        method: "POST",
+      });
       if (res.ok) {
         const data = await res.json();
         setBrowserHeadless(data.browser_headless);
       }
     } catch (err) {
-      console.error("Failed to toggle browser mode:", err);
+      console.warn("Failed to toggle browser mode:", err);
     }
   };
 
-  useEffect(() => {
-    if (!isLoading || isStreaming) {
-      setTypedText("");
-      return;
-    }
-
-    let isMounted = true;
-    let phraseIndex = Math.floor(Math.random() * THINKING_PHRASES.length);
-    let charIndex = 0;
-    let isDeleting = false;
-    let timeoutId = null;
-
-    const tick = () => {
-      if (!isMounted) return;
-
-      const currentPhrase = THINKING_PHRASES[phraseIndex];
-
-      if (!isDeleting) {
-        // Typing forward
-        charIndex++;
-        setTypedText(currentPhrase.slice(0, charIndex));
-
-        if (charIndex >= currentPhrase.length) {
-          // Finished phrase, pause so user reads the joke
-          isDeleting = true;
-          timeoutId = setTimeout(tick, 1200);
-          return;
-        }
-        const typeSpeed = 35 + Math.random() * 20;
-        timeoutId = setTimeout(tick, typeSpeed);
-      } else {
-        // Backspacing
-        charIndex--;
-        setTypedText(currentPhrase.slice(0, charIndex));
-
-        if (charIndex <= 0) {
-          // Finished deleting, pick a different phrase
-          isDeleting = false;
-          let next = Math.floor(Math.random() * THINKING_PHRASES.length);
-          while (next === phraseIndex && THINKING_PHRASES.length > 1) {
-            next = Math.floor(Math.random() * THINKING_PHRASES.length);
-          }
-          phraseIndex = next;
-          timeoutId = setTimeout(tick, 200);
-          return;
-        }
-        timeoutId = setTimeout(tick, 20);
-      }
-    };
-
-    timeoutId = setTimeout(tick, 40);
-
-    return () => {
-      isMounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [isLoading, isStreaming]);
-
-  useEffect(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTo({
-        top: chatRef.current.scrollHeight,
-        behavior: "smooth"
+  const handleApproveIntervention = async () => {
+    try {
+      await fetch("http://localhost:3000/api/intervention/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: true }),
       });
+      setIntervention(null);
+    } catch (err) {
+      console.warn("Failed to approve intervention:", err);
     }
-  }, [messages, isLoading]);
+  };
 
-  async function handleEnter() {
-    if (!value.trim() || isLoading) return;
-
-    const textTosend = value;
-    addMessage("user", value);
-    setValue("");
-
-    await toDot(textTosend, setIsLoading);
-  }
-
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleEnter();
-    }
+  const handleOpenSandboxCLI = () => {
+    window.open("http://localhost:3000/api/sandbox/terminal", "_blank");
   };
 
   return (
-    <div className="relative w-full h-screen bg-[#0e0e11] text-zinc-100 overflow-hidden flex flex-col select-none font-sans">
+    <div className="bg-transparent overflow-hidden select-none font-sans text-zinc-100 h-screen w-screen relative m-0 p-0">
+      {/* Outer Padding Container */}
+      <div className="absolute inset-0 p-3 flex flex-col justify-end pointer-events-none">
+        {/* Main Corner Shell Card */}
+        <div
+          id="corner-shell"
+          className="w-full relative flex flex-col justify-end overflow-visible pointer-events-auto transition-all"
+          style={{
+            height: `${shellHeight}px`,
+            borderRadius: "32px",
+          }}
+        >
+          {/* Ambient Outer Glow Aura */}
+          <div className="absolute -inset-6 bg-[radial-gradient(ellipse_at_50%_50%,rgba(255,255,255,0.04),transparent_75%)] blur-2xl pointer-events-none z-0 rounded-[40px]" />
 
-      {/* Subtle Generic Backdrop */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(#ffffff05_1px,transparent_1px)] [background-size:20px_20px] opacity-40 pointer-events-none" />
-      </div>
+          {/* Frosted Acrylic Backdrop Card */}
+          <div
+            className="absolute inset-0 rounded-[32px] pointer-events-none"
+            style={{
+              background:
+                "linear-gradient(145deg, rgba(24, 24, 27, 0.94) 0%, rgba(18, 18, 20, 0.96) 50%, rgba(10, 10, 12, 0.98) 100%)",
+              backdropFilter: "blur(28px)",
+              WebkitBackdropFilter: "blur(28px)",
+              boxShadow: "0 20px 50px -10px rgba(0, 0, 0, 0.85)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+            }}
+          />
 
-      {/* Generic Header */}
-      <header className="shrink-0 bg-[#121215]/90 backdrop-blur-md px-6 sm:px-12 md:px-20 lg:px-28 xl:px-36 py-3.5 z-20 relative border-b border-zinc-800/80">
-        <div className="max-w-3xl w-full mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl tracking-tight text-white font-semibold">
-              Dot
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
-              <span>{day.slice(0, 3)}</span>
-              <span className="text-zinc-600">|</span>
-              <span>{date}</span>
-            </div>
+          {/* Interactive Content Layer */}
+          <div className="relative z-10 flex flex-col justify-end w-full h-full">
+            {/* Top Window Headline & Control Header */}
+            <div className="absolute top-0 left-0 right-0 h-8 flex items-center justify-between px-3.5 z-30 select-none opacity-90 hover:opacity-100 transition-opacity">
+              {/* Drag Handle Region - Draggable Area */}
+              <div
+                id="drag-handle"
+                className="flex-1 h-full flex items-center gap-2 cursor-move"
+              >
+                <div className="flex items-center gap-1.5 text-zinc-400 pointer-events-none">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+                  <span className="font-sans font-medium text-[11px] text-zinc-300 tracking-wide">Dot</span>
+                </div>
+                <div className="flex-1 h-full" />
+              </div>
 
-            {/* Top-corner 3-dot options menu */}
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors cursor-pointer"
-              title="Settings (Model, Browser, MCP)"
-            >
-              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                <circle cx="12" cy="5" r="2" />
-                <circle cx="12" cy="12" r="2" />
-                <circle cx="12" cy="19" r="2" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Messages Column with responsive full-screen gutters */}
-      <main
-        ref={chatRef}
-        className="flex-1 overflow-y-auto px-6 sm:px-12 md:px-20 lg:px-28 xl:px-36 py-6 flex flex-col z-10 relative"
-      >
-        <div className="max-w-3xl w-full mx-auto flex flex-col flex-1 space-y-5">
-          {/* Generic Empty State */}
-          {messages.length === 0 && (
-            <div className="flex-1 flex flex-col items-center justify-center text-center my-auto py-16 select-none relative z-10">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-100 mb-4">
-                Dot
-              </h2>
-
-              <div className="inline-flex items-center gap-2.5 bg-zinc-800/70 border border-zinc-700/80 px-4 py-2 text-xs rounded-xl text-zinc-300 shadow-sm">
-                <span>Hold</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-700 text-zinc-200 border border-zinc-600 text-[11px] font-mono">Alt</kbd>
-                <span>for voice mode</span>
+              {/* Action Buttons Container - Isolated from dragging */}
+              <div
+                className="flex items-center gap-1 shrink-0 z-40"
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={handleOpenSandboxCLI}
+                  className="flex items-center gap-1 bg-[#202024] border border-white/8 px-1.5 py-0.5 rounded-md text-[9px] font-mono text-zinc-400 cursor-pointer hover:bg-white/10 hover:text-zinc-200 transition-colors"
+                  title="Docker Sandbox. Click to inspect."
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      sandboxStatus === "busy" ? "bg-amber-400" : "bg-emerald-400"
+                    }`}
+                  />
+                  <span>Sandbox</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={clearChat}
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-zinc-400 hover:text-[#FF5A5F] hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Clear Chat History (Ctrl+L)"
+                >
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={minimizeWindow}
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Minimize"
+                >
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={closeApp}
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                  title="Close"
+                >
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
               </div>
             </div>
-          )}
 
-          {/* Transcript Messages */}
-          {messages.map((message, index) =>
-            message.role === "user" ? (
-              <div key={index} className="flex justify-end">
-                <div className="bg-zinc-800 text-zinc-100 rounded-2xl px-4 py-2.5 max-w-[82%] text-[14px] leading-relaxed border border-zinc-700/80 shadow-sm">
-                  <p className="font-sans">{message.content}</p>
+            {/* Chat Messages Container */}
+            {isExpanded && (
+              <ChatContainer
+                messages={messages}
+                onSelectPrompt={handleSendPrompt}
+              />
+            )}
+
+            {/* Active Minimalist Thinking Indicator */}
+            {(isLoading || actionText) && !isStreaming && (
+              <ThinkingPill actionText={actionText || "Working..."} />
+            )}
+
+            {/* Active Voice Recording Banner */}
+            {voiceStatus === "recording" && (
+              <div className="px-4 py-0.5 z-10 select-none">
+                <div className="bg-zinc-900 border border-white/20 text-white px-2.5 py-1 rounded-xl text-[11px] font-mono flex items-center justify-between animate-pulse">
+                  <span>Recording audio...</span>
+                  <span>
+                    Release{" "}
+                    <kbd className="px-1 py-0.2 rounded bg-white/10 border border-white/20 text-white text-[9px]">
+                      Alt
+                    </kbd>
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div key={index} className="flex justify-start items-start gap-3">
-                <div className="bg-[#161619] border border-zinc-800/90 rounded-2xl px-5 py-4 max-w-[90%] text-[14px] text-zinc-200 leading-relaxed shadow-sm">
-                  <div className="prose prose-invert max-w-none text-[14px] text-zinc-200">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code({ inline, className, children, ...props }) {
-                          const match = /language-(\w+)/.exec(className || '');
-                          return !inline && match ? (
-                            <div className="overflow-x-auto w-full my-3 rounded-xl bg-[#0c0c0e] border border-zinc-800">
-                              <div className="px-4 py-1.5 border-b border-zinc-800 text-[11px] font-mono text-zinc-400 flex items-center justify-between">
-                                <span className="uppercase">{match[1]}</span>
-                              </div>
-                              <SyntaxHighlighter
-                                {...props}
-                                style={vscDarkPlus}
-                                language={match[1]}
-                                PreTag="div"
-                                customStyle={{ margin: 0, padding: "14px", background: "transparent", fontSize: "13px" }}
-                              >
-                                {String(children).replace(/\n$/, '')}
-                              </SyntaxHighlighter>
-                            </div>
-                          ) : (
-                            <code {...props} className="bg-zinc-800/80 border border-zinc-700/80 px-1.5 py-0.5 rounded font-mono text-xs text-zinc-200">
-                              {children}
-                            </code>
-                          );
-                        }
-                      }}
+            )}
+
+            {/* Active Human Intervention Banner */}
+            {intervention && (
+              <div className="px-4 py-1 z-20 select-none">
+                <div className="bg-red-950/90 border border-red-500/50 text-red-200 px-3 py-2 rounded-xl text-[11px] font-mono flex flex-col gap-1.5 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-red-300">
+                      Confirmation Required
+                    </span>
+                    <span className="text-[9px] text-red-400/80">Action Paused</span>
+                  </div>
+                  <div className="text-zinc-200 text-[10.5px]">
+                    {intervention.reason || "Action requires user confirmation."}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5 justify-end">
+                    <button
+                      type="button"
+                      onClick={handleOpenSandboxCLI}
+                      className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white text-[9.5px] cursor-pointer"
                     >
-                      {message.content}
-                    </ReactMarkdown>
-                    {isStreaming && index === messages.length - 1 && (
-                      <span className="inline-block w-[2px] h-[14px] bg-indigo-400 animate-pulse ml-1 align-middle" />
-                    )}
+                      Open CLI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApproveIntervention}
+                      className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-semibold text-[9.5px] cursor-pointer"
+                    >
+                      Approve
+                    </button>
                   </div>
                 </div>
               </div>
-            )
-          )}
+            )}
 
-          {/* Generic Typewriter Thinking Line */}
-          {isLoading && !isStreaming && (
-            <div className="inline-flex items-center gap-2 bg-[#161619] border border-zinc-800/90 px-3.5 py-1.5 text-xs rounded-xl w-fit shadow-sm">
-              <span className="text-indigo-400 bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 rounded-md font-mono text-[10px] font-semibold uppercase tracking-wider">
-                thinking
-              </span>
-              <span className="text-zinc-500">:</span>
-              <span className="text-zinc-200 font-medium">{typedText}</span>
+            {/* Control Shelf and Input Pill */}
+            <div className="relative z-10 px-3.5 pt-1.5 pb-2.5 flex flex-col gap-2">
+              <ControlShelf
+                tokenUsage={tokenUsage}
+                inputValue={inputValue}
+                browserHeadless={browserHeadless}
+                onToggleBrowser={handleToggleBrowser}
+                activeModel={activeModel}
+                isCloudModel={isCloudModel}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+              <InputPill
+                inputRef={inputRef}
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={() => handleSendPrompt()}
+                onKeyDown={handleKeyDown}
+                voiceStatus={voiceStatus}
+                disabled={isLoading}
+              />
             </div>
-          )}
-        </div>
-      </main>
-
-      {/* Generic Input Section */}
-      <footer className="shrink-0 px-6 sm:px-12 md:px-20 lg:px-28 xl:px-36 pb-6 pt-2 z-20 relative">
-        <div className="max-w-3xl w-full mx-auto">
-          {/* Active Voice Recording Status */}
-          {voiceStatus === "recording" && (
-            <div className="bg-red-950/40 border border-red-800/80 text-red-200 px-4 py-2 mb-2 rounded-xl text-xs flex items-center justify-between font-mono animate-pulse">
-              <span>Recording...</span>
-              <span>Release <kbd className="px-1.5 py-0.5 rounded bg-red-900/60 border border-red-700 text-white text-[10px]">Alt</kbd> to send</span>
-            </div>
-          )}
-          {voiceStatus === "transcribing" && (
-            <div className="bg-zinc-800/80 border border-zinc-700 text-zinc-300 px-4 py-2 mb-2 rounded-xl text-xs font-mono">
-              Transcribing audio...
-            </div>
-          )}
-
-          {/* Active Context Token Meter - Docked directly above the input box */}
-          <TokenMeter
-            usage={tokenUsage}
-            inputValue={value}
-            browserHeadless={browserHeadless}
-            onToggleBrowser={handleToggleBrowser}
-          />
-
-          {/* Clean Generic Input Pill */}
-          <div className="bg-[#161619] border border-zinc-800 rounded-2xl px-3.5 py-2.5 flex items-center gap-3 focus-within:border-zinc-700 transition-colors shadow-sm">
-            <button
-              type="button"
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 cursor-pointer shrink-0"
-              title="Attach file"
-            >
-              <img src="/file.svg" alt="attach" className="w-4 h-4 opacity-75 hover:opacity-100 transition-opacity invert" />
-            </button>
-
-            <input
-              type="text"
-              placeholder="Ask or command..."
-              value={value}
-              disabled={isLoading}
-              onKeyDown={handleKey}
-              onChange={(e) => setValue(e.target.value)}
-              autoFocus
-              className="flex-1 bg-transparent text-[14px] text-zinc-100 placeholder-zinc-500 outline-none disabled:opacity-50"
-            />
-
-            {/* In-bar Alt key voice badge */}
-            <div
-              className={`px-2 py-0.5 rounded text-xs font-mono select-none transition-all ${voiceStatus === "recording"
-                ? "bg-red-800 text-white font-bold"
-                : "bg-zinc-800/90 text-zinc-300 border border-zinc-700"
-                }`}
-              title="Hold Alt to speak"
-            >
-              Alt
-            </div>
-
-            {/* Accent Send Button */}
-            <button
-              type="button"
-              onClick={handleEnter}
-              disabled={!value.trim() || isLoading}
-              className="w-8 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-[0_0_14px_rgba(99,102,241,0.35)]"
-              title="Send"
-            >
-              <img src="/send.svg" alt="send" className="w-3.5 h-3.5 brightness-200" />
-            </button>
-          </div>
-
-          {/* Sub-footer instructions */}
-          <div className="flex items-center justify-between px-2 pt-2.5 text-[11px] font-mono text-zinc-400 select-none">
-            <span className="flex items-center gap-1.5">
-              <span>Hold <kbd className="border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] text-zinc-300">Alt</kbd> for voice mode</span>
-            </span>
-            <span>Enter to send</span>
           </div>
         </div>
-      </footer>
+      </div>
 
-      {/* Settings Modal Dialog */}
+      {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onSettingsSaved={(saved) => {
-          if (saved?.browser_headless !== undefined) {
-            setBrowserHeadless(saved.browser_headless);
-          }
+        onSettingsSaved={() => {
+          // Settings refreshed
         }}
       />
-
     </div>
   );
 }

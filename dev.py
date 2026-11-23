@@ -27,6 +27,7 @@ FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 COLOR_ENGINE = "\033[36m"    # Cyan
 COLOR_BACKEND = "\033[32m"   # Green
 COLOR_FRONTEND = "\033[35m"  # Magenta
+COLOR_VITE = "\033[34m"      # Blue
 COLOR_SYSTEM = "\033[33m"    # Yellow
 COLOR_RESET = "\033[0m"
 
@@ -204,6 +205,7 @@ def main():
     parser.add_argument("--engine-port", type=int, default=None, help="Inference engine port (default: from config)")
     parser.add_argument("--tier", type=str, default=None, help="Model tier override (2B, 4B, 12B)")
     parser.add_argument("--backend", type=str, default=None, help="Inference backend override (cuda, cpu, cloud)")
+    parser.add_argument("--start-engine", action="store_true", help="Launch local llama-server engine on startup")
     args = parser.parse_args()
 
     config = load_config()
@@ -212,49 +214,51 @@ def main():
     print("  Dot Development Environment")
     print("=" * 60)
 
-    should_start_engine = not (args.no_engine or args.backend_only or args.frontend_only)
-    should_start_backend = not args.frontend_only
-    should_start_frontend = not (args.no_ui or args.backend_only)
-
     active_settings = config.get("active_settings", {})
     backend_mode = args.backend or active_settings.get("backend", "cuda")
-    if backend_mode == "cloud":
-        should_start_engine = False
-
     engine_port = args.engine_port or active_settings.get("port", 11434)
     backend_port = args.port
 
-    # 1. Start Inference Engine if required.
-    if should_start_engine:
-        if is_port_open(engine_port):
-            print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Port {engine_port} is already active. Reusing running engine.")
-        else:
-            engine_cmd = build_engine_cmd(config, args.tier, args.backend, engine_port)
-            print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Starting inference engine on port {engine_port}...")
-            eng_proc = subprocess.Popen(
-                engine_cmd,
-                cwd=BIN_DIR,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                encoding="utf-8",
-                errors="replace"
-            )
-            managed_processes.append(eng_proc)
-            t_eng = threading.Thread(
-                target=stream_output,
-                args=(eng_proc, "[ENGINE]", COLOR_ENGINE),
-                daemon=True
-            )
-            t_eng.start()
+    # Fast startup default: skip engine spawn unless explicitly requested with --start-engine.
+    should_start_engine = args.start_engine and not (args.no_engine or args.backend_only or args.frontend_only)
+    if backend_mode == "cloud":
+        should_start_engine = False
 
-            print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Waiting for engine to initialize...")
-            if not wait_for_port(engine_port, timeout=60.0):
-                print(f"{COLOR_SYSTEM}[SYSTEM]{COLOR_RESET} Error: Engine failed to start on port {engine_port}.")
-                cleanup()
-                sys.exit(1)
-            print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Engine is ready.")
+    should_start_backend = not args.frontend_only
+    should_start_frontend = not (args.no_ui or args.backend_only)
+
+    # 1. Start Inference Engine if requested or check existing port.
+    if is_port_open(engine_port):
+        print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Port {engine_port} is active. Connected to running engine.")
+    elif should_start_engine:
+        engine_cmd = build_engine_cmd(config, args.tier, args.backend, engine_port)
+        print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Starting inference engine on port {engine_port}...")
+        eng_proc = subprocess.Popen(
+            engine_cmd,
+            cwd=BIN_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            encoding="utf-8",
+            errors="replace"
+        )
+        managed_processes.append(eng_proc)
+        t_eng = threading.Thread(
+            target=stream_output,
+            args=(eng_proc, "[ENGINE]", COLOR_ENGINE),
+            daemon=True
+        )
+        t_eng.start()
+
+        print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Waiting for engine to initialize...")
+        if not wait_for_port(engine_port, timeout=60.0):
+            print(f"{COLOR_SYSTEM}[SYSTEM]{COLOR_RESET} Error: Engine failed to start on port {engine_port}.")
+            cleanup()
+            sys.exit(1)
+        print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Engine is ready.")
+    else:
+        print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Local engine idle on port {engine_port}. Run via Settings or pass --start-engine.")
 
     # 2. Start Python Backend Orchestrator.
     if should_start_backend:
@@ -293,12 +297,34 @@ def main():
             sys.exit(1)
         print(f"{COLOR_BACKEND}[BACKEND]{COLOR_RESET} Backend is ready.")
 
-    # 3. Start Frontend UI in full dev HMR mode.
+    # 3. Start Frontend UI with live Vite watcher and Neutralino desktop shell.
     front_proc = None
     if should_start_frontend:
         npx_bin = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
-        frontend_cmd = [npx_bin, "@neutralinojs/neu", "run"]
 
+        # Start Vite build watcher to recompile frontend/src into frontend/dist on change.
+        print(f"{COLOR_VITE}[VITE]{COLOR_RESET} Starting Vite build watcher...")
+        vite_cmd = [npx_bin, "vite", "build", "--watch"]
+        vite_proc = subprocess.Popen(
+            vite_cmd,
+            cwd=FRONTEND_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            encoding="utf-8",
+            errors="replace"
+        )
+        managed_processes.append(vite_proc)
+        t_vite = threading.Thread(
+            target=stream_output,
+            args=(vite_proc, "[VITE]", COLOR_VITE),
+            daemon=True
+        )
+        t_vite.start()
+
+        # Start Neutralino desktop shell.
+        frontend_cmd = [npx_bin, "@neutralinojs/neu", "run"]
         print(f"{COLOR_FRONTEND}[FRONTEND]{COLOR_RESET} Starting Neutralino desktop shell...")
         front_proc = subprocess.Popen(
             frontend_cmd,

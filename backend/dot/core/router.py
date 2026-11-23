@@ -13,7 +13,11 @@ from dot.core.engine import reAct_loop
 from dot.memory.vector_store import get_speculative_tools
 
 # Intent Router: classifies commands into fast execution mode or ReAct agent loop.
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Load cached SentenceTransformer model with local_files_only to bypass network checks.
+try:
+    model = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
+except Exception:
+    model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Semantic anchors for fast application launching and media playback.
 app_launch_anchors = [

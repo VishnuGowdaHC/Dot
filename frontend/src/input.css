@@ -13,7 +13,7 @@
     padding: 0;
     overflow: hidden;
     background-color: transparent !important;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     user-select: none;
     -webkit-user-select: none;
     -webkit-font-smoothing: antialiased;
@@ -44,3 +44,22 @@
 .pulse-anim {
   animation: pulse-ring 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
+
+/* Linear Shimmer Animation for Production Thinking State */
+@keyframes shimmer-wave {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.25) 0%, rgba(255, 90, 95, 0.75) 50%, rgba(79, 70, 229, 0.25) 100%);
+  background-size: 200% 100%;
+  animation: shimmer-wave 2.2s linear infinite;
+}
+
+/* Theme Color Utilities from theme.webp */
+.bg-theme-card { background-color: #18181b; }
+.bg-theme-surface { background-color: #202024; }
+.bg-theme-coral { background-color: #FF5A5F; }
+.hover\:bg-theme-coral-hover:hover { background-color: #FF454A; }
+.text-theme-coral { color: #FF5A5F; }
+.border-theme-subtle { border-color: rgba(255, 255, 255, 0.06); }

@@ -106,3 +106,44 @@ def set_allowed_workspace(workspace_path: str) -> None:
     cfg["allowed_workspace"] = workspace_path.strip()
     save_config(cfg)
 
+
+def get_cloud_api_key() -> str:
+    """Returns the configured cloud API key from config or env files."""
+    cfg = load_config()
+    key = cfg.get("cloud", {}).get("api_key", "").strip()
+    if key:
+        return key
+
+    key = os.environ.get("DOT_CLOUD_API_KEY", "").strip()
+    if key:
+        return key
+
+    for env_path in [BACKEND_ENV_PATH, DOT_ENV_PATH, DOT_PKG_ENV_PATH]:
+        if env_path.exists():
+            try:
+                for line in env_path.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("DOT_CLOUD_API_KEY="):
+                        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        if val:
+                            return val
+            except Exception:
+                pass
+    return ""
+
+
+def update_cloud_api_key(api_key: str) -> None:
+    """Updates the cloud API key in environment and env files."""
+    cleaned = api_key.strip()
+    os.environ["DOT_CLOUD_API_KEY"] = cleaned
+
+    for env_path in [BACKEND_ENV_PATH, DOT_ENV_PATH, DOT_PKG_ENV_PATH]:
+        try:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            lines = []
+            if env_path.exists():
+                lines = [l for l in env_path.read_text(encoding="utf-8").splitlines() if not l.startswith("DOT_CLOUD_API_KEY=")]
+            lines.append(f'DOT_CLOUD_API_KEY="{cleaned}"')
+            env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+

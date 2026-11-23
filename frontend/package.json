@@ -1,22 +1,29 @@
 {
   "name": "dot-ui",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.12",
   "type": "module",
   "scripts": {
-    "build:css": "tailwindcss -i ./src/input.css -o ./dist/output.css --minify",
-    "watch:css": "tailwindcss -i ./src/input.css -o ./dist/output.css --watch",
-    "neu": "neu run",
+    "dev": "concurrently \"vite build --watch\" \"neu run\"",
+    "dev:watch": "vite build --watch",
+    "dev:server": "vite",
+    "build:vite": "vite build",
     "build": "node scripts/build.js",
-    "dev": "concurrently \"npm run watch:css\" \"neu run\"",
-    "start": "concurrently \"npm run watch:css\" \"neu run\""
+    "neu": "neu run"
   },
   "dependencies": {
     "@neutralinojs/lib": "^6.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.3",
+    "remark-gfm": "^4.0.0",
     "tailwindcss": "^4.2.0"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
-    "concurrently": "^9.2.1"
+    "@tailwindcss/vite": "^4.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.1",
+    "vite": "^7.3.1"
   }
 }

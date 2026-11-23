@@ -75,14 +75,18 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
               e.stopPropagation();
               onToggleBrowser?.();
             }}
-            className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border transition-all cursor-pointer flex items-center gap-1 ${
+            className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
               browserHeadless
                 ? "bg-zinc-800/80 border-zinc-700/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
                 : "bg-indigo-500/15 border-indigo-500/35 text-indigo-300 hover:bg-indigo-500/25 shadow-sm"
             }`}
             title={browserHeadless ? "Browser: Headless (Click to switch to Visible GUI)" : "Browser: Visible GUI (Click to switch to Headless)"}
           >
-            <span>🌐</span>
+            <svg className="w-2.5 h-2.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
             <span>{browserHeadless ? "Headless" : "GUI"}</span>
           </button>
 

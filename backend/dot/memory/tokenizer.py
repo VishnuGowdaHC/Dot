@@ -21,7 +21,10 @@ def get_tokenizer() -> AutoTokenizer:
     """
     global _GLOBAL_TOKENIZER
     if _GLOBAL_TOKENIZER is None:
-        _GLOBAL_TOKENIZER = AutoTokenizer.from_pretrained(_TOKENIZER_PATH)
+        try:
+            _GLOBAL_TOKENIZER = AutoTokenizer.from_pretrained(_TOKENIZER_PATH, local_files_only=True)
+        except Exception:
+            _GLOBAL_TOKENIZER = AutoTokenizer.from_pretrained(_TOKENIZER_PATH)
     return _GLOBAL_TOKENIZER
 
 
