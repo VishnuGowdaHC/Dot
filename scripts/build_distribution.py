@@ -91,6 +91,7 @@ def build_frontend(root_dir: Path, dist_frontend_dir: Path) -> None:
         shutil.copytree(
             src_dist,
             dst_dist,
+            dirs_exist_ok=True,
             ignore=shutil.ignore_patterns("*.png", "*.jpg", "*.svg", "__pycache__"),
         )
         # Copy essential web assets
@@ -110,6 +111,7 @@ def copy_backend(root_dir: Path, dist_dir: Path) -> None:
     shutil.copytree(
         src_backend,
         dst_backend,
+        dirs_exist_ok=True,
         ignore=shutil.ignore_patterns(
             ".venv",
             "__pycache__",
