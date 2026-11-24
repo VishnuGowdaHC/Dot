@@ -56,9 +56,9 @@ export function initWS(handlers) {
         } else if (type === "stream_start") {
           if (setIsLoading) setIsLoading(false);
           if (setIsStreaming) setIsStreaming(true);
-          if (setActiveThoughts) setActiveThoughts(payload.thoughts || "");
+          if (setActiveThoughts) setActiveThoughts("");
           if (setActionText) setActionText("");
-          if (addMessage) addMessage("dot", "", payload.thoughts || "");
+          if (addMessage) addMessage("dot", "", "");
         } else if (type === "stream") {
           if (appendStreamChunk) appendStreamChunk(data);
         } else if (type === "stream_end") {
@@ -73,13 +73,16 @@ export function initWS(handlers) {
             const last = prev[prev.length - 1];
             if (last && last.role === "dot") {
               if (last.content === data) return prev;
-              return [...prev.slice(0, -1), { ...last, content: data, thoughts: payload.thoughts || last.thoughts || "" }];
+              return [...prev.slice(0, -1), { ...last, content: data, thoughts: "" }];
             }
-            return [...prev, { role: "dot", content: data, thoughts: payload.thoughts || "" }];
+            return [...prev, { role: "dot", content: data, thoughts: "" }];
           });
         } else if (type === "agent_action") {
           if (setIsLoading) setIsLoading(true);
-          if (setActionText) setActionText(data || "Executing action...");
+          const headline = typeof data === "string"
+            ? data
+            : data?.headline || data?.thought || (data?.tool_name ? `Executing ${data.tool_name}...` : "Thinking...");
+          if (setActionText) setActionText(headline);
         } else if (type === "chat_cleared") {
           if (setMessages) setMessages([]);
           if (setActiveThoughts) setActiveThoughts("");

@@ -19,7 +19,7 @@ export default function ControlShelf({
   return (
     <div className="flex items-center justify-between gap-1.5 font-mono select-none">
       {/* Token Context Bar */}
-      <div className="flex-1 h-7 px-2.5 bg-[#202024] border border-white/8 rounded-xl backdrop-blur-md flex items-center justify-between text-xs shadow-sm min-w-0">
+      <div className="flex-1 h-7 px-2.5 bg-[#202024] border border-white/8 rounded-xl flex items-center justify-between text-xs min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-zinc-400 text-[9.5px] shrink-0 font-sans">Context:</span>
           <span className="text-white font-semibold text-[9.5px] truncate font-mono">
@@ -38,7 +38,7 @@ export default function ControlShelf({
       <button
         type="button"
         onClick={onOpenSettings}
-        className="h-7 px-2.5 bg-[#202024] border border-white/8 rounded-xl backdrop-blur-md flex items-center gap-1.5 text-[9px] font-sans text-zinc-300 hover:text-white hover:border-white/20 transition-all cursor-pointer shadow-sm shrink-0"
+        className="h-7 px-2.5 bg-[#202024] border border-white/8 rounded-xl flex items-center gap-1.5 text-[9px] font-sans text-zinc-300 hover:text-white hover:border-white/20 transition-all cursor-pointer shrink-0"
         title="Active model. Click to configure settings."
       >
         
@@ -49,7 +49,7 @@ export default function ControlShelf({
       <button
         type="button"
         onClick={onOpenSettings}
-        className="w-7 h-7 rounded-xl bg-[#202024] border border-white/8 backdrop-blur-md flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer shadow-sm shrink-0"
+        className="w-7 h-7 rounded-xl bg-[#202024] border border-white/8 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer shrink-0"
         title="Settings (Model, Cloud, MCP, Browser)"
       >
         <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">

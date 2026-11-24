@@ -3,6 +3,7 @@ ReAct loop engine for the Dot assistant.
 Coordinates context construction, model inference, tool execution, and response streaming.
 """
 
+import re
 import time
 import uuid
 from typing import Optional, Any
@@ -23,6 +24,45 @@ from dot.core.executor import (
 from dot.core.llm import async_llm
 from dot.core.utils import render_history, log_agent_context
 from dot.memory.vector_store import get_all_services, get_speculative_tools
+
+
+def format_thought_headline(
+    thought: Optional[str] = None,
+    action: Optional[str] = None,
+    tool_name: Optional[str] = None,
+) -> str:
+    """Format an objective status headline from step telemetry.
+
+    Complies with ASD-STE100 rules.
+    """
+    if action == "Tool-exec" and tool_name:
+        clean_name = tool_name.replace("_", " ").title()
+        return f"Executing {clean_name}..."
+    if action == "Tool":
+        return "Searching available tools..."
+    if not thought:
+        return "Thinking..."
+
+    cleaned = thought.strip()
+    leak_patterns = [
+        r"as per the persona",
+        r"as per persona",
+        r"per the persona",
+        r"system prompt",
+        r"with a witty and sarcastic",
+        r"witty and sarcastic",
+        r"persona",
+    ]
+    for pattern in leak_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+
+    headline = cleaned.split(".")[0].split("\n")[0].strip()
+    headline = re.sub(r"\s+", " ", headline).strip(" -:;,")
+    if not headline:
+        return "Thinking..."
+    if len(headline) > 45:
+        headline = headline[:42] + "..."
+    return headline
 
 
 async def reAct_loop(
@@ -63,8 +103,8 @@ async def reAct_loop(
 
     async def finish_turn(text: str) -> str:
         # Keep the browser open on the desktop for user inspection.
-        thoughts_payload = "\n".join(collected_thoughts).strip() if collected_thoughts else None
-        return await stream_response(websocket, text, thoughts=thoughts_payload)
+        # Omit raw thought dumps to prevent leaking prompts to the chat completion stream.
+        return await stream_response(websocket, text, thoughts=None)
 
     step = 0
     raw_failures = 0
@@ -131,15 +171,17 @@ async def reAct_loop(
         # Format and display step telemetry cleanly in the console
         step_label = f"{step + 1}/{max_steps}" if max_steps else f"{step + 1}"
         print(f"\n--- [ReAct Step {step_label}] ---")
+        headline = format_thought_headline(step_obj.thought, step_obj.action, step_obj.tool_name)
         if step_obj.thought:
             print(f"[Thought] {step_obj.thought}")
-            collected_thoughts.append(step_obj.thought)
+            collected_thoughts.append(headline)
             if websocket:
                 try:
                     await websocket.send_text(json.dumps({
                         "type": "agent_action",
                         "data": {
-                            "thought": step_obj.thought,
+                            "headline": headline,
+                            "thought": headline,
                             "action": step_obj.action,
                             "tool_name": step_obj.tool_name,
                         }
@@ -174,10 +216,12 @@ async def reAct_loop(
             collected_thoughts.append(f"Action: {step_obj.tool_name}")
             if websocket:
                 try:
+                    tool_headline = format_thought_headline(None, "Tool-exec", step_obj.tool_name)
                     await websocket.send_text(json.dumps({
                         "type": "agent_action",
                         "data": {
-                            "thought": f"Executing {step_obj.tool_name}...",
+                            "headline": tool_headline,
+                            "thought": tool_headline,
                             "action": "Tool-exec",
                             "tool_name": step_obj.tool_name,
                         }

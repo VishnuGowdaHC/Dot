@@ -57,8 +57,8 @@ export default function App() {
   const windowMode = isSettingsOpen
     ? "settings"
     : messages.length > 0 || Boolean(intervention)
-    ? "chat"
-    : "idle";
+      ? "chat"
+      : "idle";
   const shellHeight = windowMode === "settings" ? 530 : windowMode === "chat" ? 430 : 154;
   const isExpanded = windowMode === "chat";
 
@@ -223,24 +223,17 @@ export default function App() {
         {/* Main Corner Shell Card */}
         <div
           id="corner-shell"
-          className="w-full relative flex flex-col justify-end overflow-visible pointer-events-auto transition-all"
+          className="w-full relative flex flex-col justify-end overflow-hidden pointer-events-auto transition-all"
           style={{
             height: `${shellHeight}px`,
             borderRadius: "32px",
           }}
         >
-          {/* Ambient Outer Glow Aura */}
-          <div className="absolute -inset-6 bg-[radial-gradient(ellipse_at_50%_50%,rgba(255,255,255,0.04),transparent_75%)] blur-2xl pointer-events-none z-0 rounded-[40px]" />
-
           {/* Frosted Acrylic Backdrop Card */}
           <div
             className="absolute inset-0 rounded-[32px] pointer-events-none"
             style={{
-              background:
-                "linear-gradient(145deg, rgba(24, 24, 27, 0.94) 0%, rgba(18, 18, 20, 0.96) 50%, rgba(10, 10, 12, 0.98) 100%)",
-              backdropFilter: "blur(28px)",
-              WebkitBackdropFilter: "blur(28px)",
-              boxShadow: "0 20px 50px -10px rgba(0, 0, 0, 0.85)",
+              background: "#18181b",
               border: "1px solid rgba(255, 255, 255, 0.08)",
             }}
           />
@@ -248,38 +241,24 @@ export default function App() {
           {/* Interactive Content Layer */}
           <div className="relative z-10 flex flex-col justify-end w-full h-full">
             {/* Top Window Headline & Control Header */}
-            <div className="absolute top-0 left-0 right-0 h-8 flex items-center justify-between px-3.5 z-30 select-none opacity-90 hover:opacity-100 transition-opacity">
+            <div className="absolute top-0 left-0 right-0 h-8 flex items-center justify-between px-4 mt-2 z-30 select-none opacity-90 hover:opacity-100 transition-opacity">
               {/* Drag Handle Region - Draggable Area */}
               <div
                 id="drag-handle"
                 className="flex-1 h-full flex items-center gap-2 cursor-move"
               >
                 <div className="flex items-center gap-1.5 text-zinc-400 pointer-events-none">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
-                  <span className="font-sans font-medium text-[11px] text-zinc-300 tracking-wide">Dot</span>
+                  <span className="font-sans ml-1 font-medium text-[11px] text-zinc-300 tracking-wide">Dot</span>
                 </div>
                 <div className="flex-1 h-full" />
               </div>
 
               {/* Action Buttons Container - Isolated from dragging */}
               <div
-                className="flex items-center gap-1 shrink-0 z-40"
+                className="flex items-center gap-1.5 shrink-0 z-40"
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <button
-                  type="button"
-                  onClick={handleOpenSandboxCLI}
-                  className="flex items-center gap-1 bg-[#202024] border border-white/8 px-1.5 py-0.5 rounded-md text-[9px] font-mono text-zinc-400 cursor-pointer hover:bg-white/10 hover:text-zinc-200 transition-colors"
-                  title="Docker Sandbox. Click to inspect."
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      sandboxStatus === "busy" ? "bg-amber-400" : "bg-emerald-400"
-                    }`}
-                  />
-                  <span>Sandbox</span>
-                </button>
                 <button
                   type="button"
                   onClick={clearChat}
@@ -348,7 +327,7 @@ export default function App() {
 
             {/* Active Minimalist Thinking Indicator */}
             {(isLoading || actionText) && !isStreaming && (
-              <ThinkingPill actionText={actionText || "Working..."} />
+              <ThinkingPill actionText={actionText || "Thinking..."} />
             )}
 
             {/* Active Voice Recording Banner */}

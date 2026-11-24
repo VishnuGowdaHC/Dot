@@ -60,7 +60,7 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
 
           {/* Real-time Live Typing Delta */}
           {typingTokens > 0 && (
-            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 animate-pulse">
+            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] bg-[#FF5A5F]/20 text-[#FF5A5F] border border-[#FF5A5F]/40 animate-pulse">
               +{typingTokens} typing
             </span>
           )}
@@ -78,7 +78,7 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
             className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
               browserHeadless
                 ? "bg-zinc-800/80 border-zinc-700/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
-                : "bg-indigo-500/15 border-indigo-500/35 text-indigo-300 hover:bg-indigo-500/25 shadow-sm"
+                : "bg-[#FF5A5F]/15 border-[#FF5A5F]/35 text-[#FF5A5F] hover:bg-[#FF5A5F]/25 shadow-sm"
             }`}
             title={browserHeadless ? "Browser: Headless (Click to switch to Visible GUI)" : "Browser: Visible GUI (Click to switch to Headless)"}
           >
@@ -95,13 +95,13 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
             {/* System Prompt Segment */}
             <div 
               style={{ width: `${systemPct}%` }} 
-              className="h-full bg-indigo-500 transition-all duration-300"
+              className="h-full bg-zinc-500 transition-all duration-300"
               title={`System Prompt: ${systemTokens.toLocaleString()} tokens`}
             />
             {/* History & ReAct Turns Segment */}
             <div 
               style={{ width: `${historyPct}%` }} 
-              className="h-full bg-purple-500 transition-all duration-300"
+              className="h-full bg-[#FF5A5F] transition-all duration-300"
               title={`Conversation & Tools: ${historyTokens.toLocaleString()} tokens`}
             />
             {/* Live Typing Preview Segment */}
@@ -151,7 +151,7 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
             {/* System Prompt Row */}
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-zinc-400">
-                <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-sm bg-zinc-500 inline-block shrink-0" />
                 <span>Base System Prompt:</span>
               </span>
               <span className="text-zinc-200">
@@ -162,7 +162,7 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
             {/* Conversation & ReAct Observations Row */}
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-zinc-400">
-                <span className="w-2.5 h-2.5 rounded-sm bg-purple-500 inline-block shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-sm bg-[#FF5A5F] inline-block shrink-0" />
                 <span>Conversation & Tools:</span>
               </span>
               <span className="text-zinc-200">
@@ -173,11 +173,11 @@ export default function TokenMeter({ usage, inputValue = "", browserHeadless = f
             {/* Current Input Preview Row */}
             {typingTokens > 0 && (
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-indigo-300">
+                <span className="flex items-center gap-2 text-sky-400">
                   <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block shrink-0" />
                   <span>Pending Input:</span>
                 </span>
-                <span className="text-indigo-200">
+                <span className="text-sky-300">
                   +{typingTokens} tokens <span className="text-zinc-500">({typingPct.toFixed(1)}%)</span>
                 </span>
               </div>

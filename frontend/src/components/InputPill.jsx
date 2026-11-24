@@ -17,7 +17,7 @@ export default function InputPill({
   return (
     <div
       id="input-pill"
-      className="h-12 rounded-full bg-[#202024] border border-white/8 shadow-[0_8px_24px_rgba(0,0,0,0.55)] backdrop-blur-xl flex items-center px-3.5 gap-2.5 transition-all duration-200 focus-within:border-[#FF5A5F]/60 focus-within:shadow-[0_10px_28px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,90,95,0.25)] select-none"
+      className="h-12 rounded-full bg-[#202024] border border-white/8 flex items-center px-3.5 gap-2.5 transition-all duration-200 focus-within:border-[#FF5A5F]/60 select-none"
     >
       {/* Text Input */}
       <input
