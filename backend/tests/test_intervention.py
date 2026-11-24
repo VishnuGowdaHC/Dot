@@ -3,6 +3,7 @@ Unit tests for the human intervention coordinator.
 Complies with ASD-STE100 technical writing standards.
 """
 
+import asyncio
 import sys
 import json
 from pathlib import Path
@@ -29,19 +30,17 @@ class TestInterventionManager(unittest.IsolatedAsyncioTestCase):
         mock_ws = AsyncMock()
 
         async def auto_resolve():
-            import asyncio
             await asyncio.sleep(0.05)
             self.assertTrue(mgr.is_paused)
             self.assertEqual(mgr.pause_reason, "Test security check")
             mgr.submit_resolution("User confirmed command.")
 
-        import asyncio
         asyncio.create_task(auto_resolve())
 
         feedback = await mgr.request_intervention(
             reason="Test security check",
             command="rm -rf /workspace/test",
-            websocket=mock_ws
+            websocket=mock_ws,
         )
 
         self.assertEqual(feedback, "User confirmed command.")
@@ -53,7 +52,23 @@ class TestInterventionManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent_data["type"], "intervention_required")
         self.assertEqual(sent_data["data"]["reason"], "Test security check")
 
+    @patch("dot.sandbox.intervention.pause_sandbox")
+    @patch("dot.sandbox.intervention.unpause_sandbox")
+    async def test_intervention_unpauses_on_cancellation(self, mock_unpause, mock_pause):
+        """Verifies container unfreezes when waiting intervention task is cancelled."""
+        mgr = InterventionManager()
+        task = asyncio.create_task(mgr.request_intervention(reason="Cancelled test"))
+        await asyncio.sleep(0.05)
+        self.assertTrue(mgr.is_paused)
+
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        self.assertFalse(mgr.is_paused)
+        mock_pause.assert_called_once()
+        mock_unpause.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
-

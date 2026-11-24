@@ -137,6 +137,46 @@ class TestLoopBreaker(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(res)
         self.assertLessEqual(mock_llm.call_count, 6)
 
+    async def test_alternating_loop_trips_circuit_breaker(self):
+        """Verifies that A->B->A->B alternating loops trip the circuit breaker."""
+        step_a = AgentStep(
+            thought="Snapshot",
+            action="Tool-exec",
+            tool_service="browser",
+            payload={"name": "browser_snapshot", "args": {}},
+        )
+        step_b = AgentStep(
+            thought="Read",
+            action="Tool-exec",
+            tool_service="browser",
+            payload={"name": "browser_read", "args": {"url": "https://example.com"}},
+        )
+        history_parts = []
+        executed_sigs = set()
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value="Content")
+
+        res1, sig1, strikes1 = await execute_tool_call(
+            step_a, 0, "q", None, mock_client, history_parts, executed_sigs, None, 0, 10
+        )
+        self.assertFalse(res1.should_retry)
+
+        res2, sig2, strikes2 = await execute_tool_call(
+            step_b, 1, "q", None, mock_client, history_parts, executed_sigs, sig1, strikes1, 10
+        )
+        self.assertFalse(res2.should_retry)
+
+        res3, sig3, strikes3 = await execute_tool_call(
+            step_a, 2, "q", None, mock_client, history_parts, executed_sigs, sig2, strikes2, 10
+        )
+        self.assertTrue(res3.should_retry)
+        self.assertEqual(strikes3, 1)
+
+        res4, sig4, strikes4 = await execute_tool_call(
+            step_b, 3, "q", None, mock_client, history_parts, executed_sigs, sig3, strikes3, 10
+        )
+        self.assertTrue(res4.tripped_circuit_breaker)
+
 
 if __name__ == "__main__":
     unittest.main()

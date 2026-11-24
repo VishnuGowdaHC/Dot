@@ -133,6 +133,20 @@ class TestMemoryCompaction(unittest.IsolatedAsyncioTestCase):
         new_tokens = session.count_tokens("\n".join(p["text"] for p in compressed))
         self.assertLess(new_tokens, orig_tokens)
 
+    def test_search_past_sessions_handles_summary_metadata_without_chunk_idx(self):
+        """Verifies that search_past_sessions handles summary docs without chunk_idx."""
+        from unittest.mock import patch
+        from dot.memory import search as mem_search
+
+        mock_results = {
+            "documents": [["Summary content"]],
+            "metadatas": [[{"session_id": "abc123", "type": "asd_ste_summary"}]],
+        }
+        with patch.object(mem_search.session_collection, "query", return_value=mock_results):
+            out = mem_search.search_past_sessions("summary")
+        self.assertIn("Session abc123", out)
+        self.assertIn("asd_ste_summary", out)
+
 
 if __name__ == "__main__":
     unittest.main()

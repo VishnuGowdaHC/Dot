@@ -22,6 +22,7 @@ import warnings
 import traceback
 import threading
 from pathlib import Path
+from collections import deque
 from typing import Optional, Any, Dict
 from contextlib import asynccontextmanager
 
@@ -81,6 +82,7 @@ from dot.sandbox.intervention import get_intervention_manager
 app_state = {}
 
 _turn_lock = asyncio.Lock()
+_dispatch_lock = asyncio.Lock()
 _active_turn_task: Optional[asyncio.Task] = None
 
 
@@ -89,15 +91,16 @@ async def execute_turn_safely(websocket, text: str, session, client):
     global _active_turn_task
     current_task = asyncio.current_task()
 
-    if _active_turn_task and not _active_turn_task.done() and _active_turn_task != current_task:
-        print(f"[Turn Dispatcher] Cancelling previous turn for new input: '{text}'")
-        _active_turn_task.cancel()
-        try:
-            await _active_turn_task
-        except (asyncio.CancelledError, Exception):
-            pass
+    async with _dispatch_lock:
+        if _active_turn_task and not _active_turn_task.done() and _active_turn_task != current_task:
+            print(f"[Turn Dispatcher] Cancelling previous turn for new input: '{text}'")
+            _active_turn_task.cancel()
+            try:
+                await _active_turn_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        _active_turn_task = current_task
 
-    _active_turn_task = current_task
     async with _turn_lock:
         return await intentRouter(websocket, text, session, client)
 
@@ -186,6 +189,11 @@ async def lifespan(app: FastAPI):
         # The application runs while this context yields.
         yield
 
+    print("Stopping Docker sandbox if running...")
+    try:
+        await stop_sandbox()
+    except Exception as sb_err:
+        print(f"[Warning] Sandbox teardown failed: {sb_err}")
     print("Shutting down MCP servers...")
 
 
@@ -315,6 +323,14 @@ def get_engine_command_str(cfg: dict, tier: str = "4B", port: int = 11434) -> st
     )
 
 
+def _read_tail_lines(log_path: Path, max_lines: int = 35) -> list[str]:
+    """Reads the last max_lines non-empty or raw lines from a log file."""
+    if not log_path.exists():
+        return []
+    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        return [line.rstrip() for line in deque(f, maxlen=max_lines)]
+
+
 def extract_engine_diagnostics(log_path: Path) -> str:
     """Extracts diagnostic error summary from the engine log file.
     Complies with ASD-STE100 rules.
@@ -322,8 +338,7 @@ def extract_engine_diagnostics(log_path: Path) -> str:
     if not log_path.exists():
         return "No log file found."
     try:
-        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-            lines = [l.strip() for l in f.readlines() if l.strip()]
+        lines = [line.strip() for line in _read_tail_lines(log_path, max_lines=50) if line.strip()]
         if not lines:
             return "Engine log is empty."
         for line in reversed(lines[-25:]):
@@ -356,7 +371,7 @@ async def get_engine_status():
     context_size = model_info.get("context_size", 8192)
 
     proc = app_state.get("engine_process")
-    port_open = check_engine_port_open(port)
+    port_open = await asyncio.to_thread(check_engine_port_open, port)
 
     state = "stopped"
     is_healthy = False
@@ -367,10 +382,10 @@ async def get_engine_status():
     engine_log = Path(__file__).resolve().parent.parent / "logs" / "engine.log"
     if engine_log.exists():
         try:
-            with open(engine_log, "r", encoding="utf-8", errors="replace") as f:
-                lines = [l.strip() for l in f.readlines() if l.strip()]
-                if lines:
-                    last_log = lines[-1]
+            tail = await asyncio.to_thread(_read_tail_lines, engine_log, 10)
+            non_empty = [line.strip() for line in tail if line.strip()]
+            if non_empty:
+                last_log = non_empty[-1]
         except Exception:
             pass
 
@@ -434,10 +449,8 @@ async def get_engine_logs(lines: int = 35):
     if not engine_log.exists():
         return {"lines": []}
     try:
-        with open(engine_log, "r", encoding="utf-8", errors="replace") as f:
-            all_lines = f.readlines()
-            recent = [l.rstrip() for l in all_lines[-lines:]]
-            return {"lines": recent}
+        recent = await asyncio.to_thread(_read_tail_lines, engine_log, lines)
+        return {"lines": recent}
     except Exception as e:
         return {"lines": [f"Failed to read engine log: {e}"]}
 
@@ -462,7 +475,7 @@ async def start_engine_endpoint(request: Request = None):
 
     port = int(active.get("port", 11434))
 
-    if check_engine_port_open(port):
+    if await asyncio.to_thread(check_engine_port_open, port):
         return {"status": "ok", "message": f"Engine is already running on port {port}."}
 
     bin_dir = Path(__file__).resolve().parent.parent / "bin"
@@ -505,7 +518,16 @@ async def start_engine_endpoint(request: Request = None):
     if mmproj_path and mmproj_path.exists():
         cmd.extend(["--mmproj", str(mmproj_path)])
 
+    log_file = None
     try:
+        prev_log = app_state.get("engine_log_file")
+        if prev_log:
+            try:
+                prev_log.close()
+            except Exception:
+                pass
+            app_state["engine_log_file"] = None
+
         logs_dir = Path(__file__).resolve().parent.parent / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         engine_log = logs_dir / "engine.log"
@@ -531,6 +553,11 @@ async def start_engine_endpoint(request: Request = None):
         app_state["engine_start_time"] = time.time()
         return {"status": "starting", "message": f"Starting engine on port {port} with {model_fn}..."}
     except Exception as e:
+        if log_file:
+            try:
+                log_file.close()
+            except Exception:
+                pass
         return {"status": "error", "message": str(e)}
 
 
@@ -551,7 +578,13 @@ async def stop_engine_endpoint():
     stopped = False
     if proc and proc.poll() is None:
         try:
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            await asyncio.to_thread(
+                subprocess.run,
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
             stopped = True
         except Exception:
             pass
@@ -559,14 +592,23 @@ async def stop_engine_endpoint():
 
     cfg = load_config()
     port = int(cfg.get("active_settings", {}).get("port", 11434))
-    if check_engine_port_open(port):
+    if await asyncio.to_thread(check_engine_port_open, port):
         try:
-            cmd = f'powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess"'
-            res = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+            ps_cmd = [
+                "powershell", "-NoProfile", "-Command",
+                f"(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess",
+            ]
+            res = await asyncio.to_thread(subprocess.run, ps_cmd, capture_output=True, text=True)
             for line in res.stdout.strip().splitlines():
                 pid = line.strip()
                 if pid and pid.isdigit() and int(pid) > 0:
-                    subprocess.run(["taskkill", "/F", "/T", "/PID", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                    await asyncio.to_thread(
+                        subprocess.run,
+                        ["taskkill", "/F", "/T", "/PID", pid],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
                     stopped = True
         except Exception:
             pass
@@ -598,6 +640,7 @@ async def test_cloud_connection(request: Request):
         model = "gemini-2.5-flash" if provider == "gemini" else "gpt-4o-mini"
 
     start_time = time.time()
+    test_client = None
     try:
         test_client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=10.0)
         resp = await test_client.chat.completions.create(
@@ -625,6 +668,12 @@ async def test_cloud_connection(request: Request):
         else:
             clean_err = f"Connection failed: {err_msg[:80]}"
         return {"success": False, "error": clean_err}
+    finally:
+        if test_client is not None:
+            try:
+                await test_client.close()
+            except Exception:
+                pass
 
 
 @app.post("/api/chat/clear")
@@ -864,7 +913,10 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as router_err:
                 print(f"[INTERNAL ROUTER ERROR]: {router_err}")
                 traceback.print_exc()
-                await websocket.send_text(json.dumps({"type": "error", "data": "Agent loop crashed. Check terminal."}))
+                try:
+                    await websocket.send_text(json.dumps({"type": "error", "data": "Agent loop crashed. Check terminal."}))
+                except Exception:
+                    pass
 
     except WebSocketDisconnect:
         print("WebSocket disconnected normally by client.")
@@ -874,6 +926,7 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         if app_state.get("active_websocket") == websocket:
             app_state["active_websocket"] = None
+            app_state["active_session"] = None
         try:
             print(f"[Server] Embedding session {active_session.session_id} to ChromaDB...")
             await asyncio.to_thread(embed_session_to_chroma, active_session.session_id, active_session.filepath)

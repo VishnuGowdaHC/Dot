@@ -58,6 +58,23 @@ def get_github_token() -> str:
     return ""
 
 
+def _update_env_var(key: str, value: str) -> None:
+    """Updates one key-value pair in all project env files without removing other entries."""
+    for env_path in [BACKEND_ENV_PATH, DOT_ENV_PATH, DOT_PKG_ENV_PATH]:
+        try:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            lines = []
+            if env_path.exists():
+                lines = [
+                    line for line in env_path.read_text(encoding="utf-8").splitlines()
+                    if not line.startswith(f"{key}=")
+                ]
+            lines.append(f'{key}="{value}"')
+            env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+
+
 def update_github_token(token: str) -> None:
     """Updates the GitHub token across process memory, config, and env files."""
     cleaned = token.strip()
@@ -67,13 +84,7 @@ def update_github_token(token: str) -> None:
     cfg["github_token"] = cleaned
     save_config(cfg)
 
-    content = f'GITHUB_TOKEN="{cleaned}"\n'
-    for env_path in [BACKEND_ENV_PATH, DOT_ENV_PATH, DOT_PKG_ENV_PATH]:
-        try:
-            env_path.parent.mkdir(parents=True, exist_ok=True)
-            env_path.write_text(content, encoding="utf-8")
-        except Exception:
-            pass
+    _update_env_var("GITHUB_TOKEN", cleaned)
 
 
 def is_browser_headless() -> bool:
@@ -135,15 +146,5 @@ def update_cloud_api_key(api_key: str) -> None:
     """Updates the cloud API key in environment and env files."""
     cleaned = api_key.strip()
     os.environ["DOT_CLOUD_API_KEY"] = cleaned
-
-    for env_path in [BACKEND_ENV_PATH, DOT_ENV_PATH, DOT_PKG_ENV_PATH]:
-        try:
-            env_path.parent.mkdir(parents=True, exist_ok=True)
-            lines = []
-            if env_path.exists():
-                lines = [l for l in env_path.read_text(encoding="utf-8").splitlines() if not l.startswith("DOT_CLOUD_API_KEY=")]
-            lines.append(f'DOT_CLOUD_API_KEY="{cleaned}"')
-            env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        except Exception:
-            pass
+    _update_env_var("DOT_CLOUD_API_KEY", cleaned)
 

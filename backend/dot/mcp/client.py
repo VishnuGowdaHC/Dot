@@ -76,6 +76,7 @@ TOOL_ALIASES = {
     "browser_close_browser": "agent_browser_close",
     "close_browser": "agent_browser_close",
     "probe_page": "probe_page",
+    "browser_probe_page": "probe_page",
     "browser_probe": "probe_page",
     "browser_find_element": "probe_page",
     # OS tools aliases
@@ -212,12 +213,7 @@ def resolve_browser_selector(call_args: dict, action_type: str = "click", refs: 
     sel = str(sel).strip()
 
     if not sel:
-        if refs:
-            role_targets = ["button", "link"] if action_type == "click" else ["textbox", "searchbox"]
-            for r_key, r_info in refs.items():
-                if r_info.get("role") in role_targets:
-                    return f"@{r_key}"
-        return "@e1"
+        return ""
 
     if sel.startswith("@e") and sel[2:].isdigit():
         return sel
@@ -336,7 +332,7 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
 
     resolved_name = TOOL_ALIASES.get(tool_name, tool_name)
 
-    if resolved_name == "probe_page" or tool_name in ("probe_page", "browser_probe", "browser_find_element"):
+    if resolved_name == "probe_page" or tool_name in ("probe_page", "browser_probe_page", "browser_probe", "browser_find_element"):
         import dot.automation.browser as browser_mod
         args_dict = dict(tool_args or {})
         query = str(args_dict.get("query") or args_dict.get("q") or "").strip()
@@ -399,6 +395,12 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
             except Exception:
                 pass
         call_args["selector"] = resolve_browser_selector(call_args, action_type="click")
+        if not call_args["selector"]:
+            return {
+                "success": False,
+                "detail": None,
+                "error": "Provide a selector, @ref, or element text to click.",
+            }
     elif resolved_name == "agent_browser_fill":
         if not _LAST_BROWSER_REFS and not str(call_args.get("selector", "")).startswith("@e"):
             try:
@@ -410,6 +412,12 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
             except Exception:
                 pass
         call_args["selector"] = resolve_browser_selector(call_args, action_type="fill")
+        if not call_args["selector"]:
+            return {
+                "success": False,
+                "detail": None,
+                "error": "Provide a selector, @ref, or field name to fill.",
+            }
         if "text" not in call_args:
             for text_alias in ("value", "content", "input", "query", "string", "code"):
                 if text_alias in call_args:
@@ -463,9 +471,12 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
             result = await active_client.call_tool(name, call_args)
             break
         except Exception as err:
-            # Preserve meaningful tool execution errors over fallback 'Unknown tool' errors
+            err_lower = str(err).lower()
+            is_unknown = any(marker in err_lower for marker in ("unknown tool", "not found", "does not exist"))
             if last_error is None or "unknown tool" in str(last_error).lower():
                 last_error = err
+            if not is_unknown:
+                break
 
     if result is None:
         err_msg = str(last_error or "")

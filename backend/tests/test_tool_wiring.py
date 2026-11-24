@@ -77,6 +77,39 @@ class TestToolWiring(unittest.IsolatedAsyncioTestCase):
             await execute_mcp_tool(mock_client, "sandbox", "sandbox_exec", {})
         self.assertIn("sandbox tool", str(ctx.exception).lower())
 
+    def test_format_compact_tool_preserves_enum(self):
+        """Verifies that format_compact_tool preserves enum values in tool signatures."""
+        from dot.memory.vector_store import format_compact_tool
+        sig = format_compact_tool({
+            "tool_name": "os_manage_process",
+            "description": "Manage processes.",
+            "schema": {
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "kill", "start"]},
+                },
+                "required": ["action"],
+            },
+        })
+        self.assertIn("'list'|'kill'|'start'", sig)
+
+    def test_probe_page_in_browser_registry(self):
+        """Verifies that browser_probe_page is registered in browser registry lists."""
+        from dot.mcp.registry import ALLOWED_BROWSER_TOOLS, PRESERVED_BROWSER_TOOLS
+        self.assertIn("browser_probe_page", ALLOWED_BROWSER_TOOLS)
+        names = {t["toolName"] for t in PRESERVED_BROWSER_TOOLS}
+        self.assertIn("browser_probe_page", names)
+
+    async def test_mcp_client_does_not_retry_execution_error(self):
+        """Verifies that execute_mcp_tool stops retrying on non-unknown-tool errors."""
+        from unittest.mock import AsyncMock
+        from dot.mcp.client import execute_mcp_tool
+        mock_client = MagicMock()
+        mock_client.call_tool = AsyncMock(side_effect=RuntimeError("Permission denied"))
+        with self.assertRaises(RuntimeError) as ctx:
+            await execute_mcp_tool(mock_client, "os_tools", "os_manage_process", {"action": "list"})
+        self.assertIn("Permission denied", str(ctx.exception))
+        self.assertEqual(mock_client.call_tool.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

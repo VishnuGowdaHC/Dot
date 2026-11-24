@@ -83,20 +83,6 @@ def log_tool_execution(
         print(f"[Logging Warning] Failed to write debug log: {err}")
 
 
-def extract_json(raw: str):
-    """Extracts a JSON object string from the model output."""
-    cleaned = re.sub(r"<(?:bos|eos|start_of_turn|end_of_turn)>", "", raw)
-    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    stripped = cleaned.strip()
-    if stripped.startswith("{"):
-        if not stripped.endswith("}"):
-            stripped += "}"
-        return stripped
-    return None
-
-
 def render_history(history_parts: list) -> str:
     """Concatenates history entries into a single prompt text."""
     return "\n".join(p["text"] for p in history_parts)
@@ -237,7 +223,7 @@ def summarize_dropped(text: str) -> str:
     if tool_calls:
         parts.append(f"tools used: {', '.join(tool_calls)}")
     if observations:
-        parts.append(f"{len(observations)} observation(s) retrieved, details discarded")
+        parts.append(f"{len(observations)} observation(s) retrieved, details omitted")
     return "; ".join(parts) or "earlier reasoning steps (no tool calls)"
 
 

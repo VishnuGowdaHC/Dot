@@ -142,7 +142,11 @@ def format_compact_tool(tool: dict) -> str:
 
     args_list = []
     for prop_name, prop_spec in props.items():
-        prop_type = prop_spec.get("type", "any")
+        enum_vals = prop_spec.get("enum")
+        if isinstance(enum_vals, list) and enum_vals:
+            prop_type = "|".join(repr(v) if isinstance(v, str) else str(v) for v in enum_vals[:6])
+        else:
+            prop_type = prop_spec.get("type", "any")
         if prop_name in required:
             args_list.append(f"{prop_name}: {prop_type}")
         else:
@@ -180,6 +184,7 @@ def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.
 
     if any(keyword in clean for keyword in ["type", "paste", "keyboard", "enter text", "fill"]):
         add_tool(get_tool_by_name("os_keyboard_type"))
+        add_tool(get_tool_by_name("os_manage_process"))
 
     if any(keyword in clean for keyword in ["http://", "https://", "wikipedia", "url", "navigate", "website"]):
         add_tool(get_tool_by_name("browser_navigate"))

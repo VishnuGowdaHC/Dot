@@ -172,6 +172,18 @@ class TestActionPromiseGuard(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Pasted into Notepad successfully", res)
         self.assertEqual(mock_llm.call_count, 3)
 
+    @patch("dot.core.engine.async_llm")
+    async def test_engine_clears_rolling_memory_and_retries_empty_final(self, mock_llm):
+        """Verifies empty final_answer triggers retry and rolling memory clears on exit."""
+        step1_empty = '{"thought": "Thinking.", "action": "Final", "tool_service": null, "payload": {}, "final_answer": "..."}'
+        step2_valid = '{"thought": "Done.", "action": "Final", "tool_service": null, "payload": {}, "final_answer": "Completed."}'
+        mock_llm.side_effect = [step1_empty, step2_valid]
+
+        res = await reAct_loop(websocket=None, query="Say hello", session=None, active_client=None, max_steps=3, speculative_tools=[])
+        self.assertEqual(res, "Completed.")
+        self.assertEqual(mock_llm.call_count, 2)
+        self.assertEqual(self.rolling_mem.goal, "")
+
 
 if __name__ == "__main__":
     unittest.main()

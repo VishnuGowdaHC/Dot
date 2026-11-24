@@ -19,11 +19,11 @@ import SettingsModal from "./components/SettingsModal";
  * Complies with ASD-STE100 rules.
  */
 export default function App() {
-  const [inputValue, setInputValue] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [clarification, setClarification] = useState(null);
   const [hopTelemetry, setHopTelemetry] = useState(null);
   const inputRef = useRef(null);
+  const hasDockedRef = useRef(false);
+  const prevWindowModeRef = useRef("idle");
 
   const {
     messages,
@@ -46,6 +46,8 @@ export default function App() {
     setSandboxStatus,
     intervention,
     setIntervention,
+    clarification,
+    setClarification,
     browserHeadless,
     setBrowserHeadless,
     activeModel,
@@ -114,11 +116,14 @@ export default function App() {
     });
 
     const initWindow = async () => {
+      if (hasDockedRef.current) return;
       if (typeof window !== "undefined" && window.Neutralino) {
+        hasDockedRef.current = true;
         try {
           await window.Neutralino.window?.setDraggableRegion("drag-handle");
           await dockWindow("idle");
         } catch (e) {
+          hasDockedRef.current = false;
           console.warn("Native window setup warning:", e);
         }
       }
@@ -131,6 +136,9 @@ export default function App() {
 
     return () => {
       closeWS();
+      if (typeof window !== "undefined" && window.Neutralino?.events?.off) {
+        window.Neutralino.events.off("ready", initWindow);
+      }
     };
   }, [
     addMessage,
@@ -154,6 +162,8 @@ export default function App() {
 
   // Adjust native window dimensions when expanding or collapsing
   useEffect(() => {
+    if (prevWindowModeRef.current === windowMode) return;
+    prevWindowModeRef.current = windowMode;
     updateNativeWindowSize(windowMode);
   }, [windowMode]);
 
@@ -178,17 +188,16 @@ export default function App() {
       setClarification(null);
       setIsLoading(true);
     },
-    [clarification, addMessage, setIsLoading]
+    [clarification, addMessage, setClarification, setIsLoading]
   );
 
   // Send user message
   const handleSendPrompt = useCallback(
     async (text) => {
-      const prompt = (text || inputValue).trim();
+      const prompt = (text || "").trim();
       if (!prompt) return;
 
       if (clarification?.id) {
-        setInputValue("");
         handleClarifyAnswer(prompt);
         return;
       }
@@ -196,20 +205,12 @@ export default function App() {
       if (isLoading) return;
 
       addMessage("user", prompt);
-      setInputValue("");
       setIsLoading(true);
 
       await toDot(prompt, setIsLoading);
     },
-    [inputValue, isLoading, addMessage, setIsLoading, clarification, handleClarifyAnswer]
+    [isLoading, addMessage, setIsLoading, clarification, handleClarifyAnswer]
   );
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendPrompt();
-    }
-  };
 
   const handleToggleBrowser = async () => {
     try {
@@ -410,7 +411,6 @@ export default function App() {
             <div className="relative z-10 px-3.5 pt-1.5 pb-2.5 flex flex-col gap-2">
               <ControlShelf
                 tokenUsage={tokenUsage}
-                inputValue={inputValue}
                 browserHeadless={browserHeadless}
                 onToggleBrowser={handleToggleBrowser}
                 activeModel={activeModel}
@@ -420,10 +420,7 @@ export default function App() {
               />
               <InputPill
                 inputRef={inputRef}
-                value={inputValue}
-                onChange={setInputValue}
-                onSend={() => handleSendPrompt()}
-                onKeyDown={handleKeyDown}
+                onSend={handleSendPrompt}
                 voiceStatus={voiceStatus}
                 disabled={isLoading && !clarification}
                 placeholder={clarification ? "Type reply to clarify..." : undefined}
@@ -437,8 +434,16 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onSettingsSaved={() => {
-          // Settings refreshed
+        onSettingsSaved={(payload) => {
+          if (!payload) return;
+          setBrowserHeadless(Boolean(payload.browser_headless));
+          if (payload.backend === "cloud") {
+            setActiveModel(payload.cloud?.model || "Cloud Model");
+            setIsCloudModel(true);
+          } else {
+            setActiveModel(`${payload.selected_tier || "4B"} Local`);
+            setIsCloudModel(false);
+          }
         }}
       />
     </div>

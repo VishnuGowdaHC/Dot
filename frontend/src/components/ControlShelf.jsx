@@ -1,3 +1,5 @@
+import { useTyping } from "../utils/messageContext";
+
 /**
  * Renders the control shelf above the input pill.
  * Contains the token context bar, model quick toggle, and settings button.
@@ -5,7 +7,6 @@
  */
 export default function ControlShelf({
   tokenUsage,
-  inputValue = "",
   browserHeadless = true,
   onToggleBrowser,
   activeModel = "Gemma 4B",
@@ -13,9 +14,10 @@ export default function ControlShelf({
   onOpenSettings,
   hopTelemetry,
 }) {
+  const { typingLength } = useTyping();
   const totalTokens = tokenUsage?.total_tokens ?? 924;
   const contextLimit = tokenUsage?.context_limit ?? 8192;
-  const typingDelta = inputValue.trim().length > 0 ? Math.max(1, Math.ceil(inputValue.trim().length / 3.6)) : 0;
+  const typingDelta = typingLength > 0 ? Math.max(1, Math.ceil(typingLength / 3.6)) : 0;
 
   return (
     <div className="flex items-center justify-between gap-1.5 font-mono select-none">

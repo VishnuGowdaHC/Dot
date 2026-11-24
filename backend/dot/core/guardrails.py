@@ -97,7 +97,11 @@ def check_destructive_action(tool_name: str, tool_args: Dict[str, Any]) -> Optio
             resolved_target = os.path.realpath(os.path.abspath(target_path))
             if resolved_target == allowed_workspace_norm:
                 return "Guardrail Blocked: Deletion of root workspace directory is forbidden."
-            if not resolved_target.startswith(allowed_workspace_norm):
+            try:
+                is_inside = os.path.commonpath([allowed_workspace_norm, resolved_target]) == allowed_workspace_norm
+            except ValueError:
+                is_inside = False
+            if not is_inside:
                 return (
                     f"Guardrail Blocked: Destructive operation outside allowed workspace. "
                     f"Path '{target_path}' is not within '{allowed_workspace}'."
@@ -146,5 +150,106 @@ def check_guardrails(step_obj: Any) -> Optional[str]:
 
         return None
 
+    return None
+
+
+PROMISE_PATTERNS = [
+    r"\bi (?:will|shall|am going to)(?: now)? (?:paste|type|open|launch|start|click|fill|save|create|extract|run|execute|read)\b",
+    r"\bnow (?:pasting|opening|typing|launching|starting|saving|clicking|extracting)\b",
+    r"\blet me (?:now )?(?:paste|open|launch|type|start|click|save|run|extract)\b",
+    r"\bi (?:will|shall|am going to) proceed to\b",
+]
+
+DELIVERY_TOOLS = {
+    "browser_fill",
+    "agent_browser_fill",
+    "os_keyboard_type",
+    "os_tools_os_keyboard_type",
+    "write_file",
+    "sandbox_write_file",
+}
+
+NON_DELIVERY_DESTINATIONS = {
+    "chat", "here", "short", "detail", "english", "brief", "words", "sentences",
+    "bullet", "bullets", "point", "points", "mind", "advance", "future", "return",
+    "fact", "facts", "summary", "response", "reply",
+}
+
+
+def extract_delivery_destination(query: str) -> Optional[str]:
+    """Extracts external target surface from user query without hardcoding application names."""
+    if not query:
+        return None
+
+    pattern = r"\b(?:paste|type|fill|save|write|put|enter|insert)\s+(?:it|this|that|the\s+text|the\s+summary|the\s+code|content|everything|data)?\s*(?:in|into|to)\s+([a-zA-Z0-9_\-\.\s]{2,30})"
+    match = re.search(pattern, query, re.IGNORECASE)
+    if not match:
+        return None
+
+    candidate = match.group(1).strip()
+    tokens = candidate.split()
+    if not tokens:
+        return None
+
+    first_token = tokens[0].lower().rstrip(".,;:")
+    if first_token in NON_DELIVERY_DESTINATIONS:
+        return None
+
+    if tokens[0].lower() in ("the", "a", "an") and len(tokens) > 1:
+        return f"{tokens[0]} {tokens[1]}".lower().rstrip(".,;:")
+
+    return first_token
+
+
+def check_unfulfilled_delivery(query: str, executed_tool_names: set) -> Optional[str]:
+    """Verifies that an external delivery request executes before allowing Final action."""
+    dest = extract_delivery_destination(query)
+    if not dest:
+        return None
+
+    has_delivered = any(t in DELIVERY_TOOLS for t in executed_tool_names)
+    if not has_delivered:
+        return (
+            f"[System Directive: The user requested delivery to '{dest}'. "
+            "You retrieved content, but you have not delivered it yet. "
+            "Identify the target surface and execute the delivery tool before emitting Final.]"
+        )
+    return None
+
+
+def check_action_promises(text: str) -> bool:
+    """Detects unexecuted future action promises in model output text."""
+    if not text:
+        return False
+    lower = text.lower()
+    return any(bool(re.search(pat, lower)) for pat in PROMISE_PATTERNS)
+
+
+def check_clarify_interception(
+    step_obj: Any,
+    query: str,
+    session: Any,
+    history_parts: list,
+    normalize_fn: Any,
+) -> Optional[str]:
+    """Returns a directive message if Clarify should be intercepted, or None to proceed."""
+    clarify_text = f"{step_obj.question or ''} {step_obj.thought or ''}"
+    has_trivial = bool(
+        step_obj.choices and any(
+            normalize_fn(c).lower() in ("ok", "yes", "proceed", "continue")
+            for c in step_obj.choices
+        )
+    )
+    if check_action_promises(clarify_text) or has_trivial:
+        return "[System Directive: Do not emit Clarify to confirm planned actions. Execute the tool using action='Tool-exec'.]"
+
+    has_ctx = bool(session and session.get_context_string() and len(session.get_context_string().strip()) > 40)
+    has_obs = any(p.get("role") == "observation" and len(p.get("text", "")) > 40 for p in history_parts)
+    is_deliv = bool(
+        extract_delivery_destination(query)
+        or any(p in query.lower() for p in ("paste", "type", "fill", "save", "this", "that", "it"))
+    )
+    if (has_ctx or has_obs) and is_deliv:
+        return "[System Directive: Content is already available. Execute the delivery tool immediately.]"
     return None
 

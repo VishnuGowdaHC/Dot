@@ -4,10 +4,23 @@
  */
 
 let ws = null;
+let intentionalClose = false;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let activeHandlers = null;
 
 export function closeWS() {
+  intentionalClose = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   if (ws) {
     try {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
       ws.close();
     } catch (err) {
       console.warn("WebSocket close warning:", err);
@@ -16,8 +29,8 @@ export function closeWS() {
   }
 }
 
-export function initWS(handlers) {
-  closeWS();
+function connectWS() {
+  if (!activeHandlers || intentionalClose) return;
   const {
     addMessage,
     appendStreamChunk,
@@ -36,12 +49,13 @@ export function initWS(handlers) {
     setIsCloudModel,
     setClarification,
     setHopTelemetry,
-  } = handlers;
+  } = activeHandlers;
 
   try {
     ws = new WebSocket("ws://localhost:3000/ws");
 
     ws.onopen = () => {
+      reconnectAttempts = 0;
       console.log("[WS] Connected to Dot backend server");
     };
 
@@ -90,6 +104,7 @@ export function initWS(handlers) {
           if (setActiveThoughts) setActiveThoughts("");
           if (setActionText) setActionText("");
           if (setIntervention) setIntervention(null);
+          if (setClarification) setClarification(null);
         } else if (type === "intervention_required") {
           if (setIntervention) setIntervention(data || { reason: "Confirmation required." });
         } else if (type === "intervention_resolved") {
@@ -144,12 +159,28 @@ export function initWS(handlers) {
       console.log("[WS] Disconnected from server");
       if (setIsLoading) setIsLoading(false);
       if (setIsStreaming) setIsStreaming(false);
+      ws = null;
+      if (!intentionalClose && activeHandlers) {
+        const delay = Math.min(500 * Math.pow(2, reconnectAttempts), 5000);
+        reconnectAttempts += 1;
+        reconnectTimer = setTimeout(() => {
+          connectWS();
+        }, delay);
+      }
     };
   } catch (error) {
     console.error("[WS] Initialization error:", error);
     if (setIsLoading) setIsLoading(false);
     if (setIsStreaming) setIsStreaming(false);
   }
+}
+
+export function initWS(handlers) {
+  closeWS();
+  intentionalClose = false;
+  reconnectAttempts = 0;
+  activeHandlers = handlers;
+  connectWS();
 }
 
 export async function toDot(text, setIsLoading) {

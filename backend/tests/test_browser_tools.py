@@ -201,6 +201,24 @@ class TestBrowserTools(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Download as PDF", wiki_cleaned)
         self.assertNotIn("{{cite web", wiki_cleaned)
 
+    async def test_navigate_blocks_unsafe_schemes(self):
+        """Verifies that unsafe URL schemes are rejected by navigate."""
+        for bad_url in ("file:///C:/Windows/System32", "javascript:alert(1)"):
+            res = await navigate(bad_url)
+            self.assertFalse(res.get("success"))
+            self.assertIn("Blocked unsafe URL scheme", res.get("error", ""))
+
+    async def test_extract_text_with_at_ref_does_not_click_or_type(self):
+        """Verifies that extract_text with an @eN selector reads text without clicking or typing."""
+        raw_html = "<!DOCTYPE html><html><body><p>Visible Article Body</p></body></html>"
+        data_url = f"data:text/html;charset=utf-8,{urllib.parse.quote(raw_html)}"
+        await navigate(data_url)
+        res = await extract_text(selector="@e1")
+        self.assertTrue(res.get("success"))
+        self.assertIn("Visible Article Body", res.get("detail", ""))
+        self.assertNotIn("Filled", res.get("detail", ""))
+        await close_browser()
+
 
 if __name__ == "__main__":
     unittest.main()

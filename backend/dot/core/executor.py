@@ -24,8 +24,14 @@ INSPECTION_TOOLS = {
     "agent_browser_snapshot",
     "browser_screenshot",
     "agent_browser_screenshot",
+    "probe_page",
+    "browser_probe_page",
     "os_take_screenshot",
     "os_get_active_window",
+    "os_find_text_coordinates",
+    "os_tools_os_find_text_coordinates",
+    "search_active_session",
+    "search_past_sessions",
     "sandbox_browser_navigate",
     "sandbox_browser_search",
     "sandbox_screenshot",
@@ -43,12 +49,24 @@ STATE_CHANGING_TOOLS = {
     "agent_browser_click",
     "browser_fill",
     "agent_browser_fill",
+    "browser_press",
+    "agent_browser_press",
     "browser_press_key",
+    "browser_tab_close",
+    "agent_browser_tab_close",
+    "browser_close",
+    "agent_browser_close",
     "browser_select_option",
     "browser_scroll",
     "os_focus_window",
     "os_send_hotkey",
     "os_type_text",
+    "os_keyboard_type",
+    "os_tools_os_keyboard_type",
+    "os_keyboard_press",
+    "os_tools_os_keyboard_press",
+    "os_manage_process",
+    "os_tools_os_manage_process",
     "os_click_at",
     "os_click_text",
     "os_tools_os_click_text",
@@ -166,13 +184,17 @@ async def execute_tool_call(
         )
         return ExecutionResult(should_retry=True), last_tool_sig, loop_strikes
 
-    # Detect duplicate executions
+    # Detect consecutive (A->A) and alternating (A->B->A) duplicate executions
     current_sig = f"{step_obj.tool_name}_{sorted(clean_args.items())}"
     is_inspection = step_obj.tool_name in INSPECTION_TOOLS
 
     is_duplicate = False
     if current_sig == last_tool_sig:
         is_duplicate = True
+    elif current_sig in executed_signatures:
+        obs_tools = [h.get("source_tool") for h in history_parts if h.get("role") == "observation"]
+        if len(obs_tools) >= 2 and obs_tools[-2] == step_obj.tool_name and obs_tools[-1] != step_obj.tool_name:
+            is_duplicate = True
 
     if is_duplicate:
         loop_strikes += 1

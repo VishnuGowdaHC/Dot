@@ -1,6 +1,7 @@
-import { createContext, useState, useContext, useCallback } from "react";
+import { createContext, useState, useContext, useCallback, useMemo } from "react";
 
 const MessageContext = createContext();
+const TypingContext = createContext();
 
 export function MessageProvider({ children }) {
   const [messages, setMessages] = useState([]);
@@ -11,9 +12,11 @@ export function MessageProvider({ children }) {
   const [voiceStatus, setVoiceStatus] = useState("idle");
   const [sandboxStatus, setSandboxStatus] = useState("idle");
   const [intervention, setIntervention] = useState(null);
+  const [clarification, setClarification] = useState(null);
   const [browserHeadless, setBrowserHeadless] = useState(true);
   const [activeModel, setActiveModel] = useState("gemini-3.5-flash-lite");
   const [isCloudModel, setIsCloudModel] = useState(true);
+  const [typingLength, setTypingLength] = useState(0);
 
   const [tokenUsage, setTokenUsage] = useState({
     total_tokens: 934,
@@ -63,26 +66,42 @@ export function MessageProvider({ children }) {
     setActiveThoughts("");
     setActionText("");
     setIntervention(null);
+    setClarification(null);
   }, []);
 
+  const contextValue = useMemo(() => ({
+    messages, setMessages, addMessage, appendStreamChunk, setLastMessageThoughts, clearChat,
+    isLoading, setIsLoading,
+    isStreaming, setIsStreaming,
+    activeThoughts, setActiveThoughts,
+    actionText, setActionText,
+    voiceStatus, setVoiceStatus,
+    sandboxStatus, setSandboxStatus,
+    intervention, setIntervention,
+    clarification, setClarification,
+    browserHeadless, setBrowserHeadless,
+    activeModel, setActiveModel,
+    isCloudModel, setIsCloudModel,
+    tokenUsage, setTokenUsage,
+  }), [
+    messages, addMessage, appendStreamChunk, setLastMessageThoughts, clearChat,
+    isLoading, isStreaming, activeThoughts, actionText, voiceStatus, sandboxStatus,
+    intervention, clarification, browserHeadless, activeModel, isCloudModel, tokenUsage,
+  ]);
+
+  const typingValue = useMemo(() => ({
+    typingLength,
+    setTypingLength,
+  }), [typingLength]);
+
   return (
-    <MessageContext.Provider value={{
-      messages, setMessages, addMessage, appendStreamChunk, setLastMessageThoughts, clearChat,
-      isLoading, setIsLoading,
-      isStreaming, setIsStreaming,
-      activeThoughts, setActiveThoughts,
-      actionText, setActionText,
-      voiceStatus, setVoiceStatus,
-      sandboxStatus, setSandboxStatus,
-      intervention, setIntervention,
-      browserHeadless, setBrowserHeadless,
-      activeModel, setActiveModel,
-      isCloudModel, setIsCloudModel,
-      tokenUsage, setTokenUsage,
-    }}>
-      {children}
+    <MessageContext.Provider value={contextValue}>
+      <TypingContext.Provider value={typingValue}>
+        {children}
+      </TypingContext.Provider>
     </MessageContext.Provider>
   );
 }
 
 export const useMessage = () => useContext(MessageContext);
+export const useTyping = () => useContext(TypingContext);

@@ -57,5 +57,6 @@ def search_past_sessions(query: str, k: int = 3) -> str:
 
     lines = []
     for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
-        lines.append(f"[Session {meta['session_id']}, chunk {meta['chunk_idx']}]: {doc}")
+        chunk_label = meta.get("chunk_idx", meta.get("type", "summary"))
+        lines.append(f"[Session {meta.get('session_id', 'unknown')}, chunk {chunk_label}]: {doc}")
     return "\n".join(lines)

@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 import yaml
 import json
-from typing import Optional
+from typing import List, Optional, Union
 import sys
 import warnings
 
@@ -34,7 +34,7 @@ def _get_ocr_reader():
 
 sys.stdout = _original_stdout
 
-from dot.config.paths import CONFIG_PATH, ALLOWED_APPS_PATH
+from dot.config.paths import CONFIG_PATH, ALLOWED_APPS_PATH, LOGS_DIR
 
 mcp = FastMCP(name="Dot OS Automation")
 
@@ -88,7 +88,7 @@ def os_manage_process(action: str, process_name: Optional[str] = "") -> str:
         # If the LLM passed a specific process name to check, look for it directly
         if process_name:
             if process_name not in ALLOWED_PROCESSES:
-                return f"Error: '{process_name}' is not in the approved config.yml whitelist. Status check blocked."
+                return f"Error: '{process_name}' is not in the approved allowed_apps.yml whitelist. Status check blocked."
             is_running = any(process_name in p.lower() for p in running)
             return f"Checked system: '{process_name}' IS currently running." if is_running else f"Checked system: '{process_name}' is NOT running."
             
@@ -97,11 +97,11 @@ def os_manage_process(action: str, process_name: Optional[str] = "") -> str:
         if visible:
             return f"Currently running tracked processes: {', '.join(visible)}"
         else:
-            return "None of the tracked processes in config.yml are currently running."
+            return "None of the tracked processes in allowed_apps.yml are currently running."
 
     if action in ["kill", "start"]:
         if process_name not in ALLOWED_PROCESSES:
-            return f"Error: '{process_name}' is not in the approved config.yml whitelist. Action blocked."
+            return f"Error: '{process_name}' is not in the approved allowed_apps.yml whitelist. Action blocked."
 
         if action == "kill":
             killed = False
@@ -169,7 +169,7 @@ async def os_take_screenshot(ctx: Context = None, question: str = "Describe what
         dict: A status dictionary containing a text description in 'detail' and image path in 'filepath'.
     """
     try:
-        obs_dir = os.path.abspath(os.path.join("logs", "screenshots"))
+        obs_dir = os.path.join(str(LOGS_DIR), "screenshots")
         os.makedirs(obs_dir, exist_ok=True)
 
         filename = f"desktop_snap_{int(time.time())}.png"
@@ -266,10 +266,11 @@ def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
         target_found = False
         if target_window:
             target_lower = target_window.strip().lower()
+            target_stem = target_lower[:-4] if target_lower.endswith(".exe") else target_lower
             try:
                 for w in gw.getAllWindows():
                     w_title = (w.title or "").lower()
-                    if target_lower in w_title:
+                    if target_lower in w_title or (target_stem and target_stem in w_title):
                         w.restore()
                         w.activate()
                         time.sleep(0.3)
@@ -278,6 +279,15 @@ def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
                         break
             except Exception:
                 pass
+
+            if not target_found:
+                return (
+                    f"Error: Target window '{target_window}' is not open. "
+                    f"Active window is '{active_title or 'Unknown'}'. "
+                    "Start the target application first with "
+                    "os_manage_process(action='start', process_name='<app>.exe'), "
+                    "then call os_keyboard_type again."
+                )
 
         # If no target window specified and Dot UI is active, focus top non-system desktop window.
         if not target_found and (not active_title or "dot" in active_title.lower()):
@@ -297,9 +307,22 @@ def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
         text_str = str(text)
         if len(text_str) > 40 or "\n" in text_str:
             import pyperclip
-            pyperclip.copy(text_str)
-            time.sleep(0.05)
-            pyautogui.hotkey("ctrl", "v")
+            prev_clipboard = None
+            try:
+                prev_clipboard = pyperclip.paste()
+            except Exception:
+                prev_clipboard = None
+            try:
+                pyperclip.copy(text_str)
+                time.sleep(0.05)
+                pyautogui.hotkey("ctrl", "v")
+                time.sleep(0.05)
+            finally:
+                if prev_clipboard is not None:
+                    try:
+                        pyperclip.copy(prev_clipboard)
+                    except Exception:
+                        pass
         else:
             pyautogui.write(text_str, interval=0.01)
 
@@ -310,7 +333,7 @@ def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
         return f"Failed to type text. Error: {str(e)}"
 
 @mcp.tool
-def os_keyboard_press(keys):
+def os_keyboard_press(keys: Union[List[str], str]) -> str:
     """
     Presses a specific key or combination of keys simultaneously (e.g., hotkeys).
     
@@ -319,8 +342,17 @@ def os_keyboard_press(keys):
             Examples: ['enter'], ['ctrl', 'c'], ['win', 'd'], ['tab'].
     """
     try:
-        pyautogui.hotkey(*keys)
-        return f"Pressed key: {keys}"
+        if isinstance(keys, str):
+            raw = keys.strip()
+            if not raw:
+                return "Failed to press key: keys cannot be empty."
+            key_list = [k.strip() for k in raw.split("+") if k.strip()]
+        else:
+            key_list = [str(k).strip() for k in keys if str(k).strip()]
+        if not key_list:
+            return "Failed to press key: keys cannot be empty."
+        pyautogui.hotkey(*key_list)
+        return f"Pressed key: {key_list}"
     except Exception as e:
         return f"Failed to press key. Error: {str(e)}"
 

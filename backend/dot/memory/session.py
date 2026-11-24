@@ -39,10 +39,11 @@ class SessionStorage:
         self.filepath = os.path.join(str(TRANSCRIPTS_DIR), f"{session_id}.md")
         self.summary_filepath = os.path.join(str(SUMMARIES_DIR), f"{session_id}_summary.md")
 
-        # Initialize sliding window state.
+        # Initialize sliding window state and compaction lock.
         self.window: deque[Dict[str, Any]] = deque()
         self.summary: Optional[str] = None
         self.current_tokens = 0
+        self._compact_lock = asyncio.Lock()
 
         # Load shared tokenizer singleton and memory compactor.
         self.tokenizer = get_tokenizer()
@@ -92,42 +93,43 @@ class SessionStorage:
 
     async def compact_if_needed(self):
         """Compacts older turns into an ASD-STE100 summary if over threshold."""
-        if self.current_tokens < self.compaction_threshold:
-            return
+        async with self._compact_lock:
+            if self.current_tokens < self.compaction_threshold:
+                return
 
-        # Retain last 2 turns verbatim to preserve immediate conversational context.
-        if len(self.window) <= 2:
-            return
+            # Retain last 2 turns verbatim to preserve immediate conversational context.
+            if len(self.window) <= 2:
+                return
 
-        # Snapshot full uncompressed context to markdown before compaction.
-        self._snapshot_pre_compaction()
+            # Snapshot full uncompressed context to markdown before compaction.
+            self._snapshot_pre_compaction()
 
-        # Pop last 2 turns from window to preserve them.
-        recent_turns: List[Dict[str, Any]] = []
-        recent_turns.append(self.window.pop())
-        recent_turns.append(self.window.pop())
-        recent_turns.reverse()
+            # Pop last 2 turns from window to preserve them.
+            recent_turns: List[Dict[str, Any]] = []
+            recent_turns.append(self.window.pop())
+            recent_turns.append(self.window.pop())
+            recent_turns.reverse()
 
-        # Collect older turns for summarization.
-        older_turns = list(self.window)
-        older_text = "\n---\n".join(t["text"] for t in older_turns)
+            # Collect older turns for summarization.
+            older_turns = list(self.window)
+            older_text = "\n---\n".join(t["text"] for t in older_turns)
 
-        # Generate fresh ASD-STE100 summary via FastMCP sampling.
-        new_summary = await self.compactor.compact(older_text, previous_summary=self.summary)
-        self.summary = new_summary
+            # Generate fresh ASD-STE100 summary via FastMCP sampling.
+            new_summary = await self.compactor.compact(older_text, previous_summary=self.summary)
+            self.summary = new_summary
 
-        # Write updated summary to dedicated summary file.
-        self._save_summary()
+            # Write updated summary to dedicated summary file.
+            self._save_summary()
 
-        # Rebuild sliding window with preserved recent turns.
-        self.window.clear()
-        for turn in recent_turns:
-            self.window.append(turn)
+            # Rebuild sliding window with preserved recent turns.
+            self.window.clear()
+            for turn in recent_turns:
+                self.window.append(turn)
 
-        # Recalculate total tokens in active window.
-        summary_tokens = self.count_tokens(self.summary) if self.summary else 0
-        recent_tokens = sum(t["tokens"] for t in self.window)
-        self.current_tokens = summary_tokens + recent_tokens
+            # Recalculate total tokens in active window.
+            summary_tokens = self.count_tokens(self.summary) if self.summary else 0
+            recent_tokens = sum(t["tokens"] for t in self.window)
+            self.current_tokens = summary_tokens + recent_tokens
 
     def _snapshot_pre_compaction(self):
         """Saves uncompressed conversation state to disk before compaction."""

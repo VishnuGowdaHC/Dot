@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const PROVIDER_PRESETS = [
   {
@@ -90,6 +90,17 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
   const [showEngineLogs, setShowEngineLogs] = useState(false);
   const [engineLogs, setEngineLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const copyTimerRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const engineRefreshTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      if (engineRefreshTimerRef.current) clearTimeout(engineRefreshTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -101,19 +112,13 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
 
     async function fetchSettings() {
       try {
-        const [settingsRes, serversRes, engineRes] = await Promise.all([
+        const [settingsResult, serversResult] = await Promise.allSettled([
           fetch("http://localhost:3000/api/settings"),
           fetch("http://localhost:3000/api/mcp/servers"),
-          fetch("http://localhost:3000/api/engine/status").catch(() => null),
         ]);
 
-        if (engineRes && engineRes.ok) {
-          const eData = await engineRes.json();
-          if (isMounted) setEngineStatus(eData);
-        }
-
-        if (settingsRes.ok) {
-          const data = await settingsRes.json();
+        if (settingsResult.status === "fulfilled" && settingsResult.value.ok) {
+          const data = await settingsResult.value.json();
           if (isMounted) {
             const active = data.active_settings || {};
             const cloud = data.cloud || {};
@@ -127,10 +132,12 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
             setCloudApiKey(cloud.api_key || "");
             setGithubToken(data.github_token || "");
           }
+        } else if (isMounted) {
+          setErrorMessage("Failed to load settings. Verify backend server is active.");
         }
 
-        if (serversRes.ok) {
-          const sData = await serversRes.json();
+        if (serversResult.status === "fulfilled" && serversResult.value.ok) {
+          const sData = await serversResult.value.json();
           if (isMounted) {
             setMcpServers(sData.servers || []);
           }
@@ -181,9 +188,9 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
     return null;
   }, []);
 
-  // Adaptive polling loop while settings modal is open
+  // Adaptive polling loop while settings modal is open in local mode on the model tab
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || backend === "cloud" || activeTab !== "model") return;
 
     let timer = null;
     let isMounted = true;
@@ -203,7 +210,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
       isMounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [isOpen, fetchEngineStatus]);
+  }, [isOpen, backend, activeTab, fetchEngineStatus]);
 
   const handleToggleEngine = async () => {
     setEngineLoading(true);
@@ -252,7 +259,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
           }));
         }
       }
-      setTimeout(fetchEngineStatus, 500);
+      if (engineRefreshTimerRef.current) clearTimeout(engineRefreshTimerRef.current);
+      engineRefreshTimerRef.current = setTimeout(fetchEngineStatus, 500);
     } catch (err) {
       console.warn("Engine toggle warning:", err);
       setEngineStatus((prev) => ({
@@ -286,11 +294,16 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
     setShowEngineLogs((prev) => !prev);
   };
 
-  const handleCopyCommand = () => {
+  const handleCopyCommand = async () => {
     const cmd = engineStatus.command || `bin\\llama-server.exe -m gemma-4-E${selectedTier}_q4_0-it.gguf --port 11434`;
-    navigator.clipboard.writeText(cmd);
-    setCopiedCmd(true);
-    setTimeout(() => setCopiedCmd(false), 2000);
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopiedCmd(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedCmd(false), 2000);
+    } catch (err) {
+      console.warn("Clipboard write warning:", err);
+    }
   };
 
   const handleSave = async () => {
@@ -325,7 +338,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
       if (res.ok) {
         setSaveSuccess(true);
         if (onSettingsSaved) onSettingsSaved(payload);
-        setTimeout(() => {
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = setTimeout(() => {
           onClose();
         }, 600);
       } else {

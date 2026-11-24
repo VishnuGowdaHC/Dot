@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+const REMARK_PLUGINS = [remarkGfm];
 
 /**
  * Renders a code block with language header and copy button.
@@ -8,11 +10,23 @@ import remarkGfm from "remark-gfm";
  */
 function CodeBlock({ language, code }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef(null);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1200);
+    } catch (err) {
+      console.warn("Clipboard write warning:", err);
+    }
   };
 
   return (
@@ -34,6 +48,47 @@ function CodeBlock({ language, code }) {
   );
 }
 
+const markdownComponents = {
+  code({ node, inline, className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || "");
+    const codeText = String(children).replace(/\n$/, "");
+    if (!inline && (match || codeText.includes("\n"))) {
+      return <CodeBlock language={match ? match[1] : ""} code={codeText} />;
+    }
+    return (
+      <code
+        className="bg-white/10 border border-white/15 px-1 py-0.2 rounded text-[10.5px] text-zinc-200 font-mono"
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+};
+
+const MessageItem = memo(function MessageItem({ msg }) {
+  if (msg.role === "user") {
+    return (
+      <div className="self-end max-w-[85%] bg-[#27272a] border border-white/10 text-white px-3.5 py-2 rounded-2xl rounded-br-sm text-[12.5px] leading-relaxed font-sans break-words">
+        {msg.content}
+      </div>
+    );
+  }
+
+  return (
+    <div className="self-start max-w-[90%] bg-[#18181b] border border-white/8 text-zinc-200 px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed font-sans break-words">
+      <div className="prose prose-invert max-w-none text-[12px] leading-relaxed">
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          components={markdownComponents}
+        >
+          {msg.content || ""}
+        </ReactMarkdown>
+      </div>
+    </div>
+  );
+});
+
 /**
  * Displays chat message list or starter chips.
  * Complies with ASD-STE100 rules.
@@ -45,11 +100,24 @@ export default function ChatContainer({
   onClarifyAnswer,
 }) {
   const containerRef = useRef(null);
+  const scrollRafRef = useRef(null);
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
+    const el = containerRef.current;
+    if (!el) return;
+    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => {
+      if (containerRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      }
+      scrollRafRef.current = null;
+    });
+    return () => {
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
   }, [messages, clarification]);
 
   const getChoiceLabel = (choice) => {
@@ -177,50 +245,9 @@ export default function ChatContainer({
       ref={containerRef}
       className="flex-1 overflow-y-auto chat-scroll px-4 pt-14 pb-2 flex flex-col gap-2.5 z-10 font-sans"
     >
-      {messages.map((msg, index) => {
-        if (msg.role === "user") {
-          return (
-            <div
-              key={index}
-              className="self-end max-w-[85%] bg-[#27272a] border border-white/10 text-white px-3.5 py-2 rounded-2xl rounded-br-sm text-[12.5px] leading-relaxed font-sans break-words"
-            >
-              {msg.content}
-            </div>
-          );
-        }
-
-        return (
-          <div
-            key={index}
-            className="self-start max-w-[90%] bg-[#18181b] border border-white/8 text-zinc-200 px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed font-sans break-words"
-          >
-            <div className="prose prose-invert max-w-none text-[12px] leading-relaxed">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  code({ node, inline, className, children, ...props }) {
-                    const match = /language-(\w+)/.exec(className || "");
-                    const codeText = String(children).replace(/\n$/, "");
-                    if (!inline && (match || codeText.includes("\n"))) {
-                      return <CodeBlock language={match ? match[1] : ""} code={codeText} />;
-                    }
-                    return (
-                      <code
-                        className="bg-white/10 border border-white/15 px-1 py-0.2 rounded text-[10.5px] text-zinc-200 font-mono"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                }}
-              >
-                {msg.content || ""}
-              </ReactMarkdown>
-            </div>
-          </div>
-        );
-      })}
+      {messages.map((msg, index) => (
+        <MessageItem key={index} msg={msg} />
+      ))}
       {renderClarificationCard()}
     </div>
   );

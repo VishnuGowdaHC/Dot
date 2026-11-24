@@ -59,6 +59,10 @@ class TestAgentBrowserIntegration(unittest.TestCase):
         self.assertEqual(resolve_browser_selector({"selector": ".btn-primary"}, refs=self.mock_refs), ".btn-primary")
         self.assertEqual(resolve_browser_selector({"selector": "input[type='text']"}, refs=self.mock_refs), "input[type='text']")
 
+    def test_empty_selector_returns_empty_string(self):
+        """Verifies that empty selector inputs do not silently fall back to @e1."""
+        self.assertEqual(resolve_browser_selector({}, refs=self.mock_refs), "")
+
     def test_tool_aliases_and_registry_whitelisting(self):
         """Verifies that press, fill, click, and tab close tools exist."""
         self.assertIn("browser_press", ALLOWED_BROWSER_TOOLS)

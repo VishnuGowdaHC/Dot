@@ -112,13 +112,13 @@ def _record_audio_worker(on_transcription_callback, on_status_callback) -> None:
         on_status_callback("recording")
 
     device_id, sample_rate, channels = _find_working_input_device()
-    buffer = []
+    chunks: list[np.ndarray] = []
     stream = None
 
     def audio_callback(indata, frames, time_info, status):
-        """Appends captured audio chunk to buffer."""
+        """Appends captured audio chunk to the chunk list."""
         if _is_recording:
-            buffer.extend(indata.flatten())
+            chunks.append(indata.copy())
 
     try:
         stream = sd.InputStream(
@@ -149,7 +149,7 @@ def _record_audio_worker(on_transcription_callback, on_status_callback) -> None:
         on_status_callback("transcribing")
 
     # Resample audio to 16,000 Hz for faster-whisper.
-    raw_audio = np.array(buffer, dtype=np.float32)
+    raw_audio = np.concatenate(chunks, axis=0).flatten() if chunks else np.array([], dtype=np.float32)
     resampled_audio = _resample_audio(raw_audio, sample_rate, TARGET_SAMPLE_RATE)
     recorded_seconds = len(resampled_audio) / TARGET_SAMPLE_RATE
 
@@ -182,7 +182,7 @@ def _monitor_hold_trigger(on_transcription_callback, on_status_callback) -> None
 
     while True:
         with _lock:
-            if not _is_alt_down:
+            if not _is_alt_down or _is_recording:
                 return
             elapsed = time.time() - _press_start_time
             if elapsed >= HOLD_DURATION_SECONDS:

@@ -161,6 +161,21 @@ class TestEngineStatusTelemetry(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Starting engine on port", res["message"])
         self.assertIs(app_state["engine_process"], mock_proc)
 
+    @patch("server.check_engine_port_open", return_value=False)
+    @patch("subprocess.Popen", side_effect=OSError("spawn failed"))
+    async def test_start_engine_closes_log_file_on_popen_failure(self, mock_popen, mock_port):
+        """Verifies that start endpoint closes the log file handle if Popen fails."""
+        mock_req = MagicMock()
+        mock_req.json = AsyncMock(return_value={"tier": "4B"})
+
+        mock_file = MagicMock()
+        with patch("server.load_config", return_value={"active_settings": {"selected_tier": "4B"}, "models": {"4B": {"filename": "gemma-4-E4B_q4_0-it.gguf"}}}), \
+             patch("pathlib.Path.exists", return_value=True), \
+             patch("builtins.open", return_value=mock_file):
+            res = await start_engine_endpoint(request=mock_req)
+        self.assertEqual(res["status"], "error")
+        mock_file.close.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

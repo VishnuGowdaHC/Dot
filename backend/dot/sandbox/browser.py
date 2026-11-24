@@ -5,34 +5,45 @@ Uses zero GPU VRAM.
 Complies with ASD-STE100 technical writing standards.
 """
 
+import shlex
 import urllib.parse
-from typing import Optional
+from pathlib import Path
+
 from dot.sandbox.executor import exec_in_sandbox
+
+_FALLBACK_SCRIPT = """
+import asyncio
+import os
+from playwright.async_api import async_playwright
+
+async def main():
+    url = os.environ["DOT_TARGET_URL"]
+    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            executable_path=chrome_bin,
+            args=["--disable-gpu"],
+        )
+        page = await browser.new_page()
+        try:
+            await page.goto(url, timeout=15000, wait_until="domcontentloaded")
+            text = await page.inner_text("body")
+            print(" ".join(text.split())[:3000])
+        finally:
+            await browser.close()
+
+asyncio.run(main())
+""".strip()
 
 
 async def sandboxed_navigate_and_extract(url: str) -> str:
     """Loads a URL inside the container browser and extracts text content."""
-    cmd = f'agent-browser read "{url}"'
+    cmd = f"agent-browser read {shlex.quote(url)}"
     code, output = await exec_in_sandbox(cmd, timeout=25.0)
     if code != 0:
-        # Fallback to python extraction if agent-browser binary is unavailable
-        fallback_script = f"""
-import asyncio
-from playwright.async_api import async_playwright
-
-async def main():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=['--disable-gpu', '--no-sandbox'])
-        page = await browser.new_page()
-        try:
-            await page.goto('{url}', timeout=15000, wait_until='domcontentloaded')
-            text = await page.inner_text('body')
-            print(' '.join(text.split())[:3000])
-        finally:
-            await browser.close()
-asyncio.run(main())
-"""
-        py_cmd = f'python3 -c "{fallback_script.strip()}"'
+        # Use Playwright with system Chromium when agent-browser fails.
+        py_cmd = f"DOT_TARGET_URL={shlex.quote(url)} python3 -c {shlex.quote(_FALLBACK_SCRIPT)}"
         fallback_code, fallback_out = await exec_in_sandbox(py_cmd, timeout=30.0)
         if fallback_code == 0:
             return fallback_out.strip()
@@ -49,10 +60,12 @@ async def sandboxed_search_web(query: str) -> str:
 
 async def sandboxed_screenshot(url: str, output_name: str = "screenshot.png") -> str:
     """Captures a screenshot of a webpage and saves it to the workspace."""
-    cmd = f'agent-browser screenshot --path "/workspace/{output_name}" "{url}"'
+    safe_name = Path(output_name).name
+    if not safe_name or safe_name in (".", ".."):
+        safe_name = "screenshot.png"
+    output_path = f"/workspace/{safe_name}"
+    cmd = f"agent-browser screenshot --path {shlex.quote(output_path)} {shlex.quote(url)}"
     code, output = await exec_in_sandbox(cmd, timeout=25.0)
     if code != 0:
         return f"Screenshot failed: {output.strip()}"
-    return f"Screenshot saved to /workspace/{output_name}"
-
-
+    return f"Screenshot saved to {output_path}"

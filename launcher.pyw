@@ -34,6 +34,7 @@ BACKEND_LOG = os.path.join(LOGS_DIR, "backend.log")
 running_processes = []
 open_log_writers = []
 is_cleaning_up = False
+instance_mutex = None
 
 
 def kill_process_tree(pid):
@@ -60,12 +61,13 @@ def kill_orphaned_servers():
             creationflags=no_win,
         )
         for line in res.stdout.splitlines():
-            line_str = line.strip()
-            if (":3000" in line_str or ":11434" in line_str) and "LISTENING" in line_str:
-                parts = line_str.split()
-                pid = parts[-1]
-                if pid.isdigit() and int(pid) != os.getpid():
-                    kill_process_tree(int(pid))
+            parts = line.strip().split()
+            if len(parts) >= 5 and parts[3] == "LISTENING":
+                local_addr = parts[1]
+                if local_addr.endswith(":3000") or local_addr.endswith(":11434"):
+                    pid = parts[-1]
+                    if pid.isdigit() and int(pid) != os.getpid():
+                        kill_process_tree(int(pid))
     except Exception:
         pass
 
@@ -77,19 +79,24 @@ def cleanup():
         return
     is_cleaning_up = True
 
-    for p in running_processes:
-        try:
-            if p and p.poll() is None:
-                kill_process_tree(p.pid)
-        except Exception:
-            pass
+    try:
+        for p in running_processes:
+            try:
+                if p and p.poll() is None:
+                    kill_process_tree(p.pid)
+            except Exception:
+                pass
+        running_processes.clear()
 
-    for w in open_log_writers:
-        try:
-            w.flush()
-            w.close()
-        except Exception:
-            pass
+        for w in open_log_writers:
+            try:
+                w.flush()
+                w.close()
+            except Exception:
+                pass
+        open_log_writers.clear()
+    finally:
+        is_cleaning_up = False
 
 
 atexit.register(cleanup)
@@ -102,12 +109,28 @@ except Exception:
 
 def acquire_single_instance_lock(name="Dot_SingleInstance_Mutex"):
     """Acquire a named mutex to ensure only one instance runs."""
+    global instance_mutex
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     mutex = kernel32.CreateMutexW(None, False, name)
     last_error = kernel32.GetLastError()
     if last_error == 183:  # ERROR_ALREADY_EXISTS
+        if mutex:
+            kernel32.CloseHandle(mutex)
         return None
+    instance_mutex = mutex
     return mutex
+
+
+def release_single_instance_lock():
+    """Release the named single-instance mutex handle."""
+    global instance_mutex
+    if instance_mutex:
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle(instance_mutex)
+        except Exception:
+            pass
+        instance_mutex = None
 
 
 def focus_existing_window():
@@ -161,13 +184,11 @@ def find_python_exe():
 
 def is_port_open(port, host="127.0.0.1"):
     """Check if a network port accepts connections."""
-    for test_host in [host, "localhost", "::1"]:
-        try:
-            with socket.create_connection((test_host, port), timeout=1.0):
-                return True
-        except (ConnectionRefusedError, socket.timeout, OSError):
-            pass
-    return False
+    try:
+        with socket.create_connection((host, port), timeout=0.05):
+            return True
+    except (ConnectionRefusedError, socket.timeout, OSError):
+        return False
 
 
 def check_essentials(config):
@@ -309,6 +330,7 @@ class StartupSupervisor:
 
         self.is_expanded = False
         self.has_failed = False
+        self.is_closing = False
         self.current_step = 0
 
         self.eng_proc = None
@@ -319,11 +341,22 @@ class StartupSupervisor:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.build_ui()
-        self.root.after(100, self.start_startup_flow)
+        self.safe_after(100, self.start_startup_flow)
+
+    def safe_after(self, delay_ms, callback):
+        """Schedule a Tkinter callback if the window is still open."""
+        if self.is_closing:
+            return
+        try:
+            self.root.after(delay_ms, callback)
+        except (RuntimeError, tk.TclError):
+            pass
 
     def on_close(self):
         """Handle supervisor window close button."""
+        self.is_closing = True
         cleanup()
+        release_single_instance_lock()
         try:
             self.root.destroy()
         except Exception:
@@ -535,13 +568,12 @@ class StartupSupervisor:
         # ----------------------------------------------------
         # Step 1: Environment & Hardware Verification
         # ----------------------------------------------------
-        self.root.after(0, lambda: self.update_step(0, "running", f"{backend.upper()} / {tier}"))
-        self.root.after(0, lambda: self.set_ticker("Checking system configuration..."))
-        self.root.after(0, lambda: self.set_progress(15))
-        time.sleep(0.3)
+        self.safe_after(0, lambda: self.update_step(0, "running", f"{backend.upper()} / {tier}"))
+        self.safe_after(0, lambda: self.set_ticker("Checking system configuration..."))
+        self.safe_after(0, lambda: self.set_progress(15))
 
         if not check_essentials(self.config):
-            self.root.after(
+            self.safe_after(
                 0,
                 lambda: self.show_failure_screen(
                     "Configuration Error",
@@ -553,8 +585,8 @@ class StartupSupervisor:
             )
             return
 
-        self.root.after(0, lambda: self.update_step(0, "done", "OK"))
-        self.root.after(0, lambda: self.set_progress(25))
+        self.safe_after(0, lambda: self.update_step(0, "done", "OK"))
+        self.safe_after(0, lambda: self.set_progress(25))
 
         # ----------------------------------------------------
         # Step 2: Local Inference Engine (llama-server)
@@ -562,8 +594,8 @@ class StartupSupervisor:
         no_window_flag = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
         if backend != "cloud":
-            self.root.after(0, lambda: self.update_step(1, "running", f"Port {port}"))
-            self.root.after(0, lambda: self.set_ticker("Starting llama-server inference engine..."))
+            self.safe_after(0, lambda: self.update_step(1, "running", f"Port {port}"))
+            self.safe_after(0, lambda: self.set_ticker("Starting llama-server inference engine..."))
 
             bin_dir = os.path.join(BASE_DIR, "bin")
             server_exe = os.path.join(bin_dir, "llama-server.exe")
@@ -573,10 +605,10 @@ class StartupSupervisor:
             context_size = model_info.get("context_size", 8192)
 
             gpu_args = ["-ngl", str(gpu_layers)] if backend == "cuda" else []
+            mmproj_args = ["--mmproj", mmproj_fn] if mmproj_fn and os.path.exists(os.path.join(bin_dir, mmproj_fn)) else []
             engine_cmd = [
                 server_exe,
                 "-m", model_fn,
-                "--mmproj", mmproj_fn,
                 "--port", str(port),
                 "-c", str(context_size),
                 "-np", "1",
@@ -587,7 +619,7 @@ class StartupSupervisor:
                 "-ub", "512",
                 "--temp", "0.0",
                 "--alias", "dot-engine",
-            ] + gpu_args
+            ] + mmproj_args + gpu_args
 
             self.eng_log_writer = open(ENGINE_LOG, "w", encoding="utf-8", errors="replace", buffering=1)
             open_log_writers.append(self.eng_log_writer)
@@ -611,15 +643,18 @@ class StartupSupervisor:
             last_pos = 0
 
             while time.time() - start_t < 90:
+                if self.is_closing:
+                    return
                 # 1. Instant crash detection
                 if self.eng_proc.poll() is not None:
+                    cleanup()
                     summary, advice, cmd_hint, lines = parse_error_diagnostics(
                         ENGINE_LOG, "Inference Engine", port, self.config
                     )
-                    self.root.after(
+                    self.safe_after(
                         0,
-                        lambda: self.show_failure_screen(
-                            "Inference Engine Failed", summary, advice, cmd_hint, lines
+                        lambda s=summary, a=advice, c=cmd_hint, l=lines: self.show_failure_screen(
+                            "Inference Engine Failed", s, a, c, l
                         ),
                     )
                     return
@@ -634,16 +669,16 @@ class StartupSupervisor:
                             for line in new_data.splitlines():
                                 line_clean = line.strip()
                                 if line_clean:
-                                    self.root.after(0, lambda l=line_clean: self.append_log_line(l))
+                                    self.safe_after(0, lambda l=line_clean: self.append_log_line(l))
                                     if "loading model" in line_clean.lower():
-                                        self.root.after(
+                                        self.safe_after(
                                             0,
                                             lambda: self.set_ticker(
                                                 f"Loading weights for {model_fn}..."
                                             ),
                                         )
                                     elif "model loaded" in line_clean.lower():
-                                        self.root.after(
+                                        self.safe_after(
                                             0,
                                             lambda: self.set_ticker(
                                                 "Model loaded into memory. Initializing network..."
@@ -658,36 +693,37 @@ class StartupSupervisor:
                     break
 
                 pct = min(25 + int((time.time() - start_t) * 0.4), 55)
-                self.root.after(0, lambda p=pct: self.set_progress(p))
+                self.safe_after(0, lambda p=pct: self.set_progress(p))
                 time.sleep(0.3)
 
             if not engine_ready:
+                cleanup()
                 summary, advice, cmd_hint, lines = parse_error_diagnostics(
                     ENGINE_LOG, "Inference Engine", port, self.config
                 )
-                self.root.after(
+                self.safe_after(
                     0,
-                    lambda: self.show_failure_screen(
+                    lambda s=summary, a=advice, c=cmd_hint, l=lines: self.show_failure_screen(
                         "Inference Engine Timeout",
                         f"Server did not respond on port {port} within 90 seconds.",
-                        advice,
-                        cmd_hint,
-                        lines,
+                        a,
+                        c,
+                        l,
                     ),
                 )
                 return
 
-            self.root.after(0, lambda: self.update_step(1, "done", "Active"))
-            self.root.after(0, lambda: self.set_progress(60))
+            self.safe_after(0, lambda: self.update_step(1, "done", "Active"))
+            self.safe_after(0, lambda: self.set_progress(60))
         else:
-            self.root.after(0, lambda: self.update_step(1, "done", "Cloud Connected"))
-            self.root.after(0, lambda: self.set_progress(60))
+            self.safe_after(0, lambda: self.update_step(1, "done", "Cloud Connected"))
+            self.safe_after(0, lambda: self.set_progress(60))
 
         # ----------------------------------------------------
         # Step 3: Python Orchestrator Backend
         # ----------------------------------------------------
-        self.root.after(0, lambda: self.update_step(2, "running", "Port 3000"))
-        self.root.after(0, lambda: self.set_ticker("Starting FastAPI backend server on port 3000..."))
+        self.safe_after(0, lambda: self.update_step(2, "running", "Port 3000"))
+        self.safe_after(0, lambda: self.set_ticker("Starting FastAPI backend server on port 3000..."))
 
         backend_dir = os.path.join(BASE_DIR, "backend")
         backend_cmd = [
@@ -727,17 +763,20 @@ class StartupSupervisor:
         last_pos = 0
 
         while time.time() - start_t < 90:
+            if self.is_closing:
+                return
             # 1. Instant crash detection
             if self.back_proc.poll() is not None:
                 if self.back_log_writer:
                     self.back_log_writer.flush()
+                cleanup()
                 summary, advice, cmd_hint, lines = parse_error_diagnostics(
                     BACKEND_LOG, "Backend Server", 3000, self.config
                 )
-                self.root.after(
+                self.safe_after(
                     0,
-                    lambda: self.show_failure_screen(
-                        "Backend Server Failed", summary, advice, cmd_hint, lines
+                    lambda s=summary, a=advice, c=cmd_hint, l=lines: self.show_failure_screen(
+                        "Backend Server Failed", s, a, c, l
                     ),
                 )
                 return
@@ -752,23 +791,23 @@ class StartupSupervisor:
                         for line in new_data.splitlines():
                             line_clean = line.strip()
                             if line_clean:
-                                self.root.after(0, lambda l=line_clean: self.append_log_line(l))
+                                self.safe_after(0, lambda l=line_clean: self.append_log_line(l))
                                 if "started server process" in line_clean.lower():
-                                    self.root.after(
+                                    self.safe_after(
                                         0,
                                         lambda: self.set_ticker(
                                             "Backend process started. Loading tool registry..."
                                         ),
                                     )
                                 elif "syncing tools" in line_clean.lower():
-                                    self.root.after(
+                                    self.safe_after(
                                         0,
                                         lambda: self.set_ticker(
                                             "Syncing tool definitions to ChromaDB..."
                                         ),
                                     )
                                 elif "uvicorn running on" in line_clean.lower():
-                                    self.root.after(
+                                    self.safe_after(
                                         0,
                                         lambda: self.set_ticker(
                                             "Backend running on port 3000. Ready."
@@ -783,36 +822,36 @@ class StartupSupervisor:
                 break
 
             pct = min(60 + int((time.time() - start_t) * 0.45), 88)
-            self.root.after(0, lambda p=pct: self.set_progress(p))
+            self.safe_after(0, lambda p=pct: self.set_progress(p))
             time.sleep(0.3)
 
         if not backend_ready:
             if self.back_log_writer:
                 self.back_log_writer.flush()
+            cleanup()
             summary, advice, cmd_hint, lines = parse_error_diagnostics(
                 BACKEND_LOG, "Backend Server", 3000, self.config
             )
-            self.root.after(
+            self.safe_after(
                 0,
-                lambda: self.show_failure_screen(
+                lambda s=summary, a=advice, c=cmd_hint, l=lines: self.show_failure_screen(
                     "Backend Server Timeout",
                     "Backend failed to bind to port 3000 within 90 seconds.",
-                    advice,
-                    cmd_hint,
-                    lines,
+                    a,
+                    c,
+                    l,
                 ),
             )
             return
 
-        self.root.after(0, lambda: self.update_step(2, "done", "Active"))
-        self.root.after(0, lambda: self.update_step(3, "done", "Synchronized"))
-        self.root.after(0, lambda: self.set_progress(100))
+        self.safe_after(0, lambda: self.update_step(2, "done", "Active"))
+        self.safe_after(0, lambda: self.update_step(3, "done", "Synchronized"))
+        self.safe_after(0, lambda: self.set_progress(100))
 
         # ----------------------------------------------------
         # Step 4: Launch Neutralino UI and Smooth Handoff
         # ----------------------------------------------------
-        self.root.after(0, lambda: self.set_ticker("All systems ready. Launching Dot..."))
-        time.sleep(0.4)
+        self.safe_after(0, lambda: self.set_ticker("All systems ready. Launching Dot..."))
 
         frontend_dir = os.path.join(BASE_DIR, "frontend")
         neu_candidates = [
@@ -846,7 +885,7 @@ class StartupSupervisor:
         running_processes.append(self.front_proc)
 
         # Hide supervisor window smoothly while keeping mainloop alive
-        self.root.after(400, self.root.withdraw)
+        self.safe_after(400, self.root.withdraw)
 
         # Wait until frontend is closed by user, then cleanup
         try:
@@ -854,7 +893,9 @@ class StartupSupervisor:
         except KeyboardInterrupt:
             pass
         finally:
+            self.is_closing = True
             cleanup()
+            release_single_instance_lock()
             try:
                 self.root.after(0, self.root.destroy)
             except Exception:
@@ -875,7 +916,9 @@ class StartupSupervisor:
         actions_row.pack(side="bottom", fill="x", pady=(10, 0))
 
         def open_setup():
+            self.is_closing = True
             cleanup()
+            release_single_instance_lock()
             self.root.destroy()
             subprocess.Popen([self.py_exe, os.path.join(BASE_DIR, "setup.py")], cwd=BASE_DIR)
 
@@ -885,7 +928,9 @@ class StartupSupervisor:
                 os.startfile(target_log)
 
         def retry():
+            self.is_closing = True
             cleanup()
+            release_single_instance_lock()
             self.root.destroy()
             python_bin = find_python_exe()
             if python_bin:

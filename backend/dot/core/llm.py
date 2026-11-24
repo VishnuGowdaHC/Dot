@@ -41,8 +41,16 @@ def _load_clients() -> Tuple[AsyncOpenAI, OpenAI, str, bool, str]:
         sync_cl = OpenAI(base_url=base_url, api_key=api_key)
         return async_cl, sync_cl, model, True, provider
 
-    # Local backend defaults to local llama-server endpoint.
-    local_url = "http://127.0.0.1:11434/v1"
+    # Local backend reads configured port or defaults to 11434.
+    port = 11434
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            port = int(cfg.get("active_settings", {}).get("port", 11434))
+        except Exception:
+            pass
+    local_url = f"http://127.0.0.1:{port}/v1"
     async_cl = AsyncOpenAI(base_url=local_url, api_key="not-needed")
     sync_cl = OpenAI(base_url=local_url, api_key="not-needed")
     return async_cl, sync_cl, "dot-engine", False, "local"

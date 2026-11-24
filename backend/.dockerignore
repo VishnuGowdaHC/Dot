@@ -1,0 +1,12 @@
+# Exclude all backend files from the Docker build context by default.
+*
+
+# Allow only the sandbox Dockerfile and the Linux browser binary.
+!Dockerfile.sandbox
+!dot
+dot/*
+!dot/mcp
+dot/mcp/*
+!dot/mcp/bin
+dot/mcp/bin/*
+!dot/mcp/bin/agent-browser-linux-x64

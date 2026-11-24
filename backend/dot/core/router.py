@@ -16,11 +16,21 @@ from dot.memory.vector_store import get_speculative_tools
 from dot.memory.rolling_memory import get_rolling_memory
 
 # Intent Router: classifies commands into fast execution mode or ReAct agent loop.
-# Load cached SentenceTransformer model with local_files_only to bypass network checks.
-try:
-    model = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
-except Exception:
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+_model = None
+_intent_vector = None
+
+
+def _get_intent_model():
+    """Loads SentenceTransformer and encodes anchors lazily on first use."""
+    global _model, _intent_vector
+    if _model is None:
+        try:
+            _model = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=True)
+        except Exception:
+            _model = SentenceTransformer("all-MiniLM-L6-v2")
+    if _intent_vector is None:
+        _intent_vector = _model.encode(app_launch_anchors)
+    return _model, _intent_vector
 
 AFFIRMATION_WORDS = {
     "ok", "okay", "yes", "sure", "proceed", "go ahead", "do it",
@@ -71,10 +81,16 @@ app_launch_anchors = [
     "watch video on youtube",
 ]
 
-intentVector = model.encode(app_launch_anchors)
-
 # Routing threshold: Application launch or media requests score 0.45 or higher.
 ROUTING_THRESHOLD = 0.45
+
+
+def _score_intent(text: str) -> float:
+    """Encodes text and computes max cosine similarity against launch anchors."""
+    mdl, vecs = _get_intent_model()
+    vec = mdl.encode([text])[0]
+    score = util.cos_sim(vec, vecs)
+    return float(np.max(score.numpy()))
 
 
 async def intentRouter(websocket, text: str, active_session, active_client):
@@ -87,10 +103,7 @@ async def intentRouter(websocket, text: str, active_session, active_client):
         print(f"[Intent Router] Affirmation detected. Continuing active goal: '{effective_query}'")
 
     # Run PyTorch embedding calculation in worker thread to prevent event loop blocking.
-    vec = await asyncio.to_thread(lambda: model.encode([text])[0])
-
-    score = util.cos_sim(vec, intentVector)
-    best_score = float(np.max(score.numpy()))
+    best_score = await asyncio.to_thread(_score_intent, text)
     print(f"[Intent Router] Fast execution match score: {best_score:.4f}")
 
     # Direct execution mode applies only to short commands (under 6 words).
@@ -114,7 +127,7 @@ async def intentRouter(websocket, text: str, active_session, active_client):
             return res
 
     # Pre-retrieve speculative tools in worker thread for ReAct loop (<15ms).
-    speculative_tools = await asyncio.to_thread(get_speculative_tools, effective_query, 5)
+    speculative_tools = await asyncio.to_thread(get_speculative_tools, effective_query, 3)
 
     # ReAct Agent Loop for questions, research, and multi-step tasks.
     print(f"[ReAct Agent Mode] Routing to ReAct loop with {len(speculative_tools)} speculative tools: '{effective_query}'")

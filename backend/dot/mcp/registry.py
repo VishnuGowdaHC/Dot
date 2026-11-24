@@ -36,7 +36,6 @@ def load_server_config() -> dict:
         config_data = f.read()
 
     github_token = get_github_token()
-    config_data = config_data.replace("${GITHUB_TOKEN}", github_token)
     config_dict = json.loads(config_data)
 
     # Resolve python interpreter and absolute binary paths.
@@ -65,6 +64,9 @@ def load_server_config() -> dict:
             server_cfg["cwd"] = base_dir
 
         env = server_cfg.setdefault("env", {})
+        for env_key, env_val in list(env.items()):
+            if isinstance(env_val, str) and "${GITHUB_TOKEN}" in env_val:
+                env[env_key] = env_val.replace("${GITHUB_TOKEN}", github_token)
         env["FASTMCP_SHOW_SERVER_BANNER"] = "false"
         existing_pythonpath = env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
         env["PYTHONPATH"] = f"{base_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else base_dir
@@ -86,6 +88,7 @@ ALLOWED_BROWSER_TOOLS = {
     "browser_tab_close",
     "browser_screenshot",
     "browser_close",
+    "browser_probe_page",
 }
 
 # Explicit high-clarity descriptions for whitelisted browser tools to avoid semantic collision.
@@ -138,6 +141,20 @@ PRESERVED_BROWSER_TOOLS = [
                 "target": {"type": "string", "description": "Web address or search term to show to the human user."}
             },
             "required": ["target"]
+        }
+    },
+    {
+        "service": "browser",
+        "toolName": "browser_probe_page",
+        "description": "Search cached controls from the last page snapshot by keyword, tag type, or section heading without extra browser roundtrips.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keyword to match against element text, name, or @ref ID."},
+                "tag_type": {"type": "string", "description": "Optional element kind: button, radio, checkbox, input, or link."},
+                "section_hint": {"type": "string", "description": "Optional heading or section name to disambiguate labels."}
+            },
+            "required": ["query"]
         }
     }
 ]

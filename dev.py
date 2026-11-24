@@ -137,12 +137,18 @@ def free_port_if_occupied(port: int):
         return
     print(f"{COLOR_SYSTEM}[SYSTEM]{COLOR_RESET} Port {port} is occupied. Clearing port...", flush=True)
     try:
-        cmd = f'powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess"'
-        res = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            f"(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess",
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
         pids = [p.strip() for p in res.stdout.split() if p.strip().isdigit()]
+        current_pid = os.getpid()
         for pid_str in pids:
             pid = int(pid_str)
-            if pid > 0:
+            if pid > 0 and pid != current_pid:
                 stop_process_tree(pid)
         time.sleep(1.0)
     except Exception as err:
@@ -173,10 +179,10 @@ def build_engine_cmd(config: dict, tier_override: Optional[str], backend_overrid
         sys.exit(1)
 
     gpu_args = ["-ngl", str(gpu_layers)] if backend == "cuda" else []
+    mmproj_args = ["--mmproj", mmproj_fn] if mmproj_fn and os.path.exists(os.path.join(BIN_DIR, mmproj_fn)) else []
     return [
         server_exe,
         "-m", model_fn,
-        "--mmproj", mmproj_fn,
         "--port", str(port),
         "-c", str(context_size),
         "-np", "1",
@@ -187,7 +193,7 @@ def build_engine_cmd(config: dict, tier_override: Optional[str], backend_overrid
         "-ub", "512",
         "--temp", "0.0",
         "--alias", "dot-engine"
-    ] + gpu_args
+    ] + mmproj_args + gpu_args
 
 
 def main():

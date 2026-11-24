@@ -380,6 +380,13 @@ async def _ensure_browser():
             print("[System] Connected to active daily browser session.", file=sys.stderr)
         except Exception as e:
             print(f"[System] CDP connection attempt failed: {e}", file=sys.stderr)
+            try:
+                if _browser:
+                    await _browser.close()
+            except Exception:
+                pass
+            _browser = None
+            _page = None
 
     if not connected_cdp:
         launched = False
@@ -420,7 +427,7 @@ async def _prune_snapshot(node, max_depth=6, depth=0):
     # skip structurally uninteresting nodes with no name and no children worth keeping
     pruned_children = []
     for child in node.get("children", []) or []:
-        pruned_child = _prune_snapshot(child, max_depth, depth + 1)
+        pruned_child = await _prune_snapshot(child, max_depth, depth + 1)
         if pruned_child:
             pruned_children.append(pruned_child)
 
@@ -452,6 +459,18 @@ async def navigate(url: str, auto_snapshot: bool = True) -> dict:
         dict: A status dictionary containing success, detail, and error keys.
     """
     global _ACTIVE_SCRATCH_ELEMENTS
+    clean_url = (url or "").strip()
+    lowered_url = clean_url.lower()
+    if lowered_url.startswith(("file://", "javascript:")):
+        return {
+            "success": False,
+            "detail": f"navigation to {clean_url} blocked",
+            "error": "Blocked unsafe URL scheme. Use http:// or https://.",
+        }
+    if clean_url and not lowered_url.startswith(("http://", "https://", "data:", "about:")):
+        clean_url = f"https://{clean_url}"
+    url = clean_url
+
     try:
         page = await _ensure_browser()
         await page.goto(url, wait_until="domcontentloaded", timeout=15000)
@@ -822,6 +841,18 @@ async def snapshot() -> dict:
         dict: A status dictionary containing a compact manifest of interactive elements.
     """
     global _ACTIVE_SCRATCH_ELEMENTS
+    clean_url = (url or "").strip()
+    lowered_url = clean_url.lower()
+    if lowered_url.startswith(("file://", "javascript:")):
+        return {
+            "success": False,
+            "detail": f"navigation to {clean_url} blocked",
+            "error": "Blocked unsafe URL scheme. Use http:// or https://.",
+        }
+    if clean_url and not lowered_url.startswith(("http://", "https://", "data:", "about:")):
+        clean_url = f"https://{clean_url}"
+    url = clean_url
+
     try:
         page = await _ensure_browser()
         elements = await _extract_elements_with_coordinates(page)
@@ -934,9 +965,6 @@ async def click(
 
         if not locator:
             if selector:
-                clean_selector = selector.replace(":contains(", ":has-text(")
-                locator = page.locator(clean_selector)
-                target_desc = f"selector '{clean_selector}'"
                 clean_selector = selector.replace(":contains(", ":has-text(")
                 locator = page.locator(clean_selector)
                 target_desc = f"selector '{clean_selector}'"
@@ -1112,24 +1140,12 @@ async def extract_text(
                 pass
 
         extracted = None
-        # Fast coordinate click and type for cached @eN references
         ref_match = re.search(r"@e\d+", selector or name or "")
         if ref_match:
             ref_id = ref_match.group(0)
             cached = next((el for el in _ACTIVE_SCRATCH_ELEMENTS if el.get("ref") == ref_id), None)
-            if cached and cached.get("coords"):
-                coords = cached["coords"]
-                cx = coords.get("x", 0) + coords.get("width", 0) / 2
-                cy = coords.get("y", 0) + coords.get("height", 0) / 2
-                await page.mouse.click(cx, cy)
-                await page.keyboard.press("Control+a")
-                await page.keyboard.press("Backspace")
-                await page.keyboard.type(text)
-                return {
-                    "success": True,
-                    "detail": f"Filled {ref_id} ('{cached.get('text', '')}') with '{text}'.",
-                    "error": None,
-                }
+            if cached and cached.get("text"):
+                extracted = cached["text"]
 
         if selector:
             clean_selector = selector.replace(":contains(", ":has-text(")

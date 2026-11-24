@@ -68,6 +68,29 @@ class TestCloudAndGuardrails(unittest.IsolatedAsyncioTestCase):
             err = check_destructive_action("delete_file", {"path": inside_file})
             self.assertIsNone(err)
 
+    def test_destructive_command_blocks_prefix_sibling_directory(self):
+        """Verifies that sibling paths sharing the workspace prefix are blocked."""
+        sibling_file = f"{self.workspace}_evil{os.sep}secret.txt"
+        with patch("dot.config.settings.get_allowed_workspace", return_value=self.workspace):
+            err = check_destructive_action("delete_file", {"path": sibling_file})
+            self.assertIsNotNone(err)
+            self.assertIn("Guardrail Blocked", err)
+
+    def test_update_github_token_preserves_other_env_keys(self):
+        """Verifies that updating GitHub token preserves existing env file entries."""
+        from dot.config import settings
+        env_file = Path(self.temp_dir.name) / ".env"
+        env_file.write_text('DOT_CLOUD_API_KEY="keep-me"\n', encoding="utf-8")
+        with patch.object(settings, "BACKEND_ENV_PATH", env_file), \
+             patch.object(settings, "DOT_ENV_PATH", env_file), \
+             patch.object(settings, "DOT_PKG_ENV_PATH", env_file), \
+             patch("dot.config.settings.load_config", return_value={}), \
+             patch("dot.config.settings.save_config"):
+            settings.update_github_token("ghp_test123")
+        content = env_file.read_text(encoding="utf-8")
+        self.assertIn('DOT_CLOUD_API_KEY="keep-me"', content)
+        self.assertIn('GITHUB_TOKEN="ghp_test123"', content)
+
     def test_process_termination_requires_confirmation(self):
         """Verifies that process termination actions require confirmation."""
         err = check_destructive_action("os_manage_process", {"action": "kill", "pid": 1234})
