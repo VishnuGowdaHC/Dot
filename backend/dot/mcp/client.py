@@ -3,12 +3,20 @@ FastMCP client pool and sampling handler.
 """
 
 from typing import Optional
+from pathlib import Path
 import json
 import re
 from fastmcp import Client
 from fastmcp.client.sampling import SamplingMessage, SamplingParams, RequestContext
 from dot.mcp.registry import load_server_config
 from dot.core.llm import async_llm
+from dot.config.paths import LOGS_DIR
+from dot.automation.browser import (
+    _dump_to_scratch,
+    _search_scratch_elements,
+    _build_compact_manifest,
+    clean_readable_text,
+)
 
 
 async def sampling_handler(
@@ -67,6 +75,9 @@ TOOL_ALIASES = {
     "browser_close": "agent_browser_close",
     "browser_close_browser": "agent_browser_close",
     "close_browser": "agent_browser_close",
+    "probe_page": "probe_page",
+    "browser_probe": "probe_page",
+    "browser_find_element": "probe_page",
     # OS tools aliases
     "open_desktop_tab_for_user": "browser_open_in_browser",
     "browser_open_desktop_tab_for_user": "browser_open_in_browser",
@@ -103,6 +114,56 @@ TOOL_ALIASES = {
 
 
 _LAST_BROWSER_REFS: dict[str, dict] = {}
+
+
+def _parse_agent_browser_snapshot(snapshot_text: str) -> list:
+    """Parses agent-browser accessibility tree lines into structured element dictionaries.
+
+    Complies with ASD-STE100 rules.
+    """
+    elements = []
+    current_section = "General"
+
+    for line in snapshot_text.splitlines():
+        line_str = line.strip()
+        if line_str.startswith("#"):
+            current_section = line_str.lstrip("#").strip()[:80] or "General"
+            continue
+
+        ref_match = re.search(r"(?:@|ref=)\s*@?(e\d+)", line_str)
+        role_match = re.match(r"^[-*]\s*([a-zA-Z0-9_\-]+)", line_str)
+        role = role_match.group(1).lower() if role_match else "element"
+
+        # Extract text within quotes, supporting escaped quotes
+        text_match = re.search(r'"((?:\\.|[^"\\])*)"', line_str)
+        if text_match:
+            text = text_match.group(1).replace(r'\"', '"').strip()
+        else:
+            text_match = re.search(r"'((?:\\.|[^'\\])*)'", line_str)
+            text = text_match.group(1).replace(r"\'", "'").strip() if text_match else ""
+
+        ref = f"@{ref_match.group(1)}" if ref_match else ""
+        if not ref and not text:
+            continue
+
+        tag = (
+            "button" if role in ("button", "submit")
+            else "a" if role == "link"
+            else "input" if role in ("textbox", "checkbox", "radio", "searchbox")
+            else role
+        )
+
+        elements.append({
+            "ref": ref,
+            "tag": tag,
+            "role": role,
+            "type": role,
+            "text": text,
+            "name": text,
+            "section": current_section,
+            "coords": {"x": 0, "y": 0, "width": 0, "height": 0}
+        })
+    return elements
 
 KEY_MAP = {
     "enter": "Enter",
@@ -222,6 +283,24 @@ def get_multi_server_client() -> Client:
     return Client(config, sampling_handler=sampling_handler)
 
 
+async def _call_active_tool(client: Client, server_prefix: str, tool_name: str, args: dict):
+    """Invokes a tool on the active FastMCP client instance with server prefix fallback.
+
+    Complies with ASD-STE100 rules.
+    """
+    candidates = [
+        f"{server_prefix}_{tool_name}" if server_prefix else tool_name,
+        tool_name,
+    ]
+    last_err = None
+    for name in candidates:
+        try:
+            return await client.call_tool(name, args)
+        except Exception as err:
+            last_err = err
+    raise last_err
+
+
 async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: str, tool_args):
     """Executes a tool on the active FastMCP client instance."""
     # Sandbox tools are not served by FastMCP. Reject them early.
@@ -255,6 +334,33 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
         from dot.automation.browser import open_in_browser
         return open_in_browser(**(tool_args or {}))
 
+    resolved_name = TOOL_ALIASES.get(tool_name, tool_name)
+
+    if resolved_name == "probe_page" or tool_name in ("probe_page", "browser_probe", "browser_find_element"):
+        import dot.automation.browser as browser_mod
+        args_dict = dict(tool_args or {})
+        query = str(args_dict.get("query") or args_dict.get("q") or "").strip()
+        tag_type = args_dict.get("tag_type") or args_dict.get("type")
+        section_hint = args_dict.get("section_hint") or args_dict.get("section")
+        matches = _search_scratch_elements(
+            query=query,
+            elements=browser_mod._ACTIVE_SCRATCH_ELEMENTS,
+            tag_type=tag_type,
+            section_hint=section_hint,
+        )
+        if not matches:
+            return (
+                f"No controls found matching query='{query}'. "
+                "Check logs/scratch_page.md for all cached page elements."
+            )
+        lines = [f"Found {len(matches)} matching control(s):"]
+        for m in matches[:12]:
+            ref_str = f"[{m.get('ref')}] " if m.get("ref") else ""
+            lines.append(f"- {ref_str}{m.get('role')} '{m.get('text')}' (section: {m.get('section', 'General')})")
+        if len(matches) > 12:
+            lines.append(f"... and {len(matches) - 12} more matches cached in logs/scratch_page.md.")
+        return "\n".join(lines)
+
     if tool_service == "github" or tool_name.startswith("github_"):
         from dot.config.settings import get_github_token
         if not get_github_token():
@@ -263,7 +369,6 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
                 "Configure a valid GitHub PAT in Settings (3 dots > MCP Tools) or set the GITHUB_TOKEN environment variable."
             )
 
-    resolved_name = TOOL_ALIASES.get(tool_name, tool_name)
     raw_name = resolved_name
     if tool_service and resolved_name.startswith(f"{tool_service}_"):
         raw_name = resolved_name[len(tool_service) + 1:]
@@ -281,12 +386,12 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
         call_args.setdefault("timeoutMs", 15000)
         call_args["headed"] = True
     elif resolved_name == "agent_browser_snapshot":
-        call_args.setdefault("interactive", True)
+        call_args.setdefault("interactive", False)
         call_args.setdefault("compact", True)
     elif resolved_name == "agent_browser_click":
         if not _LAST_BROWSER_REFS and not str(call_args.get("selector", "")).startswith("@e"):
             try:
-                snap_init = await active_client.call_tool("agent_browser_snapshot", {"interactive": True, "compact": True})
+                snap_init = await _call_active_tool(active_client, "browser", "agent_browser_snapshot", {"interactive": True, "compact": True})
                 if hasattr(snap_init, "data") and isinstance(snap_init.data, dict):
                     refs_data = snap_init.data.get("response", {}).get("data", {}).get("refs", {})
                     if refs_data:
@@ -297,7 +402,7 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
     elif resolved_name == "agent_browser_fill":
         if not _LAST_BROWSER_REFS and not str(call_args.get("selector", "")).startswith("@e"):
             try:
-                snap_init = await active_client.call_tool("agent_browser_snapshot", {"interactive": True, "compact": True})
+                snap_init = await _call_active_tool(active_client, "browser", "agent_browser_snapshot", {"interactive": True, "compact": True})
                 if hasattr(snap_init, "data") and isinstance(snap_init.data, dict):
                     refs_data = snap_init.data.get("response", {}).get("data", {}).get("refs", {})
                     if refs_data:
@@ -312,6 +417,34 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
                     break
         if "text" not in call_args:
             call_args["text"] = ""
+    elif resolved_name == "agent_browser_read":
+        # Force raw=False so agent-browser extracts readable document content
+        call_args["raw"] = False
+        # Do not set requireMd=True: standard web pages serve text/html, not text/markdown
+        call_args.pop("requireMd", None)
+
+        # Suppress outline=True during content reads
+        # Passing outline=True causes agent-browser to omit page text and only return headings
+        call_args["outline"] = False
+
+        # Validate llms argument (only accepts 'index' or 'full')
+        if "llms" in call_args and call_args["llms"] not in ("index", "full"):
+            call_args.pop("llms", None)
+
+        # Sanitize natural language filter strings that cause 'No matching headings'
+        if "filter" in call_args and isinstance(call_args["filter"], str):
+            filter_words = call_args["filter"].strip().split()
+            if len(filter_words) > 1:
+                # Conversational phrases like 'Andrew Ng biography' do not match exact headings
+                call_args.pop("filter", None)
+
+        allowed_read_keys = {
+            "filter", "llms", "outline", "raw", "readTimeoutMs",
+            "url", "session", "namespace", "timeoutMs",
+        }
+        if "selector" in call_args and "filter" not in call_args:
+            call_args["filter"] = call_args.pop("selector")
+        call_args = {k: v for k, v in call_args.items() if k in allowed_read_keys}
     elif resolved_name == "agent_browser_press":
         raw_key = call_args.get("key") or call_args.get("keys") or call_args.get("name")
         if isinstance(raw_key, list):
@@ -340,8 +473,8 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
         if "browser not launched" in err_msg.lower():
             if call_args.get("url"):
                 try:
-                    await active_client.call_tool("agent_browser_open", {"url": call_args["url"], "timeoutMs": 15000, "headed": True})
-                    result = await active_client.call_tool("agent_browser_read", call_args)
+                    await _call_active_tool(active_client, "browser", "agent_browser_open", {"url": call_args["url"], "timeoutMs": 15000, "headed": True})
+                    result = await _call_active_tool(active_client, "browser", "agent_browser_read", call_args)
                 except Exception as retry_err:
                     return {"success": False, "detail": None, "error": f"Failed to open and read URL: {retry_err}"}
             else:
@@ -365,12 +498,127 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
         else:
             raise RuntimeError(f"Tool '{tool_name}' failed to execute on server '{tool_service}': {last_error}")
 
-    if resolved_name == "agent_browser_snapshot":
-        if hasattr(result, "data") and isinstance(result.data, dict):
-            refs_data = result.data.get("response", {}).get("data", {}).get("refs", {})
-            if refs_data:
+    if resolved_name == "agent_browser_open":
+        target_url = call_args.get("url", "")
+        try:
+            snap_res = await _call_active_tool(
+                active_client,
+                "browser",
+                "agent_browser_snapshot",
+                {"interactive": False, "compact": True}
+            )
+            raw_tree = ""
+            if hasattr(snap_res, "content") and snap_res.content:
+                raw_tree = "\n".join(
+                    getattr(item, "text", "") for item in snap_res.content if hasattr(item, "text")
+                )
+            elif isinstance(snap_res, str):
+                raw_tree = snap_res
+
+            elements = _parse_agent_browser_snapshot(raw_tree)
+            if elements:
+                import dot.automation.browser as browser_mod
+                browser_mod._ACTIVE_SCRATCH_ELEMENTS = elements
                 _LAST_BROWSER_REFS.clear()
-                _LAST_BROWSER_REFS.update(refs_data)
+                for el in elements:
+                    if el.get("ref"):
+                        _LAST_BROWSER_REFS[el["ref"].lstrip("@")] = el
+
+                scratch_file = LOGS_DIR / "scratch_page.md"
+                _dump_to_scratch(elements, scratch_file)
+
+                title = "Active Webpage"
+                for el in elements:
+                    if el.get("role") == "heading" and el.get("text"):
+                        title = el["text"]
+                        break
+
+                manifest = _build_compact_manifest(title, target_url, elements)
+                return {
+                    "success": True,
+                    "detail": (
+                        f"Navigated to {target_url}.\n\n"
+                        f"[Active Page Manifest]:\n{manifest}\n\n"
+                        f"[Full {len(elements)} controls cached in logs/scratch_page.md. "
+                        f"Use 'probe_page' to locate specific controls.]"
+                    )
+                }
+        except Exception as snap_err:
+            print(f"[Warning] Auto-snapshot failed on navigation: {snap_err}")
+
+    if resolved_name == "agent_browser_snapshot":
+        raw_tree = ""
+        if hasattr(result, "content") and result.content:
+            raw_tree = "\n".join(
+                getattr(item, "text", "") for item in result.content if hasattr(item, "text")
+            )
+        elif isinstance(result, str):
+            raw_tree = result
+
+        elements = _parse_agent_browser_snapshot(raw_tree)
+        if elements:
+            import dot.automation.browser as browser_mod
+            browser_mod._ACTIVE_SCRATCH_ELEMENTS = elements
+            _LAST_BROWSER_REFS.clear()
+            for el in elements:
+                if el.get("ref"):
+                    _LAST_BROWSER_REFS[el["ref"].lstrip("@")] = el
+
+            scratch_file = LOGS_DIR / "scratch_page.md"
+            _dump_to_scratch(elements, scratch_file)
+
+            title = "Active Webpage"
+            for el in elements:
+                if el.get("role") == "heading" and el.get("text"):
+                    title = el["text"]
+                    break
+
+            manifest = _build_compact_manifest(title, "current_tab", elements)
+            return {
+                "success": True,
+                "detail": (
+                    f"[Active Page Manifest]:\n{manifest}\n\n"
+                    f"[Full {len(elements)} controls cached in logs/scratch_page.md. "
+                    f"Use 'probe_page' to locate specific controls.]"
+                )
+            }
+
+    if resolved_name == "agent_browser_read":
+        raw_text = ""
+        if hasattr(result, "content") and result.content:
+            raw_text = "\n".join(
+                getattr(item, "text", "") for item in result.content if hasattr(item, "text")
+            )
+        elif isinstance(result, str):
+            raw_text = result
+
+        cleaned_text = clean_readable_text(raw_text)
+
+        # Automatic recovery if filter or outline produced empty output or No matching headings
+        if not cleaned_text or "no matching headings" in cleaned_text.lower() or cleaned_text.strip().lower() == "# outline":
+            if "filter" in call_args or call_args.get("outline"):
+                retry_args = dict(call_args)
+                retry_args.pop("filter", None)
+                retry_args["outline"] = False
+                for cand_name in ("agent_browser_read", "browser_read"):
+                    try:
+                        retry_res = await active_client.call_tool(cand_name, retry_args)
+                        if hasattr(retry_res, "content") and retry_res.content:
+                            retry_text = "\n".join(
+                                getattr(item, "text", "") for item in retry_res.content if hasattr(item, "text")
+                            )
+                            cleaned_text = clean_readable_text(retry_text)
+                            break
+                        elif isinstance(retry_res, str) and retry_res.strip():
+                            cleaned_text = clean_readable_text(retry_res)
+                            break
+                    except Exception:
+                        pass
+
+        return {
+            "success": True,
+            "detail": cleaned_text
+        }
 
     if hasattr(result, "content") and result.content:
         texts = []
@@ -379,8 +627,6 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
                 texts.append(item.text)
         if texts:
             combined = "\n".join(texts)
-            if resolved_name == "agent_browser_snapshot":
-                combined = re.sub(r"\[ref=(e\d+)\]", r"[@\1]", combined)
             try:
                 return json.loads(combined)
             except (json.JSONDecodeError, TypeError):

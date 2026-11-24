@@ -584,7 +584,7 @@ class StartupSupervisor:
                 "-ctk", "q8_0",
                 "-ctv", "q8_0",
                 "-b", "2048",
-                "-ub", "1024",
+                "-ub", "512",
                 "--temp", "0.0",
                 "--alias", "dot-engine",
             ] + gpu_args
@@ -592,9 +592,13 @@ class StartupSupervisor:
             self.eng_log_writer = open(ENGINE_LOG, "w", encoding="utf-8", errors="replace", buffering=1)
             open_log_writers.append(self.eng_log_writer)
 
+            engine_env = dict(os.environ)
+            engine_env["GGML_CUDA_DISABLE_GRAPHS"] = "1"
+
             self.eng_proc = subprocess.Popen(
                 engine_cmd,
                 cwd=bin_dir,
+                env=engine_env,
                 stdout=self.eng_log_writer,
                 stderr=subprocess.STDOUT,
                 creationflags=no_window_flag,
@@ -697,6 +701,8 @@ class StartupSupervisor:
             "--port",
             "3000",
         ]
+        if sys.platform == "win32":
+            backend_cmd.extend(["--loop", "asyncio:ProactorEventLoop"])
         backend_env = dict(os.environ)
         backend_env["PYTHONUNBUFFERED"] = "1"
         backend_env["PYTHONIOENCODING"] = "utf-8"

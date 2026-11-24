@@ -8,7 +8,8 @@ import re
 import httpx
 import base64
 from bs4 import BeautifulSoup
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from pathlib import Path
 import socket
 import sys
 import os
@@ -42,6 +43,7 @@ _playwright = None
 _browser = None
 _page = None
 _current_headless = None
+_ACTIVE_SCRATCH_ELEMENTS: List[Dict[str, Any]] = []
 
 TOOL_DEPENDENCIES = {
     "browser_click": ["browser_snapshot"],
@@ -49,6 +51,286 @@ TOOL_DEPENDENCIES = {
 }
 
 from dot.config.settings import is_browser_headless
+from dot.config.paths import LOGS_DIR
+
+
+def _dump_to_scratch(elements: list, scratch_path: Optional[Path] = None) -> str:
+    """Writes extracted webpage elements with coordinates and ref tags to scratch buffer.
+
+    Complies with ASD-STE100 rules.
+    """
+    if scratch_path is None:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        scratch_path = LOGS_DIR / "scratch_page.md"
+    else:
+        scratch_path = Path(scratch_path)
+        scratch_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = ["# Active Webpage Element Scratchpad\n"]
+    current_section = None
+    for el in elements:
+        sec = el.get("section") or "General"
+        if sec != current_section:
+            current_section = sec
+            lines.append(f"\n## Section: {sec}")
+        ref = el.get("ref", "")
+        tag = el.get("tag", "")
+        role = el.get("role", "")
+        text = el.get("text", "")
+        coords = el.get("coords", {})
+        coord_str = f"({coords.get('x', 0)}, {coords.get('y', 0)}, {coords.get('width', 0)}x{coords.get('height', 0)})"
+        ref_prefix = f"[{ref}] " if ref else ""
+        lines.append(f"- {ref_prefix}<{tag} role='{role}'> '{text}' @ {coord_str}")
+
+    content = "\n".join(lines)
+    scratch_path.write_text(content, encoding="utf-8")
+    return str(scratch_path)
+
+
+def _search_scratch_elements(
+    query: str,
+    elements: Optional[list] = None,
+    tag_type: Optional[str] = None,
+    section_hint: Optional[str] = None,
+) -> list:
+    """Filters cached scratch elements by query text, tag type, and section context.
+
+    Complies with ASD-STE100 rules.
+    """
+    global _ACTIVE_SCRATCH_ELEMENTS
+    items = elements if elements is not None else _ACTIVE_SCRATCH_ELEMENTS
+    query_clean = query.strip().lower()
+    matches = []
+
+    for el in items:
+        # Section hint filter
+        if section_hint:
+            sec = (el.get("section") or "").lower()
+            if section_hint.lower() not in sec:
+                continue
+
+        # Tag type filter
+        if tag_type:
+            tgt = tag_type.strip().lower()
+            el_tag = (el.get("tag") or "").lower()
+            el_type = (el.get("type") or "").lower()
+            el_role = (el.get("role") or "").lower()
+            if tgt not in (el_tag, el_type, el_role):
+                continue
+
+        # Query match: prefer word boundary / exact matches first
+        text = (el.get("text") or "").lower()
+        name = (el.get("name") or "").lower()
+        ref = (el.get("ref") or "").lower()
+        pattern = rf"\b{re.escape(query_clean)}\b"
+
+        is_match = (
+            query_clean == text
+            or query_clean == name
+            or query_clean == ref
+            or bool(re.search(pattern, text))
+            or bool(re.search(pattern, name))
+            or (not query_clean and (tag_type or section_hint))
+        )
+        if is_match:
+            matches.append(el)
+
+    return matches
+
+
+def clean_readable_text(text: str, max_chars: int = 4000) -> str:
+    """Extracts main content from raw page text or markdown.
+
+    Complies with ASD-STE100 rules.
+    """
+    if not text:
+        return ""
+
+    # Strip HTML script, style, and tag boilerplate to prevent context pollution.
+    cleaned_markup = re.sub(r"<style[\s\S]*?</style>", "", text, flags=re.IGNORECASE)
+    cleaned_markup = re.sub(r"<script[\s\S]*?</script>", "", cleaned_markup, flags=re.IGNORECASE)
+    cleaned_markup = re.sub(r"<[^>]+>", " ", cleaned_markup)
+    # Strip raw MediaWiki template blocks and leftover attribute fragments.
+    cleaned_markup = re.sub(r"\{\{[\s\S]*?\}\}", "", cleaned_markup)
+    cleaned_markup = re.sub(r'"\}\]\]\}>', "", cleaned_markup)
+
+    lines = cleaned_markup.splitlines()
+
+    # Strip Wikipedia sidebar navigation between article title and encyclopedia banner.
+    wiki_banner_idx = None
+    for idx, line in enumerate(lines):
+        if "from wikipedia, the free encyclopedia" in line.strip().lower():
+            wiki_banner_idx = idx
+            break
+    if wiki_banner_idx is not None:
+        title_line = next((l.strip() for l in lines[:wiki_banner_idx] if re.match(r"^#\s+[^#]", l.strip())), None)
+        lines = ([title_line, ""] if title_line else []) + lines[wiki_banner_idx + 1:]
+
+    target_idx = None
+
+    # Search for headings containing relevant content markers
+    for idx, line in enumerate(lines):
+        line_str = line.strip()
+        if re.match(r"^#{1,3}\s+", line_str):
+            line_lower = line_str.lower()
+            if any(k in line_lower for k in ("quiz", "question", "article", "overview", "lesson", "main")):
+                target_idx = idx
+                break
+
+    # If no marker matched, find the primary article title heading, skipping navigation headers
+    if target_idx is None:
+        for idx, line in enumerate(lines):
+            line_str = line.strip()
+            if re.match(r"^#\s+[^#]", line_str):
+                line_lower = line_str.lower()
+                if not any(k in line_lower for k in ("contents", "navigation", "menu", "sidebar")):
+                    target_idx = idx
+                    break
+
+    if target_idx is not None:
+        lines = lines[target_idx:]
+
+    cleaned_lines = []
+    empty_count = 0
+    for line in lines:
+        stripped = line.rstrip()
+        if not stripped:
+            empty_count += 1
+            if empty_count <= 2:
+                cleaned_lines.append("")
+        else:
+            empty_count = 0
+            cleaned_lines.append(stripped)
+
+    result = "\n".join(cleaned_lines).strip()
+    if len(result) > max_chars:
+        result = result[:max_chars].rstrip() + "\n...[truncated]"
+    return result
+
+
+def _build_compact_manifest(
+    title: str,
+    url: str,
+    elements: list,
+    max_elements: int = 30,
+) -> str:
+    """Builds a token-efficient summary of the page and primary interactive elements.
+
+    Complies with ASD-STE100 rules.
+    """
+    lines = [f"Page: {title.strip()} ({url.strip()})"]
+
+    # Prioritize form controls, buttons, radios, checkboxes, and headings
+    actionable_roles = {"button", "radio", "checkbox", "textbox", "searchbox", "combobox", "submit"}
+    actionable = [el for el in elements if el.get("role") in actionable_roles or el.get("tag") in ("button", "input", "select", "textarea")]
+    headings = [el for el in elements if el.get("role") in ("heading",) or el.get("tag") in ("h1", "h2", "h3", "h4", "legend")]
+    content_text = [el for el in elements if el.get("role") in ("paragraph", "text", "statictext") and len(el.get("text", "")) > 10]
+    others = [el for el in elements if el not in actionable and el not in headings and el not in content_text]
+
+    selected = []
+    seen = set()
+    # Prioritize headings, substantive text, actionable controls, then others
+    for el in (headings[:8] + content_text[:6] + actionable + others):
+        identifier = el.get("ref") or el.get("text")
+        if identifier and identifier not in seen:
+            seen.add(identifier)
+            selected.append(el)
+        if len(selected) >= max_elements:
+            break
+
+    current_section = None
+    for el in selected:
+        sec = el.get("section") or "General"
+        if sec != current_section:
+            current_section = sec
+            lines.append(f"\n[{sec}]")
+
+        ref = el.get("ref", "")
+        role = el.get("role") or el.get("tag") or "element"
+        text = el.get("text") or el.get("name") or ""
+        ref_prefix = f"[{ref}] " if ref else ""
+        lines.append(f"- {ref_prefix}{role} '{text}'")
+
+    if len(elements) > len(selected):
+        lines.append(f"\n... and {len(elements) - len(selected)} more controls cached in logs/scratch_page.md. Use 'probe_page' to search.")
+
+    return "\n".join(lines).strip()
+
+
+async def _extract_elements_with_coordinates(page) -> list:
+    """Extracts interactive controls and bounding box coordinates from active page."""
+    js_code = """
+    () => {
+        let targets = Array.from(document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="radio"], [role="checkbox"], [role="link"]'));
+
+        function getSection(el) {
+            let parent = el.closest('fieldset, form, section, article, div[class*="question"], div[class*="card"]');
+            if (parent) {
+                let h = parent.querySelector('h1, h2, h3, legend, [role="heading"]');
+                if (h && h.innerText) return h.innerText.trim().slice(0, 80);
+            }
+            let prev = el;
+            while (prev) {
+                while (prev.previousElementSibling) {
+                    prev = prev.previousElementSibling;
+                    if (['H1', 'H2', 'H3', 'LEGEND'].includes(prev.tagName)) {
+                        return prev.innerText.trim().slice(0, 80);
+                    }
+                }
+                prev = prev.parentElement;
+            }
+            return "General";
+        }
+
+        let results = [];
+        let idx = 1;
+        for (let el of targets) {
+            let rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0 || window.getComputedStyle(el).display === 'none') {
+                continue;
+            }
+            let tag = el.tagName.toLowerCase();
+            let role = el.getAttribute('role') || (tag === 'input' ? (el.type || 'text') : tag);
+            let text = el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || el.title || '';
+            text = text.trim();
+
+            if ((tag === 'input' && (el.type === 'radio' || el.type === 'checkbox')) && !text) {
+                if (el.labels && el.labels[0]) {
+                    text = el.labels[0].innerText.trim();
+                } else if (el.nextElementSibling && el.nextElementSibling.tagName === 'LABEL') {
+                    text = el.nextElementSibling.innerText.trim();
+                } else if (el.parentElement) {
+                    text = el.parentElement.innerText.trim();
+                }
+            }
+
+            let name = el.name || el.id || null;
+            let type = el.type || (tag === 'button' ? 'button' : tag);
+
+            results.push({
+                ref: `@e${idx++}`,
+                tag: tag,
+                role: role,
+                type: type,
+                text: text.slice(0, 100),
+                name: name,
+                section: getSection(el),
+                coords: {
+                    x: Math.round(rect.x),
+                    y: Math.round(rect.y),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height)
+                }
+            });
+            if (results.length >= 100) break;
+        }
+        return results;
+    }
+    """
+    try:
+        return await page.evaluate(js_code)
+    except Exception:
+        return []
 
 
 async def _ensure_browser():
@@ -156,23 +438,75 @@ async def _prune_snapshot(node, max_depth=6, depth=0):
 
 
 @mcp.tool
-async def navigate(url: str) -> dict:
+async def navigate(url: str, auto_snapshot: bool = True) -> dict:
     """Navigate the active browser to a specified website or web address.
 
     Use this to open URLs, visit domains, load web pages, or begin web research tasks.
+    When auto_snapshot is enabled, automatically captures interactive controls and writes them to scratch.md.
 
     Args:
         url (str): The complete web address to navigate to.
+        auto_snapshot (bool): When True, automatically inspects elements and populates scratch.md.
 
     Returns:
         dict: A status dictionary containing success, detail, and error keys.
     """
+    global _ACTIVE_SCRATCH_ELEMENTS
     try:
         page = await _ensure_browser()
         await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-        return {"success": True, "detail": f"navigated to {url}", "error": None}
+
+        if not auto_snapshot:
+            return {"success": True, "detail": f"navigated to {url}", "error": None}
+
+        # Auto-extract elements, populate scratch buffer, and return compact manifest
+        elements = await _extract_elements_with_coordinates(page)
+        _ACTIVE_SCRATCH_ELEMENTS = elements
+        scratch_path = _dump_to_scratch(elements)
+        title = await page.title() or url
+        manifest = _build_compact_manifest(title=title, url=url, elements=elements)
+
+        return {
+            "success": True,
+            "detail": f"Navigated to {url}.\n\n[Active Page Manifest]:\n{manifest}\n\n[Full controls cached in {scratch_path}]",
+            "scratch_file": scratch_path,
+            "element_count": len(elements),
+            "error": None,
+        }
     except Exception as e:
         return {"success": False, "detail": f"navigation to {url} failed", "error": str(e)}
+
+
+@mcp.tool
+async def probe_page(
+    query: str = "",
+    tag_type: Optional[str] = None,
+    section_hint: Optional[str] = None,
+) -> dict:
+    """Probe cached elements in scratch.md with tag type and section disambiguation.
+
+    Use this to locate specific buttons, inputs, or choices without extra browser roundtrips.
+
+    Args:
+        query (str): Keyword to match against element text, name, or ref ID.
+        tag_type (str, optional): Element kind to filter: 'button', 'radio', 'checkbox', 'input', 'link'.
+        section_hint (str, optional): Heading or section container text to disambiguate identical labels.
+
+    Returns:
+        dict: A status dictionary containing matching elements with ref tags and coordinates.
+    """
+    matches = _search_scratch_elements(
+        query=query,
+        elements=_ACTIVE_SCRATCH_ELEMENTS,
+        tag_type=tag_type,
+        section_hint=section_hint,
+    )
+    return {
+        "success": True,
+        "count": len(matches),
+        "matches": matches[:10],
+        "error": None,
+    }
 
 
 @mcp.tool
@@ -239,129 +573,130 @@ def _decode_bing_url(url: str) -> str:
     return url
 
 
+def _decode_ddg_url(url: str) -> str:
+    """Decodes DuckDuckGo redirect links to obtain direct target URLs."""
+    if not url:
+        return ""
+    if "uddg=" in url:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+            if "uddg" in params and params["uddg"]:
+                return params["uddg"][0]
+        except Exception:
+            pass
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url
+
+
 @mcp.tool
 async def search_web(query: str, max_results: int = 4) -> dict:
     """Searches the web for links and information.
 
+    Executes within the persistent browser session.
     Returns organic search results with titles, URLs, and snippets.
+    Complies with ASD-STE100 rules.
     """
+    global _ACTIVE_SCRATCH_ELEMENTS
     clean_query = query.strip()
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-    }
+    if not clean_query:
+        return {"success": False, "query": clean_query, "results": [], "error": "Query cannot be empty"}
 
-    # 1. Fast organic search via DuckDuckGo Lite HTTP request.
-    try:
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-            resp = await client.post(
-                "https://lite.duckduckgo.com/lite/",
-                data={"q": clean_query},
-                headers=headers
-            )
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
-                items = []
-                for tr in soup.select("table tr"):
-                    link = tr.select_one("a.result-link")
-                    snippet_td = tr.select_one("td.result-snippet")
-                    if link and link.get_text(strip=True):
-                        raw_href = link.get("href", "")
-                        title_text = link.get_text(strip=True)
-                        items.append({"title": title_text, "url": raw_href, "snippet": ""})
-                    elif snippet_td and items:
-                        snippet_text = snippet_td.get_text(strip=True)[:250]
-                        items[-1]["snippet"] = snippet_text
-
-                if items:
-                    return {
-                        "success": True,
-                        "query": clean_query,
-                        "results": items[:max_results],
-                        "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
-                        "error": None
-                    }
-    except Exception as e:
-        print(f"[Warning] DuckDuckGo Lite search failed: {e}", file=sys.stderr)
-
-    # 2. Secondary fallback via direct Bing HTTP request.
-    try:
-        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
-            resp = await client.get(
-                f"https://www.bing.com/search?q={urllib.parse.quote_plus(clean_query)}",
-                headers=headers
-            )
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
-                items = []
-                for li in soup.select("li.b_algo"):
-                    title_a = li.select_one("h2 a")
-                    snippet_p = li.select_one("div.b_caption p, p")
-                    if title_a and title_a.get_text(strip=True):
-                        raw_href = title_a.get("href", "")
-                        clean_url = _decode_bing_url(raw_href)
-                        title_text = title_a.get_text(strip=True)
-                        snippet_text = snippet_p.get_text(strip=True)[:250] if snippet_p else ""
-                        items.append({"title": title_text, "url": clean_url, "snippet": snippet_text})
-                if items:
-                    return {
-                        "success": True,
-                        "query": clean_query,
-                        "results": items[:max_results],
-                        "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
-                        "error": None
-                    }
-    except Exception as e:
-        print(f"[Warning] Direct Bing search failed: {e}", file=sys.stderr)
-
-    # 3. Tertiary fallback via Wikipedia OpenSearch API.
-    try:
-        wiki_headers = {"User-Agent": "DotAssistant/1.0 (Desktop Agent; contact: dev@dot.ai)"}
-        async with httpx.AsyncClient(timeout=4.0, follow_redirects=True, headers=wiki_headers) as client:
-            wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote_plus(clean_query)}&limit={max_results}&format=json"
-            wiki_resp = await client.get(wiki_url)
-            if wiki_resp.status_code == 200:
-                wiki_data = wiki_resp.json()
-                if len(wiki_data) >= 4 and wiki_data[1]:
-                    wiki_items = []
-                    for w_title, w_desc, w_link in zip(wiki_data[1], wiki_data[2], wiki_data[3]):
-                        wiki_items.append({"title": w_title, "url": w_link, "snippet": w_desc or w_title})
-                    if wiki_items:
-                        return {
-                            "success": True,
-                            "query": clean_query,
-                            "results": wiki_items[:max_results],
-                            "instruction": "Search completed via Wikipedia. Pick the best URL or use snippets to answer.",
-                            "error": None
-                        }
-    except Exception as e:
-        print(f"[Warning] Wikipedia fallback search failed: {e}", file=sys.stderr)
-
-    # 4. Quaternary fallback via Playwright.
     try:
         page = await _ensure_browser()
-        q = urllib.parse.quote_plus(clean_query)
-        await page.goto(f"https://www.bing.com/search?q={q}", wait_until="domcontentloaded", timeout=12000)
+    except Exception as err:
+        return {"success": False, "query": clean_query, "results": [], "error": f"Browser unavailable: {err}"}
+
+    q = urllib.parse.quote_plus(clean_query)
+    results = []
+
+    # 1. Primary search engine: DuckDuckGo HTML
+    try:
+        ddg_url = f"https://html.duckduckgo.com/html/?q={q}"
+        await page.goto(ddg_url, wait_until="domcontentloaded", timeout=15000)
         await page.wait_for_timeout(1000)
 
-        results = await page.evaluate('''() => {
+        ddg_items = await page.evaluate('''() => {
             const items = [];
-            for (const li of document.querySelectorAll('li.b_algo')) {
-                const a = li.querySelector('h2 a');
-                const p = li.querySelector('div.b_caption p, p');
-                if (a && a.innerText.trim()) {
-                    items.push({
-                        title: a.innerText.trim(),
-                        url: a.href,
-                        snippet: p ? p.innerText.trim().slice(0, 250) : ''
-                    });
+            const rows = document.querySelectorAll('.result');
+            for (const row of rows) {
+                const link = row.querySelector('.result__title a, a.result__url, a.result__a');
+                const snippet = row.querySelector('.result__snippet');
+                if (link) {
+                    const title = (link.innerText || '').trim();
+                    const href = link.href || link.getAttribute('href') || '';
+                    if (title && href) {
+                        items.push({
+                            title: title,
+                            url: href,
+                            snippet: (snippet ? snippet.innerText : '').trim().slice(0, 300)
+                        });
+                    }
                 }
             }
             return items;
         }''')
 
-        for item in results:
-            item["url"] = _decode_bing_url(item.get("url", ""))
+        for item in ddg_items:
+            direct_url = _decode_ddg_url(item.get("url", ""))
+            if direct_url and direct_url.startswith("http"):
+                results.append({
+                    "title": item.get("title", "").strip(),
+                    "url": direct_url,
+                    "snippet": item.get("snippet", "").strip()
+                })
+    except Exception as e:
+        print(f"[Warning] In-browser DuckDuckGo search failed: {e}", file=sys.stderr)
 
+    # 2. Secondary fallback engine: Yahoo Search
+    if not results:
+        try:
+            yahoo_url = f"https://search.yahoo.com/search?p={q}"
+            await page.goto(yahoo_url, wait_until="domcontentloaded", timeout=15000)
+            await page.wait_for_timeout(1000)
+
+            yahoo_items = await page.evaluate('''() => {
+                const items = [];
+                const rows = document.querySelectorAll('ol.searchCenterMiddle li, div#web ol li');
+                for (const row of rows) {
+                    const link = row.querySelector('h3 a, h2 a, a.d-ib');
+                    const snippet = row.querySelector('div.compText, p');
+                    if (link && link.href && !link.href.includes('search.yahoo.com')) {
+                        const rawTitle = (link.innerText || '').trim();
+                        if (rawTitle) {
+                            items.push({
+                                title: rawTitle,
+                                url: link.href,
+                                snippet: (snippet ? snippet.innerText : '').trim().slice(0, 300)
+                            });
+                        }
+                    }
+                }
+                return items;
+            }''')
+
+            for item in yahoo_items:
+                raw_title = item.get("title", "").strip()
+                title_lines = [line.strip() for line in raw_title.splitlines() if line.strip()]
+                clean_title = title_lines[-1] if title_lines else raw_title
+                results.append({
+                    "title": clean_title,
+                    "url": item.get("url", ""),
+                    "snippet": item.get("snippet", "").strip()
+                })
+        except Exception as e:
+            print(f"[Warning] In-browser Yahoo search failed: {e}", file=sys.stderr)
+
+    # Auto-extract active controls on search results page to keep scratchpad updated
+    try:
+        elements = await _extract_elements_with_coordinates(page)
+        _ACTIVE_SCRATCH_ELEMENTS = elements
+        _dump_to_scratch(elements)
+    except Exception:
+        pass
+
+    if results:
         return {
             "success": True,
             "query": clean_query,
@@ -369,8 +704,14 @@ async def search_web(query: str, max_results: int = 4) -> dict:
             "instruction": "Search completed. Pick the best URL from 'results' and call 'browser_navigate' to load it, or use snippets to answer.",
             "error": None
         }
-    except Exception as e:
-        return {"success": False, "query": clean_query, "results": [], "error": str(e)}
+
+    return {
+        "success": False,
+        "query": clean_query,
+        "results": [],
+        "instruction": "No organic search results found. Try alternative keywords or navigate directly.",
+        "error": "No search results found"
+    }
 
 
 @mcp.tool
@@ -478,30 +819,25 @@ async def snapshot() -> dict:
     Call this before clicking or filling to locate exact element identifiers.
 
     Returns:
-        dict: A status dictionary where detail contains up to 40 interactive elements.
+        dict: A status dictionary containing a compact manifest of interactive elements.
     """
+    global _ACTIVE_SCRATCH_ELEMENTS
     try:
         page = await _ensure_browser()
-        
-        # Inject JavaScript to grab interactive and structural elements
-        js_code = """
-        () => {
-            let elements = Array.from(document.querySelectorAll('a, h1, h2, h3, button, input'));
-            return elements.map(el => ({
-                tag: el.tagName.toLowerCase(),
-                text: el.innerText.trim(),
-                href: el.href || null,
-                name: el.name || el.id || el.getAttribute('aria-label') || null
-            })).filter(el => el.text !== ''); // Remove empty elements
+        elements = await _extract_elements_with_coordinates(page)
+        _ACTIVE_SCRATCH_ELEMENTS = elements
+        scratch_path = _dump_to_scratch(elements)
+        title = await page.title() or "Current Webpage"
+        url = page.url
+        manifest = _build_compact_manifest(title=title, url=url, elements=elements)
+
+        return {
+            "success": True,
+            "detail": f"[Active Page Manifest]:\n{manifest}\n\n[Full controls cached in {scratch_path}]",
+            "scratch_file": scratch_path,
+            "element_count": len(elements),
+            "error": None,
         }
-        """
-        
-        elements = await page.evaluate(js_code)
-        
-        # Limit to the first 40 elements to prevent blowing up the LLM's context window
-        pruned_elements = elements[:40] 
-        
-        return {"success": True, "detail": pruned_elements, "error": None}
     except Exception as e:
         return {"success": False, "detail": None, "error": str(e)}
 
@@ -532,11 +868,26 @@ async def click(
     """
     try:
         page = await _ensure_browser()
+        target_text = name or text or description
+
+        # Fast coordinate click for cached @eN references
+        ref_match = re.search(r"@e\d+", selector or target_text or "")
+        if ref_match:
+            ref_id = ref_match.group(0)
+            cached = next((el for el in _ACTIVE_SCRATCH_ELEMENTS if el.get("ref") == ref_id), None)
+            if cached and cached.get("coords"):
+                coords = cached["coords"]
+                cx = coords.get("x", 0) + coords.get("width", 0) / 2
+                cy = coords.get("y", 0) + coords.get("height", 0) / 2
+                await page.mouse.click(cx, cy)
+                return {
+                    "success": True,
+                    "detail": f"Clicked {ref_id} ('{cached.get('text', '')}') at coordinates ({int(cx)}, {int(cy)}).",
+                    "error": None,
+                }
+
         locator = None
         target_desc = ""
-
-        # Normalize text and name parameters
-        target_text = name or text or description
 
         # Handle selector if provided
         if selector:
@@ -583,6 +934,9 @@ async def click(
 
         if not locator:
             if selector:
+                clean_selector = selector.replace(":contains(", ":has-text(")
+                locator = page.locator(clean_selector)
+                target_desc = f"selector '{clean_selector}'"
                 clean_selector = selector.replace(":contains(", ":has-text(")
                 locator = page.locator(clean_selector)
                 target_desc = f"selector '{clean_selector}'"
@@ -657,6 +1011,25 @@ async def fill(
         page = await _ensure_browser()
         locator = None
         target_desc = ""
+
+        # Fast coordinate click and type for cached @eN references
+        ref_match = re.search(r"@e\d+", selector or name or "")
+        if ref_match:
+            ref_id = ref_match.group(0)
+            cached = next((el for el in _ACTIVE_SCRATCH_ELEMENTS if el.get("ref") == ref_id), None)
+            if cached and cached.get("coords"):
+                coords = cached["coords"]
+                cx = coords.get("x", 0) + coords.get("width", 0) / 2
+                cy = coords.get("y", 0) + coords.get("height", 0) / 2
+                await page.mouse.click(cx, cy)
+                await page.keyboard.press("Control+a")
+                await page.keyboard.press("Backspace")
+                await page.keyboard.type(text)
+                return {
+                    "success": True,
+                    "detail": f"Filled {ref_id} ('{cached.get('text', '')}') with '{text}'.",
+                    "error": None,
+                }
 
         if selector:
             clean_selector = selector.replace(":contains(", ":has-text(")
@@ -739,6 +1112,25 @@ async def extract_text(
                 pass
 
         extracted = None
+        # Fast coordinate click and type for cached @eN references
+        ref_match = re.search(r"@e\d+", selector or name or "")
+        if ref_match:
+            ref_id = ref_match.group(0)
+            cached = next((el for el in _ACTIVE_SCRATCH_ELEMENTS if el.get("ref") == ref_id), None)
+            if cached and cached.get("coords"):
+                coords = cached["coords"]
+                cx = coords.get("x", 0) + coords.get("width", 0) / 2
+                cy = coords.get("y", 0) + coords.get("height", 0) / 2
+                await page.mouse.click(cx, cy)
+                await page.keyboard.press("Control+a")
+                await page.keyboard.press("Backspace")
+                await page.keyboard.type(text)
+                return {
+                    "success": True,
+                    "detail": f"Filled {ref_id} ('{cached.get('text', '')}') with '{text}'.",
+                    "error": None,
+                }
+
         if selector:
             clean_selector = selector.replace(":contains(", ":has-text(")
             try:

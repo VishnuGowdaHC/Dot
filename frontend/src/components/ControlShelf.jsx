@@ -11,6 +11,7 @@ export default function ControlShelf({
   activeModel = "Gemma 4B",
   isCloudModel = false,
   onOpenSettings,
+  hopTelemetry,
 }) {
   const totalTokens = tokenUsage?.total_tokens ?? 924;
   const contextLimit = tokenUsage?.context_limit ?? 8192;
@@ -32,6 +33,14 @@ export default function ControlShelf({
             </span>
           )}
         </div>
+        {hopTelemetry?.hop && (
+          <span
+            className="text-[8.5px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono ml-auto shrink-0"
+            title={`Hop ${hopTelemetry.hop}: ${hopTelemetry.duration_ms}ms (${hopTelemetry.tokens_per_sec} t/s)`}
+          >
+            H{hopTelemetry.hop} • {hopTelemetry.tokens_per_sec} t/s
+          </span>
+        )}
       </div>
 
       {/* Active Model Pill */}

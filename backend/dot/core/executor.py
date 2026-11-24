@@ -176,6 +176,15 @@ async def execute_tool_call(
 
     if is_duplicate:
         loop_strikes += 1
+        if loop_strikes >= 2:
+            print(f"[Loop Breaker] Tripped circuit breaker: '{step_obj.tool_name}' called repeatedly.")
+            append_or_update_error(
+                history_parts,
+                f"[Circuit Breaker: Tool '{step_obj.tool_name}' was called with identical arguments multiple times. "
+                "Synthesize your final response immediately using action='Final'.]"
+            )
+            return ExecutionResult(tripped_circuit_breaker=True), last_tool_sig, loop_strikes
+
         has_obs = any(h.get("role") == "observation" for h in history_parts)
         hint = (
             f"[Notice: You are calling '{step_obj.tool_name}' with identical parameters on the same state. Call 'browser_navigate' to read a different page or proceed with your next action.]"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const PROVIDER_PRESETS = [
   {
@@ -72,9 +72,24 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
   const [mcpSyncing, setMcpSyncing] = useState(false);
   const [mcpSyncStatus, setMcpSyncStatus] = useState(null);
 
-  const [engineStatus, setEngineStatus] = useState({ running: false, port: 11434, command: "" });
+  const [engineStatus, setEngineStatus] = useState({
+    state: "stopped",
+    running: false,
+    healthy: false,
+    port: 11434,
+    tier: "4B",
+    model: "",
+    context_size: 8192,
+    detail: "Local inference engine is stopped.",
+    last_log: "",
+    error: null,
+    command: "",
+  });
   const [engineLoading, setEngineLoading] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
+  const [showEngineLogs, setShowEngineLogs] = useState(false);
+  const [engineLogs, setEngineLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -152,29 +167,123 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
     }
   };
 
-  const fetchEngineStatus = async () => {
+  const fetchEngineStatus = useCallback(async () => {
     try {
       const res = await fetch("http://localhost:3000/api/engine/status");
       if (res.ok) {
         const data = await res.json();
         setEngineStatus(data);
+        return data;
       }
     } catch (e) {
       console.warn("Engine status check warning:", e);
     }
-  };
+    return null;
+  }, []);
+
+  // Adaptive polling loop while settings modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let timer = null;
+    let isMounted = true;
+
+    const poll = async () => {
+      const data = await fetchEngineStatus();
+      if (!isMounted) return;
+
+      const isBusy = data?.state === "starting" || data?.state === "loading";
+      const delay = isBusy ? 800 : 4000;
+      timer = setTimeout(poll, delay);
+    };
+
+    poll();
+
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, fetchEngineStatus]);
 
   const handleToggleEngine = async () => {
     setEngineLoading(true);
     try {
-      const endpoint = engineStatus.running ? "/api/engine/stop" : "/api/engine/start";
-      await fetch(`http://localhost:3000${endpoint}`, { method: "POST" });
-      setTimeout(fetchEngineStatus, 1000);
+      const isRunning =
+        engineStatus.running ||
+        engineStatus.state === "ready" ||
+        engineStatus.state === "loading";
+      const endpoint = isRunning ? "/api/engine/stop" : "/api/engine/start";
+      const res = await fetch(`http://localhost:3000${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier: selectedTier }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "error") {
+          setEngineStatus((prev) => ({
+            ...prev,
+            state: "error",
+            running: false,
+            healthy: false,
+            detail: data.message || "Failed to start local engine.",
+            error: data.message || "Engine startup error.",
+          }));
+          return;
+        }
+
+        if (!isRunning) {
+          setEngineStatus((prev) => ({
+            ...prev,
+            state: "starting",
+            running: true,
+            healthy: false,
+            detail: data.message || "Starting engine process...",
+            error: null,
+          }));
+        } else {
+          setEngineStatus((prev) => ({
+            ...prev,
+            state: "stopped",
+            running: false,
+            healthy: false,
+            detail: data.message || "Engine stopped.",
+            error: null,
+          }));
+        }
+      }
+      setTimeout(fetchEngineStatus, 500);
     } catch (err) {
       console.warn("Engine toggle warning:", err);
+      setEngineStatus((prev) => ({
+        ...prev,
+        state: "error",
+        running: false,
+        healthy: false,
+        detail: "Connection to backend server failed.",
+        error: String(err),
+      }));
     } finally {
       setEngineLoading(false);
     }
+  };
+
+  const toggleEngineLogs = async () => {
+    if (!showEngineLogs) {
+      setLoadingLogs(true);
+      try {
+        const res = await fetch("http://localhost:3000/api/engine/logs?lines=30");
+        if (res.ok) {
+          const data = await res.json();
+          setEngineLogs(data.lines || []);
+        }
+      } catch (err) {
+        console.warn("Failed to load engine logs:", err);
+      } finally {
+        setLoadingLogs(false);
+      }
+    }
+    setShowEngineLogs((prev) => !prev);
   };
 
   const handleCopyCommand = () => {
@@ -407,35 +516,143 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
                     </select>
                   </div>
 
-                  {/* Engine Controller & Command Preview */}
-                  <div className="p-2.5 bg-[#101013] border border-zinc-800 rounded-lg space-y-2">
+                  {/* Engine Controller & Detailed Status */}
+                  <div className="p-3 bg-[#101013] border border-zinc-800 rounded-xl space-y-2.5">
+                    {/* Header Row: Status Indicator & Action Button */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`w-2 h-2 rounded-full ${
-                            engineStatus.running ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            engineStatus.state === "ready"
+                              ? "bg-emerald-400 animate-pulse"
+                              : engineStatus.state === "loading"
+                              ? "bg-amber-400 animate-ping"
+                              : engineStatus.state === "starting"
+                              ? "bg-sky-400 animate-pulse"
+                              : engineStatus.state === "error"
+                              ? "bg-rose-500"
+                              : "bg-zinc-600"
                           }`}
                         />
-                        <span className="text-[11px] font-medium text-zinc-200">
-                          {engineStatus.running ? `Running (: ${engineStatus.port || 11434})` : "Stopped"}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11.5px] font-semibold text-zinc-100">
+                            {engineStatus.state === "ready"
+                              ? "Working (Ready)"
+                              : engineStatus.state === "loading"
+                              ? "Loading Weights..."
+                              : engineStatus.state === "starting"
+                              ? "Starting Engine..."
+                              : engineStatus.state === "error"
+                              ? "Start Failed"
+                              : "Stopped"}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-semibold ${
+                              engineStatus.state === "ready"
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                : engineStatus.state === "loading"
+                                ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                : engineStatus.state === "starting"
+                                ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
+                                : engineStatus.state === "error"
+                                ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                                : "bg-zinc-800 text-zinc-400 border border-zinc-700/60"
+                            }`}
+                          >
+                            {engineStatus.state || "stopped"}
+                          </span>
+                        </div>
                       </div>
+
                       <button
                         type="button"
                         onClick={handleToggleEngine}
-                        disabled={engineLoading}
-                        className={`px-2.5 py-1 rounded-md text-[10.5px] font-medium cursor-pointer transition-colors ${
-                          engineStatus.running
-                            ? "bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/30"
-                            : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30"
+                        disabled={engineLoading || engineStatus.state === "starting" || engineStatus.state === "loading"}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                          engineStatus.state === "ready"
+                            ? "bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40 active:scale-95"
+                            : engineStatus.state === "starting" || engineStatus.state === "loading"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 opacity-80 cursor-wait"
+                            : engineStatus.state === "error"
+                            ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 active:scale-95"
+                            : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 active:scale-95"
                         }`}
                       >
-                        {engineLoading ? "Working..." : engineStatus.running ? "Stop" : "Start"}
+                        {(engineLoading || engineStatus.state === "starting" || engineStatus.state === "loading") && (
+                          <svg className="w-3 h-3 animate-spin text-amber-300" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                          </svg>
+                        )}
+                        <span>
+                          {engineStatus.state === "starting"
+                            ? "Starting..."
+                            : engineStatus.state === "loading"
+                            ? "Loading..."
+                            : engineStatus.state === "ready"
+                            ? "Stop Engine"
+                            : engineStatus.state === "error"
+                            ? "Retry Start"
+                            : "Start Local Model"}
+                        </span>
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-[#09090b] rounded border border-zinc-800/80 px-2.5 py-1.5">
-                      <span className="font-mono text-[9.5px] text-zinc-400 truncate flex-1 select-all">
+                    {/* Progress Bar during Starting / Loading */}
+                    {(engineStatus.state === "starting" || engineStatus.state === "loading") && (
+                      <div className="w-full h-1.5 bg-zinc-800/90 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 animate-pulse rounded-full w-full" />
+                      </div>
+                    )}
+
+                    {/* Status Detail Callout */}
+                    <div className="text-[10.5px] text-zinc-300 bg-[#09090b] rounded-lg border border-zinc-800/80 p-2 space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="leading-relaxed">
+                          {engineStatus.detail || "Local inference engine is stopped."}
+                        </span>
+                        {engineStatus.healthy && (
+                          <span className="shrink-0 text-[9.5px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            Health: OK
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Ready Telemetry Pills */}
+                      {engineStatus.state === "ready" && (
+                        <div className="flex flex-wrap gap-1.5 pt-1 border-t border-zinc-800/60 font-mono text-[9px] text-zinc-400">
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50">
+                            Port: {engineStatus.port || 11434}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50">
+                            Context: {(engineStatus.context_size || 8192).toLocaleString()}
+                          </span>
+                          {engineStatus.model && (
+                            <span className="px-1.5 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50 truncate max-w-[200px]" title={engineStatus.model}>
+                              {engineStatus.model}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Last Log Line Preview */}
+                      {engineStatus.last_log && (engineStatus.state === "starting" || engineStatus.state === "loading") && (
+                        <div className="text-[9.5px] font-mono text-zinc-400 pt-0.5 truncate">
+                          Log: <span className="text-zinc-300">{engineStatus.last_log}</span>
+                        </div>
+                      )}
+
+                      {/* Error Diagnostic Message */}
+                      {engineStatus.error && engineStatus.state === "error" && (
+                        <div className="text-[10px] font-mono text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded p-1.5 mt-1 leading-snug">
+                          {engineStatus.error}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Command Preview and Log Toggle */}
+                    <div className="flex items-center gap-2 bg-[#09090b] rounded-lg border border-zinc-800/80 px-2.5 py-1.5">
+                      <span className="font-mono text-[9.5px] text-zinc-400 truncate flex-1 select-all" title={engineStatus.command}>
                         {engineStatus.command || `bin\\llama-server.exe -m gemma-4-E${selectedTier}_q4_0-it.gguf --port 11434`}
                       </span>
                       <button
@@ -445,7 +662,41 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
                       >
                         {copiedCmd ? "Copied" : "Copy"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={toggleEngineLogs}
+                        className="text-[10px] text-zinc-400 hover:text-zinc-200 font-medium shrink-0 cursor-pointer border-l border-zinc-800 pl-2"
+                      >
+                        {showEngineLogs ? "Hide Log" : "View Log"}
+                      </button>
                     </div>
+
+                    {/* Collapsible Log Viewer Drawer */}
+                    {showEngineLogs && (
+                      <div className="p-2 bg-[#060608] border border-zinc-800 rounded-lg font-mono text-[9.5px] text-zinc-300 max-h-36 overflow-y-auto space-y-0.5 select-text">
+                        <div className="flex items-center justify-between text-zinc-500 pb-1 border-b border-zinc-800/80 text-[8.5px]">
+                          <span>Engine Logs (logs/engine.log)</span>
+                          <button
+                            type="button"
+                            onClick={toggleEngineLogs}
+                            className="hover:text-zinc-300 text-[9px] cursor-pointer"
+                          >
+                            Refresh
+                          </button>
+                        </div>
+                        {loadingLogs ? (
+                          <div className="text-zinc-500 py-1">Loading engine logs...</div>
+                        ) : engineLogs.length > 0 ? (
+                          engineLogs.map((logLine, idx) => (
+                            <div key={idx} className="whitespace-pre-wrap leading-tight text-zinc-400 hover:text-zinc-200">
+                              {logLine}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-zinc-500 py-1">No log output recorded yet.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between text-[10.5px] font-mono text-zinc-400 pt-0.5">

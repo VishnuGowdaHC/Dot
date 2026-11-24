@@ -38,14 +38,74 @@ function CodeBlock({ language, code }) {
  * Displays chat message list or starter chips.
  * Complies with ASD-STE100 rules.
  */
-export default function ChatContainer({ messages, onSelectPrompt }) {
+export default function ChatContainer({
+  messages,
+  onSelectPrompt,
+  clarification,
+  onClarifyAnswer,
+}) {
   const containerRef = useRef(null);
 
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, clarification]);
+
+  const getChoiceLabel = (choice) => {
+    if (typeof choice === 'string') return choice;
+    if (choice && typeof choice === 'object') {
+      return choice.text || choice.label || choice.title || choice.value || choice.name || JSON.stringify(choice);
+    }
+    return String(choice ?? '');
+  };
+
+  const renderClarificationCard = () => {
+    if (!clarification) return null;
+    return (
+      <div className="w-full my-2 p-3.5 rounded-2xl bg-[#202024] border border-[#FF5A5F]/40 shadow-lg text-zinc-100 flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-mono uppercase tracking-wider font-semibold text-[#FF5A5F] flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF5A5F] animate-ping" />
+            Clarification Needed
+          </span>
+          <span className="text-[9.5px] font-mono text-zinc-400">Loop paused</span>
+        </div>
+        <p className="text-[12.5px] font-sans font-medium text-white leading-relaxed">
+          {clarification.question || "Please clarify or select an option to continue."}
+        </p>
+        {Array.isArray(clarification.choices) && clarification.choices.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {clarification.choices.map((choice, idx) => {
+              const label = getChoiceLabel(choice);
+              if (!label) return null;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onClarifyAnswer && onClarifyAnswer(label)}
+                  className="px-3 py-1.5 rounded-xl bg-[#2a2a30] hover:bg-[#FF5A5F] hover:text-white border border-white/10 hover:border-[#FF5A5F] text-[11.5px] font-sans text-zinc-200 transition-all cursor-pointer active:scale-95 shadow-sm"
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px] text-zinc-400">
+            <span>Type reply below and press Enter to continue.</span>
+            <button
+              type="button"
+              onClick={() => onClarifyAnswer && onClarifyAnswer("Proceed autonomously with best guess")}
+              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-[#FF5A5F] hover:text-white text-[10.5px] text-zinc-300 transition-colors cursor-pointer"
+            >
+              Resume
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (messages.length === 0) {
     return (
@@ -53,6 +113,7 @@ export default function ChatContainer({ messages, onSelectPrompt }) {
         ref={containerRef}
         className="flex-1 overflow-y-auto chat-scroll px-4 pt-14 pb-2 flex flex-col gap-2.5 z-10 font-sans"
       >
+        {renderClarificationCard()}
         <div className="flex flex-col items-center justify-center py-3 space-y-2 font-sans select-none">
           <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold font-mono mb-0.5">
             Quick Actions
@@ -160,6 +221,7 @@ export default function ChatContainer({ messages, onSelectPrompt }) {
           </div>
         );
       })}
+      {renderClarificationCard()}
     </div>
   );
 }

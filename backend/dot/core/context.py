@@ -30,6 +30,7 @@ def build_turn_context(
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Builds initial context history and system prompt with speculative tools."""
     from dot.memory.vector_store import format_compact_tool
+    from dot.memory.rolling_memory import get_rolling_memory
 
     compact_lines = [format_compact_tool(t) for t in (speculative_tools or [])]
     tools_context_text = "\n".join(compact_lines)
@@ -42,11 +43,18 @@ def build_turn_context(
         if tools_context_text else ""
     )
 
+    rolling_mem = get_rolling_memory()
+    ledger_text = rolling_mem.render_context() if (rolling_mem and rolling_mem.goal) else ""
+    ledger_block = (
+        f"<ACTIVE_GOAL_LEDGER>\n{ledger_text}\n</ACTIVE_GOAL_LEDGER>\n"
+        if ledger_text else ""
+    )
+
     history_parts = [{
         "role": "context",
         "text": f"""
             <AVAILABLE_TOOL_SERVICES>\n{services_text or 'None registered.'}\n</AVAILABLE_TOOL_SERVICES>
-            {tools_block}<PREVIOUS_SESSION_CONTEXT>\n{active_history_context or 'No previous history.'}\n</PREVIOUS_SESSION_CONTEXT>
+            {tools_block}{ledger_block}<PREVIOUS_SESSION_CONTEXT>\n{active_history_context or 'No previous history.'}\n</PREVIOUS_SESSION_CONTEXT>
             <CURRENT_QUERY>\nuser: {query}\n</CURRENT_QUERY>
             """,
         "pinned": True,

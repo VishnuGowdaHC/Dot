@@ -184,7 +184,7 @@ def build_engine_cmd(config: dict, tier_override: Optional[str], backend_overrid
         "-ctk", "q8_0",
         "-ctv", "q8_0",
         "-b", "2048",
-        "-ub", "1024",
+        "-ub", "512",
         "--temp", "0.0",
         "--alias", "dot-engine"
     ] + gpu_args
@@ -233,9 +233,12 @@ def main():
     elif should_start_engine:
         engine_cmd = build_engine_cmd(config, args.tier, args.backend, engine_port)
         print(f"{COLOR_ENGINE}[ENGINE]{COLOR_RESET} Starting inference engine on port {engine_port}...")
+        engine_env = os.environ.copy()
+        engine_env["GGML_CUDA_DISABLE_GRAPHS"] = "1"
         eng_proc = subprocess.Popen(
             engine_cmd,
             cwd=BIN_DIR,
+            env=engine_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -265,6 +268,8 @@ def main():
         free_port_if_occupied(backend_port)
         py_exe = find_python_exe()
         backend_cmd = [py_exe, "-u", "-m", "uvicorn", "server:app", "--port", str(backend_port)]
+        if sys.platform == "win32":
+            backend_cmd.extend(["--loop", "asyncio:ProactorEventLoop"])
         if not args.no_reload:
             backend_cmd.extend(["--reload", "--reload-exclude", "*storage*", "--reload-exclude", "*transcripts*"])
 

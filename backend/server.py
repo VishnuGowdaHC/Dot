@@ -11,6 +11,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+import time
 import json
 import uuid
 import socket
@@ -57,6 +58,7 @@ from dot.voice.listener import startVoiceListener
 from dot.core.router import intentRouter
 from dot.core.prompts import get_system_prompt
 from dot.core.llm import reload_llm_clients
+from dot.core.engine import resolve_clarification
 from dot.automation.app_opener import routeAppOpener
 from dot.memory.session import SessionStorage
 from dot.memory.collections.session_collection import embed_session_to_chroma
@@ -149,7 +151,11 @@ def handle_voice_status(status: str) -> None:
 async def lifespan(app: FastAPI):
     """Manages application lifecycle including voice thread and global MCP client."""
     # Store the main asyncio event loop for thread-safe operations.
-    app_state["main_loop"] = asyncio.get_running_loop()
+    main_loop = asyncio.get_running_loop()
+    app_state["main_loop"] = main_loop
+
+    if sys.platform == "win32" and isinstance(main_loop, asyncio.SelectorEventLoop):
+        print("[Warning] SelectorEventLoop detected on Windows. Start uvicorn with '--loop asyncio:ProactorEventLoop' for Playwright subprocess support.")
 
     # Start the background voice listener thread.
     print("Starting background voice listener...")
@@ -309,29 +315,151 @@ def get_engine_command_str(cfg: dict, tier: str = "4B", port: int = 11434) -> st
     )
 
 
+def extract_engine_diagnostics(log_path: Path) -> str:
+    """Extracts diagnostic error summary from the engine log file.
+    Complies with ASD-STE100 rules.
+    """
+    if not log_path.exists():
+        return "No log file found."
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+        if not lines:
+            return "Engine log is empty."
+        for line in reversed(lines[-25:]):
+            lower = line.lower()
+            if "out of memory" in lower or "cuda error" in lower:
+                return "GPU out of memory. Reduce context size or GPU layers."
+            if "failed to load model" in lower or "cannot open" in lower:
+                return "Failed to load model file. Verify the model file exists."
+            if "address already in use" in lower or "wsaeaddrinuse" in lower:
+                return "Port is already in use by another application."
+            if "cuda" in lower and "error" in lower:
+                return f"CUDA driver error: {line[:80]}"
+        return lines[-1][:120]
+    except Exception as e:
+        return f"Failed to read engine diagnostics: {e}"
+
+
 @app.get("/api/engine/status")
 async def get_engine_status():
-    """Returns the running status and launch command of the local inference engine."""
+    """Returns granular runtime status, model metadata, and health telemetry.
+    Complies with ASD-STE100 rules.
+    """
+    import httpx
     cfg = load_config()
     active = cfg.get("active_settings", {})
     tier = active.get("selected_tier", "4B")
     port = int(active.get("port", 11434))
-    running = check_engine_port_open(port)
-    cmd = get_engine_command_str(cfg, tier, port)
+    model_info = cfg.get("models", {}).get(tier, {})
+    model_fn = model_info.get("filename", "")
+    context_size = model_info.get("context_size", 8192)
+
+    proc = app_state.get("engine_process")
+    port_open = check_engine_port_open(port)
+
+    state = "stopped"
+    is_healthy = False
+    detail = "Engine is stopped."
+    error_msg = None
+    last_log = ""
+
+    engine_log = Path(__file__).resolve().parent.parent / "logs" / "engine.log"
+    if engine_log.exists():
+        try:
+            with open(engine_log, "r", encoding="utf-8", errors="replace") as f:
+                lines = [l.strip() for l in f.readlines() if l.strip()]
+                if lines:
+                    last_log = lines[-1]
+        except Exception:
+            pass
+
+    if port_open:
+        try:
+            async with httpx.AsyncClient(timeout=0.4) as client:
+                res = await client.get(f"http://127.0.0.1:{port}/health")
+                if res.status_code == 200:
+                    state = "ready"
+                    is_healthy = True
+                    detail = f"Model loaded and ready for inference on port {port}."
+                elif res.status_code == 503:
+                    state = "loading"
+                    detail = "Loading model weights into memory..."
+                else:
+                    state = "starting"
+                    detail = f"Server starting on port {port} (HTTP {res.status_code})."
+        except Exception:
+            state = "starting"
+            detail = f"Port {port} open. Initializing HTTP endpoints..."
+    elif proc is not None:
+        if proc.poll() is None:
+            if last_log and any(k in last_log.lower() for k in ("loading", "load_model", "gguf", "weights")):
+                state = "loading"
+                detail = "Loading model weights into GPU memory..."
+            else:
+                state = "starting"
+                detail = f"Starting engine process (PID {proc.pid})..."
+        else:
+            state = "error"
+            exit_code = proc.returncode
+            error_reason = extract_engine_diagnostics(engine_log)
+            error_msg = f"Exit code {exit_code}: {error_reason}"
+            detail = f"Engine process crashed. {error_reason}"
+    else:
+        state = "stopped"
+        detail = "Local inference engine is stopped."
+
     return {
-        "running": running,
+        "state": state,
+        "running": port_open or (proc is not None and proc.poll() is None),
+        "healthy": is_healthy,
         "port": port,
         "tier": tier,
-        "command": cmd,
+        "model": model_fn,
+        "context_size": context_size,
+        "detail": detail,
+        "last_log": last_log[:150] if last_log else "",
+        "error": error_msg,
+        "command": get_engine_command_str(cfg, tier, port),
+        "pid": proc.pid if (proc is not None and proc.poll() is None) else None,
     }
 
 
+@app.get("/api/engine/logs")
+async def get_engine_logs(lines: int = 35):
+    """Returns the most recent log lines from the engine log file.
+    Complies with ASD-STE100 rules.
+    """
+    engine_log = Path(__file__).resolve().parent.parent / "logs" / "engine.log"
+    if not engine_log.exists():
+        return {"lines": []}
+    try:
+        with open(engine_log, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+            recent = [l.rstrip() for l in all_lines[-lines:]]
+            return {"lines": recent}
+    except Exception as e:
+        return {"lines": [f"Failed to read engine log: {e}"]}
+
+
 @app.post("/api/engine/start")
-async def start_engine_endpoint():
-    """Starts the local llama-server in the background if not already running."""
+async def start_engine_endpoint(request: Request = None):
+    """Starts the local llama-server in the background if not already running.
+    Complies with ASD-STE100 rules.
+    """
     cfg = load_config()
     active = cfg.get("active_settings", {})
     tier = active.get("selected_tier", "4B")
+
+    # Allow overriding tier from request body
+    if request:
+        try:
+            body = await request.json()
+            if body and body.get("tier"):
+                tier = str(body["tier"]).strip()
+        except Exception:
+            pass
+
     port = int(active.get("port", 11434))
 
     if check_engine_port_open(port):
@@ -340,17 +468,27 @@ async def start_engine_endpoint():
     bin_dir = Path(__file__).resolve().parent.parent / "bin"
     server_exe = bin_dir / "llama-server.exe"
     if not server_exe.exists():
-        return {"status": "error", "message": "llama-server.exe not found in bin directory."}
+        return {"status": "error", "message": "llama-server.exe was not found in the bin directory."}
 
     model_info = cfg.get("models", {}).get(tier, {})
     model_fn = model_info.get("filename", "")
+    if not model_fn:
+        return {"status": "error", "message": f"No model file configured for tier '{tier}'."}
+
+    model_path = bin_dir / model_fn
+    if not model_path.exists():
+        return {
+            "status": "error",
+            "message": f"Model file '{model_fn}' was not found in the bin directory. Verify the file exists."
+        }
+
     mmproj_fn = model_info.get("mmproj", "")
+    mmproj_path = bin_dir / mmproj_fn if mmproj_fn else None
     context_size = model_info.get("context_size", 8192)
 
     cmd = [
         str(server_exe),
-        "-m", model_fn,
-        "--mmproj", mmproj_fn,
+        "-m", str(model_path),
         "--port", str(port),
         "-c", str(context_size),
         "-np", "1",
@@ -359,37 +497,82 @@ async def start_engine_endpoint():
         "-ctv", "q8_0",
         "-ngl", "99",
         "-b", "2048",
-        "-ub", "1024",
+        "-ub", "512",
         "--temp", "0.0",
         "--alias", "dot-engine",
     ]
 
+    if mmproj_path and mmproj_path.exists():
+        cmd.extend(["--mmproj", str(mmproj_path)])
+
     try:
+        logs_dir = Path(__file__).resolve().parent.parent / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        engine_log = logs_dir / "engine.log"
+
+        log_file = open(engine_log, "a", encoding="utf-8", errors="replace")
+        log_file.write(f"\n--- Engine Started at {time.strftime('%Y-%m-%d %H:%M:%S')} (Tier: {tier}, Port: {port}) ---\n")
+        log_file.write(f"Command: {' '.join(cmd)}\n")
+        log_file.flush()
+
+        engine_env = os.environ.copy()
+        engine_env["GGML_CUDA_DISABLE_GRAPHS"] = "1"
+
         proc = subprocess.Popen(
             cmd,
             cwd=str(bin_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            env=engine_env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         )
         app_state["engine_process"] = proc
-        return {"status": "starting", "message": f"Starting engine on port {port}..."}
+        app_state["engine_log_file"] = log_file
+        app_state["engine_start_time"] = time.time()
+        return {"status": "starting", "message": f"Starting engine on port {port} with {model_fn}..."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
 @app.post("/api/engine/stop")
 async def stop_engine_endpoint():
-    """Terminates the local engine process."""
+    """Terminates the local engine process and cleans up file handles.
+    Complies with ASD-STE100 rules.
+    """
     proc = app_state.get("engine_process")
+    log_file = app_state.get("engine_log_file")
+    if log_file:
+        try:
+            log_file.close()
+        except Exception:
+            pass
+        app_state["engine_log_file"] = None
+
+    stopped = False
     if proc and proc.poll() is None:
         try:
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            stopped = True
         except Exception:
             pass
         app_state["engine_process"] = None
-        return {"status": "ok", "message": "Engine process stopped."}
-    return {"status": "ok", "message": "No active managed engine process."}
+
+    cfg = load_config()
+    port = int(cfg.get("active_settings", {}).get("port", 11434))
+    if check_engine_port_open(port):
+        try:
+            cmd = f'powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue).OwningProcess"'
+            res = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+            for line in res.stdout.strip().splitlines():
+                pid = line.strip()
+                if pid and pid.isdigit() and int(pid) > 0:
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                    stopped = True
+        except Exception:
+            pass
+
+    msg = "Engine process stopped." if stopped else "No active managed engine process."
+    return {"status": "ok", "message": msg}
 
 
 @app.post("/api/cloud/test")
@@ -639,6 +822,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_text(json.dumps({
                             "type": "sandbox_status",
                             "data": {"docker_available": docker_ok, "running": running, "paused": paused}
+                        }))
+                        continue
+                    elif msg_type == "clarification_response":
+                        clarify_id = parsed_msg.get("id") or parsed_msg.get("clarification_id")
+                        answer = parsed_msg.get("answer", "")
+                        resolved = resolve_clarification(str(clarify_id), str(answer))
+                        await websocket.send_text(json.dumps({
+                            "type": "clarification_resolved",
+                            "data": {"id": clarify_id, "resolved": resolved}
                         }))
                         continue
 

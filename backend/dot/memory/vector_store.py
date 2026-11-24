@@ -37,9 +37,8 @@ def detect_service_hints(query: str) -> list[str]:
 
     # OS tools and desktop automation keywords
     os_keywords = [
-        "notepad", "calculator", "calc", "explorer", "paint", "word", "excel",
-        "app", "application", "program", "desktop", "window", "monitor", "screen",
-        "screenshot", "process", "task", "kill", "launch", "open app",
+        "app", "application", "program", "software", "desktop", "window", "monitor", "screen",
+        "screenshot", "process", "task", "kill", "terminate", "launch", "open app", "start program",
         "type", "typing", "paste", "keyboard", "hotkey", "press key", "mouse", "click"
     ]
     if any(k in clean for k in os_keywords):
@@ -176,10 +175,10 @@ def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.
     if any(keyword in clean for keyword in ["search", "google", "bing", "look up", "research"]):
         add_tool(get_tool_by_name("browser_search_web"))
 
-    if any(keyword in clean for keyword in ["notepad", "calc", "calculator", "launch", "open app", "start program", "start process", "kill"]):
+    if any(keyword in clean for keyword in ["launch", "open app", "start program", "start process", "start app", "kill", "terminate", "process"]):
         add_tool(get_tool_by_name("os_manage_process"))
 
-    if any(keyword in clean for keyword in ["type", "paste", "keyboard", "enter text"]):
+    if any(keyword in clean for keyword in ["type", "paste", "keyboard", "enter text", "fill"]):
         add_tool(get_tool_by_name("os_keyboard_type"))
 
     if any(keyword in clean for keyword in ["http://", "https://", "wikipedia", "url", "navigate", "website"]):

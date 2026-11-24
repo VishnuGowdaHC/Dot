@@ -44,6 +44,13 @@ def log_agent_context(
     lines.append(f"{divider}\n")
 
     try:
+        # Roll log file if it exceeds 2 MB to prevent multi-megabyte log bloat
+        if os.path.exists(CONTEXT_LOG_FILE) and os.path.getsize(CONTEXT_LOG_FILE) > 2 * 1024 * 1024:
+            old_file = f"{CONTEXT_LOG_FILE}.old"
+            if os.path.exists(old_file):
+                os.remove(old_file)
+            os.rename(CONTEXT_LOG_FILE, old_file)
+
         with open(CONTEXT_LOG_FILE, "a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
     except Exception as err:
@@ -78,10 +85,11 @@ def log_tool_execution(
 
 def extract_json(raw: str):
     """Extracts a JSON object string from the model output."""
-    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
+    cleaned = re.sub(r"<(?:bos|eos|start_of_turn|end_of_turn)>", "", raw)
+    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.DOTALL)
     if match:
         return match.group(1).strip()
-    stripped = raw.strip()
+    stripped = cleaned.strip()
     if stripped.startswith("{"):
         if not stripped.endswith("}"):
             stripped += "}"
@@ -156,6 +164,7 @@ def auto_format_observation(obs: Any, max_fields: int = 4, max_items: int = 25) 
 def trim_observation(obs: Any, session: Any, max_tokens: int = 450) -> str:
     """Truncates tool observations that exceed the token limit."""
     text = auto_format_observation(obs)
+    text = re.sub(r"<(?:bos|eos|start_of_turn|end_of_turn)>", "", text)
     if not session or not hasattr(session, "tokenizer"):
         return text
     tokens = session.tokenizer.encode(text)
@@ -230,4 +239,70 @@ def summarize_dropped(text: str) -> str:
     if observations:
         parts.append(f"{len(observations)} observation(s) retrieved, details discarded")
     return "; ".join(parts) or "earlier reasoning steps (no tool calls)"
+
+
+DATA_PRESERVED_TOOLS = {
+    "browser_extract_text",
+    "browser_read",
+    "agent_browser_read",
+    "browser_search_web",
+    "search_web",
+    "probe_page",
+}
+
+SNAPSHOT_OBSOLETE_TOOLS = {
+    "browser_snapshot",
+    "agent_browser_snapshot",
+    "os_take_screenshot",
+    "os_find_text_coordinates",
+    "browser_navigate",
+    "agent_browser_open",
+}
+
+
+def prune_obsolete_observations(history_parts: list) -> list:
+    """Condenses older screen inspection snapshots, keeping only the latest active screen state.
+
+    Preserves extracted text and search observations across multi-step execution.
+    Complies with ASD-STE100 rules.
+    """
+    if not history_parts:
+        return []
+
+    obs_indices = [
+        i for i, part in enumerate(history_parts)
+        if part.get("role") == "observation"
+    ]
+
+    if len(obs_indices) <= 1:
+        return list(history_parts)
+
+    latest_obs_idx = obs_indices[-1]
+    result = []
+
+    for i, part in enumerate(history_parts):
+        if part.get("role") == "observation" and i < latest_obs_idx:
+            src = part.get("source_tool") or ""
+            text = part.get("text") or ""
+
+            # Never compress extracted content or search data needed for multi-step tasks.
+            if src in DATA_PRESERVED_TOOLS:
+                result.append(part)
+                continue
+
+            is_obsolete_snapshot = (
+                src in SNAPSHOT_OBSOLETE_TOOLS
+                or "Page:" in text
+                or "[Active Page Manifest]" in text
+            )
+            if is_obsolete_snapshot:
+                first_line = text.strip().split("\n")[0][:100]
+                condensed = f"[Compressed Observation from {src or 'snapshot'}]: {first_line} (details compressed to conserve tokens)."
+                new_part = dict(part)
+                new_part["text"] = condensed
+                result.append(new_part)
+                continue
+        result.append(part)
+
+    return result
 

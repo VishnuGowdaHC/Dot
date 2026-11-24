@@ -34,6 +34,8 @@ export function initWS(handlers) {
     setBrowserHeadless,
     setActiveModel,
     setIsCloudModel,
+    setClarification,
+    setHopTelemetry,
   } = handlers;
 
   try {
@@ -100,6 +102,15 @@ export function initWS(handlers) {
           if (setBrowserHeadless && data?.browser_headless !== undefined) {
             setBrowserHeadless(data.browser_headless);
           }
+        } else if (type === "clarification_request") {
+          if (setIsLoading) setIsLoading(false);
+          if (setActionText) setActionText(null);
+          if (setClarification) setClarification(data);
+        } else if (type === "clarification_resolved") {
+          if (setIsLoading) setIsLoading(false);
+          if (setClarification) setClarification(null);
+        } else if (type === "hop_telemetry") {
+          if (setHopTelemetry) setHopTelemetry(data);
         } else if (type === "settings_updated") {
           if (data?.active_settings) {
             if (setBrowserHeadless && data.active_settings.browser_headless !== undefined) {
@@ -153,5 +164,21 @@ export async function toDot(text, setIsLoading) {
   } catch (e) {
     console.error("[WS] Send error:", e);
     if (setIsLoading) setIsLoading(false);
+  }
+}
+
+export function sendClarification(id, answer) {
+  try {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.error("[WS] Cannot send clarification: socket closed");
+      return;
+    }
+    ws.send(JSON.stringify({
+      type: "clarification_response",
+      id,
+      answer,
+    }));
+  } catch (e) {
+    console.error("[WS] Clarification send error:", e);
   }
 }

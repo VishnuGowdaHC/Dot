@@ -120,11 +120,24 @@ def os_manage_process(action: str, process_name: Optional[str] = "") -> str:
             return f"{process_name} is not currently running."
         
         if action == "start":
+            # If a matching application window is already running, activate it.
+            clean_name = os.path.splitext(str(process_name))[0].lower()
+            try:
+                for w in gw.getAllWindows():
+                    title = (w.title or "").lower()
+                    if clean_name in title:
+                        w.restore()
+                        w.activate()
+                        time.sleep(0.3)
+                        return f"Activated existing window '{w.title}' for {process_name}."
+            except Exception:
+                pass
+
             # Start executable using native Windows file launcher.
             try:
                 os.startfile(process_name)
                 # Pause briefly to allow the application window to initialize.
-                time.sleep(0.5)
+                time.sleep(0.8)
                 return f"Successfully launched {process_name}."
             except Exception as e:
                 return f"Failed to start {process_name}. Make sure it is in the system PATH. Error: {str(e)}"
@@ -231,17 +244,68 @@ def os_mouse_click(x: int, y: int, button: str = "left", clicks: int = 1) -> str
         return f"Failed to click mouse. Error: {str(e)}"
 
 @mcp.tool
-def os_keyboard_type(text):
-    """
-    Simulates physical keystrokes to type out a continuous string of text.
+def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
+    """Simulates physical keystrokes or pastes text into the active foreground window.
+    Optionally activates the window matching target_window before typing.
     Use this to fill out forms, type URLs, or write messages.
 
     Args:
-        text (str): The exact string of text to type.
+        text (str): The exact string of text to type or paste.
+        target_window (str, optional): Title or partial name of the target window to activate.
     """
     try:
-        pyautogui.write(text, interval=0.01)
-        return f"Typed text: {text}"
+        active_title = ""
+        try:
+            active_win = gw.getActiveWindow()
+            if active_win and active_win.title:
+                active_title = active_win.title.strip()
+        except Exception:
+            pass
+
+        # If a specific target window was requested, find and activate it.
+        target_found = False
+        if target_window:
+            target_lower = target_window.strip().lower()
+            try:
+                for w in gw.getAllWindows():
+                    w_title = (w.title or "").lower()
+                    if target_lower in w_title:
+                        w.restore()
+                        w.activate()
+                        time.sleep(0.3)
+                        active_title = w.title.strip()
+                        target_found = True
+                        break
+            except Exception:
+                pass
+
+        # If no target window specified and Dot UI is active, focus top non-system desktop window.
+        if not target_found and (not active_title or "dot" in active_title.lower()):
+            try:
+                for w in gw.getAllWindows():
+                    w_title = (w.title or "").lower()
+                    if w.title and not any(k in w_title for k in ("dot", "taskbar", "program manager", "shell", "input")):
+                        w.restore()
+                        w.activate()
+                        time.sleep(0.3)
+                        active_title = w.title.strip()
+                        break
+            except Exception:
+                pass
+
+        # For long or multi-line text, use fast clipboard paste for high fidelity.
+        text_str = str(text)
+        if len(text_str) > 40 or "\n" in text_str:
+            import pyperclip
+            pyperclip.copy(text_str)
+            time.sleep(0.05)
+            pyautogui.hotkey("ctrl", "v")
+        else:
+            pyautogui.write(text_str, interval=0.01)
+
+        win_info = f" into active window '{active_title}'" if active_title else ""
+        preview = text_str[:120] + "..." if len(text_str) > 120 else text_str
+        return f"Typed text{win_info}: {preview}"
     except Exception as e:
         return f"Failed to type text. Error: {str(e)}"
 

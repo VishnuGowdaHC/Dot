@@ -25,6 +25,7 @@ from dot.automation.browser import (
     fill,
     snapshot,
     close_browser,
+    _decode_ddg_url,
 )
 
 
@@ -43,6 +44,22 @@ class TestBrowserTools(unittest.IsolatedAsyncioTestCase):
                 first = res["results"][0]
                 self.assertIn("title", first)
                 self.assertIn("url", first)
+                self.assertIn("snippet", first)
+
+    def test_decode_ddg_url(self):
+        """Verifies DuckDuckGo redirect link unwrapping."""
+        wrapped = "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FTest&rut=abc"
+        decoded = _decode_ddg_url(wrapped)
+        self.assertEqual(decoded, "https://en.wikipedia.org/wiki/Test")
+
+        direct = "https://example.com/page"
+        self.assertEqual(_decode_ddg_url(direct), direct)
+
+    async def test_search_web_empty_query(self):
+        """Verifies that empty search queries return clean failure dictionaries."""
+        res = await search_web("   ")
+        self.assertFalse(res.get("success"))
+        self.assertEqual(res.get("results"), [])
 
     @patch("webbrowser.open")
     def test_open_in_browser(self, mock_open):
@@ -120,6 +137,69 @@ class TestBrowserTools(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(extract_res.get("success"))
         self.assertIn("Searched: playwright testing", extract_res.get("detail", ""))
         await close_browser()
+
+    def test_parse_agent_browser_snapshot_and_manifest(self):
+        """Verifies parsing of accessibility tree and compact manifest generation."""
+        from dot.mcp.client import _parse_agent_browser_snapshot
+        from dot.automation.browser import _build_compact_manifest, _search_scratch_elements, clean_readable_text
+
+        sample_tree = (
+            "- heading \"Python Quiz\" [level=1, ref=e54]\n"
+            "- heading \"Question 1 of 25:\" [level=3, ref=e76]\n"
+            "- paragraph \"What is a correct syntax to output Hello World in Python?\"\n"
+            "- LabelText \"print(\\\"Hello World\\\")\" [@e159] clickable\n"
+            "  - radio \"print(\\\"Hello World\\\")\" [checked=false, ref=e163]\n"
+            "- button \"Next ❯\" [@e153]\n"
+        )
+        elements = _parse_agent_browser_snapshot(sample_tree)
+        self.assertGreaterEqual(len(elements), 4)
+
+        refs = [e["ref"] for e in elements if e.get("ref")]
+        self.assertIn("@e54", refs)
+        self.assertIn("@e76", refs)
+        self.assertIn("@e163", refs)
+        self.assertIn("@e153", refs)
+
+        manifest = _build_compact_manifest("Python Quiz", "https://example.com/quiz", elements)
+        self.assertIn("Python Quiz", manifest)
+        self.assertIn("Question 1 of 25:", manifest)
+        self.assertIn("@e163", manifest)
+        self.assertIn("@e153", manifest)
+
+        # Verify probe search
+        matches = _search_scratch_elements("print", elements=elements)
+        self.assertEqual(len(matches), 2)
+        self.assertEqual(matches[0]["ref"], "@e159")
+
+        # Verify probe search with tag_type filter
+        radio_matches = _search_scratch_elements("print", elements=elements, tag_type="radio")
+        self.assertEqual(len(radio_matches), 1)
+        self.assertEqual(radio_matches[0]["ref"], "@e163")
+
+        # Verify text cleaning
+        raw_markdown = (
+            "Navbar Link 1\nNavbar Link 2\n"
+            "# Python Quiz\n"
+            "### Question 1 of 25:\n"
+            "What is a correct syntax to output Hello World in Python?\n"
+        )
+        cleaned = clean_readable_text(raw_markdown)
+        self.assertIn("Question 1 of 25:", cleaned)
+        self.assertNotIn("Navbar Link 1", cleaned)
+
+        # Verify Wikipedia boilerplate and MediaWiki template stripping
+        wiki_raw = (
+            "# Classroom of the Elite season 4\n"
+            "1 language\n- Edit links\n- Tools\n- Download as PDF\n"
+            "From Wikipedia, the free encyclopedia\n"
+            "The fourth season premiered on April 1, 2026.\n"
+            "{{cite web|title=Test|url=https://example.com}}\n"
+        )
+        wiki_cleaned = clean_readable_text(wiki_raw)
+        self.assertIn("# Classroom of the Elite season 4", wiki_cleaned)
+        self.assertIn("The fourth season premiered on April 1, 2026.", wiki_cleaned)
+        self.assertNotIn("Download as PDF", wiki_cleaned)
+        self.assertNotIn("{{cite web", wiki_cleaned)
 
 
 if __name__ == "__main__":

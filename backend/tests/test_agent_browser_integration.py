@@ -3,6 +3,14 @@ Integration tests for agent-browser resolution and parameter normalization.
 Verifies selector resolution, key mappings, and tool alias definitions.
 """
 
+import sys
+from pathlib import Path
+
+# Add backend directory to module search path.
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 import unittest
 from dot.mcp.client import (
     TOOL_ALIASES,
@@ -60,6 +68,8 @@ class TestAgentBrowserIntegration(unittest.TestCase):
         self.assertEqual(TOOL_ALIASES.get("browser_tab_close"), "agent_browser_tab_close")
         self.assertEqual(TOOL_ALIASES.get("browser_click"), "agent_browser_click")
         self.assertEqual(TOOL_ALIASES.get("browser_fill"), "agent_browser_fill")
+        self.assertEqual(TOOL_ALIASES.get("browser_extract_text"), "agent_browser_read")
+        self.assertEqual(TOOL_ALIASES.get("browser_read"), "agent_browser_read")
 
     def test_key_map_normalizations(self):
         """Verifies case normalization for common keyboard keys."""

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useMessage } from "./utils/messageContext";
-import { initWS, closeWS, toDot } from "./utils/IOhandler";
+import { initWS, closeWS, toDot, sendClarification } from "./utils/IOhandler";
 import {
   dockWindow,
   updateNativeWindowSize,
@@ -21,6 +21,8 @@ import SettingsModal from "./components/SettingsModal";
 export default function App() {
   const [inputValue, setInputValue] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [clarification, setClarification] = useState(null);
+  const [hopTelemetry, setHopTelemetry] = useState(null);
   const inputRef = useRef(null);
 
   const {
@@ -56,7 +58,7 @@ export default function App() {
 
   const windowMode = isSettingsOpen
     ? "settings"
-    : messages.length > 0 || Boolean(intervention)
+    : messages.length > 0 || Boolean(intervention) || Boolean(clarification)
       ? "chat"
       : "idle";
   const shellHeight = windowMode === "settings" ? 530 : windowMode === "chat" ? 430 : 154;
@@ -107,6 +109,8 @@ export default function App() {
       setBrowserHeadless,
       setActiveModel,
       setIsCloudModel,
+      setClarification,
+      setHopTelemetry,
     });
 
     const initWindow = async () => {
@@ -144,6 +148,8 @@ export default function App() {
     setBrowserHeadless,
     setActiveModel,
     setIsCloudModel,
+    setClarification,
+    setHopTelemetry,
   ]);
 
   // Adjust native window dimensions when expanding or collapsing
@@ -163,11 +169,31 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [clearChat]);
 
+  // Handle user response to clarification pause
+  const handleClarifyAnswer = useCallback(
+    (answer) => {
+      if (!clarification?.id) return;
+      sendClarification(clarification.id, answer);
+      addMessage("user", answer);
+      setClarification(null);
+      setIsLoading(true);
+    },
+    [clarification, addMessage, setIsLoading]
+  );
+
   // Send user message
   const handleSendPrompt = useCallback(
     async (text) => {
       const prompt = (text || inputValue).trim();
-      if (!prompt || isLoading) return;
+      if (!prompt) return;
+
+      if (clarification?.id) {
+        setInputValue("");
+        handleClarifyAnswer(prompt);
+        return;
+      }
+
+      if (isLoading) return;
 
       addMessage("user", prompt);
       setInputValue("");
@@ -175,7 +201,7 @@ export default function App() {
 
       await toDot(prompt, setIsLoading);
     },
-    [inputValue, isLoading, addMessage, setIsLoading]
+    [inputValue, isLoading, addMessage, setIsLoading, clarification, handleClarifyAnswer]
   );
 
   const handleKeyDown = (e) => {
@@ -322,6 +348,8 @@ export default function App() {
               <ChatContainer
                 messages={messages}
                 onSelectPrompt={handleSendPrompt}
+                clarification={clarification}
+                onClarifyAnswer={handleClarifyAnswer}
               />
             )}
 
@@ -388,6 +416,7 @@ export default function App() {
                 activeModel={activeModel}
                 isCloudModel={isCloudModel}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                hopTelemetry={hopTelemetry}
               />
               <InputPill
                 inputRef={inputRef}
@@ -396,7 +425,8 @@ export default function App() {
                 onSend={() => handleSendPrompt()}
                 onKeyDown={handleKeyDown}
                 voiceStatus={voiceStatus}
-                disabled={isLoading}
+                disabled={isLoading && !clarification}
+                placeholder={clarification ? "Type reply to clarify..." : undefined}
               />
             </div>
           </div>

@@ -4,45 +4,83 @@ Agent step parser and JSON validation utilities.
 
 import json
 import re
-from typing import Literal, Optional, Any, Dict
+from typing import Literal, Optional, Any, Dict, List
 from pydantic import BaseModel, field_validator, model_validator
+
+
+def normalize_choice_text(choice: Any) -> str:
+    """Normalizes a choice item into a clean string."""
+    if choice is None:
+        return ""
+    if isinstance(choice, str):
+        return choice.strip()
+    if isinstance(choice, dict):
+        for key in ("text", "label", "choice", "value", "title", "name"):
+            val = choice.get(key)
+            if val is not None and str(val).strip():
+                return str(val).strip()
+        for val in choice.values():
+            if val is not None and str(val).strip():
+                return str(val).strip()
+        return ""
+    return str(choice).strip()
 
 
 class AgentStep(BaseModel):
     """Represents a single ReAct step produced by the language model."""
     thought: str
-    action: Literal["Tool", "Tool-exec", "Final"]
+    action: Literal["Tool", "Tool-exec", "Clarify", "Final"]
     tool_service: Optional[str] = None
     payload: Optional[Dict[str, Any]] = None
+    question: Optional[str] = None
+    choices: Optional[List[str]] = None
     final_answer: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
     def remap_legacy_keys(cls, values: Any) -> Any:
         """Normalizes legacy tool naming formats into the standard payload dictionary."""
-        if isinstance(values, dict) and not values.get("payload"):
-            payload = {}
+        if isinstance(values, dict):
+            # Clarify action validation
             action = values.get("action")
+            if action == "Clarify":
+                if not values.get("question") and values.get("thought"):
+                    values["question"] = values.get("thought")
 
-            if action == "Tool":
-                if values.get("get_tool"):
-                    payload["query"] = values.pop("get_tool")
-                elif values.get("tool_name"):
-                    payload["query"] = values.pop("tool_name")
-            else:
-                if values.get("tool_name"):
-                    payload["name"] = values.pop("tool_name")
-                if values.get("tool_args"):
-                    args = values.pop("tool_args")
-                    if isinstance(args, str):
-                        try:
-                            args = json.loads(args)
-                        except Exception:
-                            args = {}
-                    payload["args"] = args if isinstance(args, dict) else {}
+            # Normalize choices list to clean strings
+            raw_choices = values.get("choices")
+            if raw_choices is not None:
+                if isinstance(raw_choices, (list, tuple, set)):
+                    cleaned = [normalize_choice_text(c) for c in raw_choices]
+                    values["choices"] = [c for c in cleaned if c]
+                elif isinstance(raw_choices, (str, dict)):
+                    cleaned = normalize_choice_text(raw_choices)
+                    values["choices"] = [cleaned] if cleaned else []
+                else:
+                    values["choices"] = []
 
-            if payload:
-                values["payload"] = payload
+            if not values.get("payload"):
+                payload = {}
+
+                if action == "Tool":
+                    if values.get("get_tool"):
+                        payload["query"] = values.pop("get_tool")
+                    elif values.get("tool_name"):
+                        payload["query"] = values.pop("tool_name")
+                elif action == "Tool-exec":
+                    if values.get("tool_name"):
+                        payload["name"] = values.pop("tool_name")
+                    if values.get("tool_args"):
+                        args = values.pop("tool_args")
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                args = {}
+                        payload["args"] = args if isinstance(args, dict) else {}
+
+                if payload:
+                    values["payload"] = payload
         return values
 
     @property

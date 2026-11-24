@@ -11,6 +11,7 @@ export default function InputPill({
   voiceStatus = "idle",
   disabled = false,
   inputRef,
+  placeholder,
 }) {
   const isRecording = voiceStatus === "recording";
 
@@ -26,7 +27,7 @@ export default function InputPill({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={isRecording ? "Listening to voice input..." : "Ask or command Dot..."}
+        placeholder={isRecording ? "Listening to voice input..." : placeholder || "Ask or command Dot..."}
         disabled={disabled || isRecording}
         className="min-w-0 flex-1 bg-transparent text-[13px] text-white placeholder-zinc-500 outline-none font-sans"
         autoComplete="off"
