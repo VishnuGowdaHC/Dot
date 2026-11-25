@@ -1038,7 +1038,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                   <div>
                     <h3 className="text-xs font-semibold text-zinc-100">Application Updates</h3>
                     <p className="text-[10px] text-zinc-400 mt-0.5">
-                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "2.1.0"}</span>
+                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "2.1.1"}</span>
                     </p>
                   </div>
                   <button

@@ -19,7 +19,7 @@ from dot.config.paths import FRONTEND_DIR
 
 GITHUB_REPO = "VishnuGowdaHC/Dot"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-DEFAULT_VERSION = "2.1.0"
+DEFAULT_VERSION = "2.1.1"
 
 
 def get_current_version() -> str:

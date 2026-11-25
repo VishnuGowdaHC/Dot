@@ -31,6 +31,20 @@ CONFIG_PATH = os.path.join(BASE_DIR, "appConfig.json")
 ENGINE_LOG = os.path.join(LOGS_DIR, "engine.log")
 BACKEND_LOG = os.path.join(LOGS_DIR, "backend.log")
 
+
+def get_app_version():
+    """Read the installed Dot version from frontend/neutralino.config.json."""
+    cfg_path = os.path.join(BASE_DIR, "frontend", "neutralino.config.json")
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                ver = str(json.load(f).get("version", "")).strip()
+                if ver:
+                    return ver.lstrip("vV")
+        except Exception:
+            pass
+    return "2.1.0"
+
 running_processes = []
 open_log_writers = []
 is_cleaning_up = False
@@ -384,7 +398,7 @@ class StartupSupervisor:
         title_row.pack(fill="x")
 
         self.dot_indicator = tk.Label(
-            title_row, text="●", font=("Segoe UI", 12), fg="#ffffff", bg="#101012"
+            title_row, text="●", font=("Segoe UI", 12), fg="#FF5A5F", bg="#101012"
         )
         self.dot_indicator.pack(side="left", padx=(0, 8))
 
@@ -398,7 +412,7 @@ class StartupSupervisor:
         self.lbl_title.pack(side="left")
 
         self.lbl_version = tk.Label(
-            title_row, text="v1.0.11", font=("Consolas", 10), fg="#71717a", bg="#101012"
+            title_row, text=f"v{get_app_version()}", font=("Consolas", 10), fg="#a1a1aa", bg="#101012"
         )
         self.lbl_version.pack(side="right")
 
@@ -414,7 +428,7 @@ class StartupSupervisor:
 
         # Checklist Area
         self.steps_frame = tk.Frame(
-            self.main_frame, bg="#141416", bd=1, relief="solid", highlightbackground="#27272a"
+            self.main_frame, bg="#18181b", bd=0, highlightthickness=1, highlightbackground="#27272a"
         )
         self.steps_frame.pack(fill="x", pady=(0, 14))
 
@@ -458,7 +472,7 @@ class StartupSupervisor:
             self.main_frame, height=4, bg="#27272a", highlightthickness=0
         )
         self.canvas_progress.pack(fill="x", pady=(0, 12))
-        self.progress_bar = self.canvas_progress.create_rectangle(0, 0, 0, 4, fill="#ffffff", width=0)
+        self.progress_bar = self.canvas_progress.create_rectangle(0, 0, 0, 4, fill="#FF5A5F", width=0)
 
         # Telemetry Ticker
         telemetry_frame = tk.Frame(self.main_frame, bg="#101012")

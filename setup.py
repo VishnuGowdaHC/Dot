@@ -59,20 +59,35 @@ except ImportError as err:
 # ==========================================
 # 2. THEME & PROVIDER CONSTANTS
 # ==========================================
-COLOR_BG = "#000000"
-COLOR_PANEL = "#141414"
-COLOR_PANEL_ALT = "#1a0d0d"
-COLOR_ACCENT = "#dc2626"
-COLOR_ACCENT_HOVER = "#991b1b"
-COLOR_ACCENT_MUTED = "#7f1d1d"
-COLOR_TEXT = "#f5f5f5"
-COLOR_TEXT_MUTED = "#a3a3a3"
-COLOR_BACK_BTN = "#2a2a2a"
-COLOR_BACK_BTN_HOVER = "#3a3a3a"
-COLOR_ERROR = "#e5332a"
-COLOR_ERROR_HOVER = "#b91c1c"
-COLOR_SUCCESS = "#22c55e"
-COLOR_SUCCESS_HOVER = "#16a34a"
+COLOR_BG = "#101012"
+COLOR_PANEL = "#18181b"
+COLOR_PANEL_ALT = "#202024"
+COLOR_BORDER = "#27272a"
+COLOR_ACCENT = "#FF5A5F"
+COLOR_ACCENT_HOVER = "#FF454A"
+COLOR_ACCENT_MUTED = "#3f3f46"
+COLOR_TEXT = "#f4f4f5"
+COLOR_TEXT_MUTED = "#a1a1aa"
+COLOR_BACK_BTN = "#27272a"
+COLOR_BACK_BTN_HOVER = "#3f3f46"
+COLOR_ERROR = "#ef4444"
+COLOR_ERROR_HOVER = "#dc2626"
+COLOR_SUCCESS = "#10b981"
+COLOR_SUCCESS_HOVER = "#059669"
+
+
+def get_app_version():
+    """Read the installed Dot version from frontend/neutralino.config.json."""
+    cfg_path = os.path.join(BASE_DIR, "frontend", "neutralino.config.json")
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                ver = str(json.load(f).get("version", "")).strip()
+                if ver:
+                    return ver.lstrip("vV")
+        except Exception:
+            pass
+    return "2.1.0"
 
 CLOUD_PROVIDERS = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
@@ -197,8 +212,10 @@ class DotInstaller(ctk.CTk):
         self.model_var = ctk.StringVar(value=cloud_cfg.get("model", CLOUD_PROVIDERS["openai"]["default_model"]))
         self.api_key_var = ctk.StringVar(value=cloud_cfg.get("api_key", ""))
 
-        self.container = ctk.CTkFrame(self, corner_radius=12, fg_color=COLOR_PANEL)
-        self.container.pack(fill="both", expand=True, padx=20, pady=20)
+        self.container = ctk.CTkFrame(
+            self, corner_radius=16, fg_color=COLOR_PANEL, border_width=1, border_color=COLOR_BORDER
+        )
+        self.container.pack(fill="both", expand=True, padx=18, pady=18)
 
         # Always begin at Step 1 so new users can choose between instant Cloud API or Local AI
         self.show_rig_analysis()
@@ -297,8 +314,25 @@ class DotInstaller(ctk.CTk):
         self.clear_container()
         steps = self.get_step_sequence()
         idx = (steps.index(step_name) + 1) if step_name in steps else 1
-        ctk.CTkLabel(self.container, text=f"STEP {idx} OF {len(steps)} | {step_name.upper()}", font=("Arial", 11, "bold"), text_color=COLOR_ACCENT).pack(pady=(15, 0))
-        ctk.CTkLabel(self.container, text=title, font=("Arial", 22, "bold"), text_color=COLOR_TEXT).pack(pady=(5, 10))
+
+        top_bar = ctk.CTkFrame(self.container, fg_color="transparent")
+        top_bar.pack(fill="x", padx=28, pady=(18, 6))
+
+        brand_row = ctk.CTkFrame(top_bar, fg_color="transparent")
+        brand_row.pack(side="left")
+        ctk.CTkLabel(brand_row, text="●", font=("Segoe UI", 14), text_color=COLOR_ACCENT).pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(brand_row, text="Dot Setup", font=("Segoe UI", 13, "bold"), text_color=COLOR_TEXT).pack(side="left")
+
+        ctk.CTkLabel(top_bar, text=f"v{get_app_version()}", font=("Consolas", 11), text_color=COLOR_TEXT_MUTED).pack(side="right")
+
+        step_pill = ctk.CTkLabel(
+            self.container,
+            text=f"STEP {idx} OF {len(steps)}  |  {step_name.upper()}",
+            font=("Consolas", 10, "bold"),
+            text_color=COLOR_ACCENT,
+        )
+        step_pill.pack(anchor="w", padx=28, pady=(4, 0))
+        ctk.CTkLabel(self.container, text=title, font=("Segoe UI", 21, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=28, pady=(2, 10))
 
     def make_nav_row(self, back_cmd, next_text, next_cmd):
         nav = ctk.CTkFrame(self.container, fg_color="transparent")
@@ -311,27 +345,70 @@ class DotInstaller(ctk.CTk):
     # STEP 1: RIG ANALYSIS
     # ----------------------------------------------------
     def show_rig_analysis(self):
-        self.make_header("Hardware", "Hardware Analysis")
+        self.make_header("Hardware", "Choose Your Engine")
 
-        info_frame = ctk.CTkFrame(self.container, fg_color=COLOR_PANEL_ALT)
-        info_frame.pack(fill="x", padx=30, pady=10)
+        # Compact Hardware Spec Strip
+        spec_bar = ctk.CTkFrame(self.container, fg_color=COLOR_PANEL_ALT, corner_radius=10, border_width=1, border_color=COLOR_BORDER)
+        spec_bar.pack(fill="x", padx=28, pady=(0, 14))
+        gpu_txt = f"NVIDIA GPU ({self.vram_gb} GB VRAM) | CUDA {self.cuda_version}" if self.has_cuda else "No NVIDIA GPU Detected"
+        ctk.CTkLabel(spec_bar, text=f"RAM: {self.ram_gb} GB", font=("Consolas", 11), text_color=COLOR_TEXT).pack(side="left", padx=14, pady=10)
+        ctk.CTkLabel(spec_bar, text=gpu_txt, font=("Consolas", 11), text_color=COLOR_SUCCESS if self.has_cuda else COLOR_TEXT_MUTED).pack(side="right", padx=14, pady=10)
 
-        gpu_txt = f"NVIDIA GPU ({self.vram_gb} GB VRAM) - CUDA v{self.cuda_version}" if self.has_cuda else "No NVIDIA GPU Detected (CPU Mode)"
-        ctk.CTkLabel(info_frame, text=f"* System Memory: {self.ram_gb} GB RAM", font=("Arial", 14), text_color=COLOR_TEXT).pack(anchor="w", padx=20, pady=(10, 4))
-        ctk.CTkLabel(info_frame, text=f"* Graphics Backend: {gpu_txt}", font=("Arial", 14), text_color=COLOR_TEXT).pack(anchor="w", padx=20, pady=(0, 10))
-
-        ctk.CTkLabel(self.container, text="Select Compute Engine:", font=("Arial", 14, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(12, 6))
-
-        r_opts = [
-            ("cuda", "CUDA (NVIDIA GPU Acceleration - Recommended)", self.has_cuda),
-            ("cpu", "AVX2 (CPU Only - Standard Fallback)", True),
-            ("cloud", "Cloud API (Fully Remote - Zero Local Downloads)", True)
+        cards = {}
+        options = [
+            ("cloud", "Cloud API (Recommended)", "Instant setup with 0 GB download. Use Gemini, OpenAI, or custom keys.", True),
+            ("cuda", "Local AI (NVIDIA CUDA)", "Private offline inference accelerated on your GPU.", self.has_cuda),
+            ("cpu", "Local AI (CPU AVX2)", "Private offline fallback using system processor.", True),
         ]
-        for val, label, enabled in r_opts:
-            r = ctk.CTkRadioButton(self.container, text=label, variable=self.backend_var, value=val, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color=COLOR_TEXT, border_color=COLOR_TEXT_MUTED)
-            r.pack(pady=5, anchor="w", padx=30)
+
+        def refresh_cards():
+            selected = self.backend_var.get()
+            for val, card in cards.items():
+                card.configure(border_color=COLOR_ACCENT if val == selected else COLOR_BORDER)
+
+        for val, heading, desc, enabled in options:
+            card = ctk.CTkFrame(
+                self.container,
+                fg_color=COLOR_PANEL_ALT,
+                corner_radius=12,
+                border_width=1,
+                border_color=COLOR_ACCENT if self.backend_var.get() == val else COLOR_BORDER,
+            )
+            card.pack(fill="x", padx=28, pady=6)
+            cards[val] = card
+
+            inner = ctk.CTkFrame(card, fg_color="transparent")
+            inner.pack(fill="x", padx=14, pady=10)
+
+            rb = ctk.CTkRadioButton(
+                inner,
+                text=heading,
+                variable=self.backend_var,
+                value=val,
+                command=refresh_cards,
+                font=("Segoe UI", 13, "bold"),
+                fg_color=COLOR_ACCENT,
+                hover_color=COLOR_ACCENT_HOVER,
+                text_color=COLOR_TEXT if enabled else COLOR_TEXT_MUTED,
+                border_color=COLOR_TEXT_MUTED,
+            )
+            rb.pack(anchor="w")
             if not enabled:
-                r.configure(state="disabled")
+                rb.configure(state="disabled")
+
+            lbl_desc = ctk.CTkLabel(
+                inner,
+                text=desc if enabled else "Unavailable on this system (no NVIDIA CUDA GPU detected).",
+                font=("Segoe UI", 11),
+                text_color=COLOR_TEXT_MUTED,
+                anchor="w",
+                justify="left",
+            )
+            lbl_desc.pack(anchor="w", padx=(28, 0), pady=(2, 0))
+
+            if enabled:
+                for w in (card, inner, lbl_desc):
+                    w.bind("<Button-1>", lambda _e, v=val: (self.backend_var.set(v), refresh_cards()))
 
         self.make_nav_row(None, "Continue", lambda: self.show_user_details() if self.backend_var.get() == "cloud" else self.show_model_selection())
 
