@@ -76,7 +76,7 @@ COLOR_SUCCESS_HOVER = "#16a34a"
 
 CLOUD_PROVIDERS = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
-    "gemini": {"label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-3.7-flash"},
+    "gemini": {"label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.5-flash-lite"},
     "custom": {"label": "Custom / Other (OpenAI-compatible)", "base_url": "", "default_model": ""}
 }
 
@@ -200,27 +200,8 @@ class DotInstaller(ctk.CTk):
         self.container = ctk.CTkFrame(self, corner_radius=12, fg_color=COLOR_PANEL)
         self.container.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Check if essentials are missing and route to the appropriate screen
-        bin_dir = os.path.join(BASE_DIR, "bin")
-        server_exe = os.path.join(bin_dir, "llama-server.exe")
-        tier = self.tier_var.get()
-        model_info = self.config.get("models", {}).get(tier, {})
-        if not model_info and tier in DEFAULT_CONFIG.get("models", {}):
-            self.config.setdefault("models", {})[tier] = copy.deepcopy(DEFAULT_CONFIG["models"][tier])
-            model_info = self.config["models"][tier]
-        model_fn = model_info.get("filename", "")
-        model_path = os.path.join(bin_dir, model_fn) if model_fn else ""
-        backend = self.backend_var.get()
-
-        if backend != "cloud" and os.path.exists(CONFIG_FILE):
-            if model_path and not os.path.exists(model_path):
-                self.show_model_files()
-            elif not os.path.exists(server_exe):
-                self.start_installation()
-            else:
-                self.show_rig_analysis()
-        else:
-            self.show_rig_analysis()
+        # Always begin at Step 1 so new users can choose between instant Cloud API or Local AI
+        self.show_rig_analysis()
 
     # ----------------------------------------------------
     # CONFIG & HARDWARE PROBING
@@ -635,8 +616,46 @@ class DotInstaller(ctk.CTk):
             ctk.CTkEntry(self.container, textvariable=self.model_var, width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(0, 8))
 
             ctk.CTkLabel(self.container, text="API Key:", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
-            self.api_entry = ctk.CTkEntry(self.container, textvariable=self.api_key_var, show="*", width=520, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT)
-            self.api_entry.pack(anchor="w", padx=30, pady=(0, 10))
+            key_row = ctk.CTkFrame(self.container, fg_color="transparent")
+            key_row.pack(anchor="w", fill="x", padx=30, pady=(0, 4))
+            self.api_entry = ctk.CTkEntry(key_row, textvariable=self.api_key_var, show="*", width=395, fg_color=COLOR_PANEL_ALT, border_color=COLOR_ACCENT_MUTED, text_color=COLOR_TEXT)
+            self.api_entry.pack(side="left")
+
+            test_lbl = ctk.CTkLabel(self.container, text="", font=("Arial", 11), text_color=COLOR_TEXT_MUTED)
+            test_lbl.pack(anchor="w", padx=30, pady=(0, 6))
+
+            def test_cloud_key():
+                api_key = self.api_key_var.get().strip()
+                base_url = self.base_url_var.get().strip().rstrip("/")
+                if not api_key or not base_url:
+                    test_lbl.configure(text="Enter both Base URL and API Key first.", text_color=COLOR_ERROR)
+                    return
+                test_btn.configure(state="disabled", text="Testing...")
+                test_lbl.configure(text="Checking connection...", text_color=COLOR_TEXT_MUTED)
+
+                def _worker():
+                    try:
+                        resp = requests.get(
+                            f"{base_url}/models",
+                            headers={"Authorization": f"Bearer {api_key}"},
+                            timeout=10,
+                        )
+                        if resp.status_code == 200:
+                            self.after(0, lambda: test_lbl.configure(text="Connected! API key verified.", text_color=COLOR_SUCCESS))
+                        else:
+                            self.after(0, lambda c=resp.status_code: test_lbl.configure(text=f"Auth check returned HTTP {c}. Verify key/URL.", text_color=COLOR_ERROR))
+                    except Exception as err:
+                        self.after(0, lambda e=err: test_lbl.configure(text=f"Connection error: {str(e)[:80]}", text_color=COLOR_ERROR))
+                    finally:
+                        self.after(0, lambda: test_btn.configure(state="normal", text="Test Key"))
+
+                threading.Thread(target=_worker, daemon=True).start()
+
+            test_btn = ctk.CTkButton(
+                key_row, text="Test Key", width=115, fg_color=COLOR_BACK_BTN,
+                hover_color=COLOR_BACK_BTN_HOVER, text_color=COLOR_TEXT, command=test_cloud_key
+            )
+            test_btn.pack(side="left", padx=(10, 0))
 
         elif self.backend_var.get() == "cuda":
             ctk.CTkLabel(self.container, text="GPU Offload Layers (Advanced):", font=("Arial", 13), text_color=COLOR_TEXT).pack(anchor="w", padx=30, pady=(5, 2))
@@ -864,27 +883,32 @@ class DotInstaller(ctk.CTk):
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=4)
 
-        # Write GitHub Token to .env files
+        # Write GitHub Token to .env files without clobbering existing keys
         gh_token = self.github_token_var.get().strip()
-        env_content = f'GITHUB_TOKEN="{gh_token}"\n'
         for env_path in [os.path.join(BASE_DIR, "backend", "dot", ".env"), os.path.join(BASE_DIR, "backend", ".env"), os.path.join(BASE_DIR, ".env")]:
             try:
                 os.makedirs(os.path.dirname(env_path), exist_ok=True)
+                lines = []
+                if os.path.exists(env_path):
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        lines = [ln for ln in f.read().splitlines() if not ln.startswith("GITHUB_TOKEN=")]
+                lines.append(f'GITHUB_TOKEN="{gh_token}"')
                 with open(env_path, "w", encoding="utf-8") as f:
-                    f.write(env_content)
+                    f.write("\n".join(lines) + "\n")
             except Exception as e:
                 log_error(f"Warning: Failed to write {env_path}: {e}")
 
-        # Build start_dot.bat
-        orchestrator_cmd = "cd backend && python -m uvicorn server:app --port 3000"
-        frontend_cmd = "cd frontend && npx @neutralinojs/neu run"
+        # Build start_dot.bat supporting both portable runtime/ and .venv/
+        frontend_cmd = "frontend\\Dot-win_x64.exe"
+        if not os.path.exists(os.path.join(BASE_DIR, frontend_cmd)):
+            frontend_cmd = "cd frontend && npx @neutralinojs/neu run"
 
         engine_block = ""
         if backend != "cloud":
             active_model = self.config["models"][tier]
             gpu_flag = f"-ngl {self.layers_var.get()}" if backend == "cuda" else ""
             port = self.config["active_settings"].get("port", 11434)
-            llama_cmd = f"llama-server.exe -m {active_model['filename']} --mmproj {active_model['mmproj']} --port {port} -c {active_model.get('context_size', 8192)} -fa on {gpu_flag} --temp 0.0 --alias dot-engine"
+            llama_cmd = f"llama-server.exe -m {active_model['filename']} --mmproj {active_model['mmproj']} --port {port} -c {active_model.get('context_size', 8192)} -np 1 -fa on -ctk q8_0 -ctv q8_0 -b 2048 -ub 512 {gpu_flag} --temp 0.0 --alias dot-engine"
 
             engine_block = f"""echo [1/3] Starting Local Inference Engine ({backend.upper()})...
 if not exist "bin\\llama-server.exe" (
@@ -892,6 +916,7 @@ if not exist "bin\\llama-server.exe" (
     pause
     exit /b 1
 )
+set GGML_CUDA_DISABLE_GRAPHS=1
 cd bin
 start "Dot Inference Engine" cmd /k "{llama_cmd}"
 cd ..
@@ -929,10 +954,11 @@ set DOT_CLOUD_MODEL={self.config['cloud']['model']}
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 {env_block}
-:: Activate the virtual environment
-call .venv\\Scripts\\activate.bat
-if errorlevel 1 (
-    echo [ERROR] Could not activate .venv. Run start_setup.bat first.
+set "PY_BIN="
+if exist "runtime\\python.exe" set "PY_BIN=%~dp0runtime\\python.exe"
+if not defined PY_BIN if exist ".venv\\Scripts\\python.exe" set "PY_BIN=%~dp0.venv\\Scripts\\python.exe"
+if not defined PY_BIN (
+    echo [ERROR] Neither runtime\\python.exe nor .venv was found.
     pause
     exit /b 1
 )
@@ -942,7 +968,7 @@ echo   Dot is starting up...
 echo ========================================================
 echo.
 {engine_block}echo [2/3] Starting Python Orchestrator...
-start "Dot Backend" cmd /k "call .venv\\Scripts\\activate.bat && cd backend && python -m uvicorn server:app --port 3000"
+start "Dot Backend" cmd /k "cd /d %~dp0backend && "%PY_BIN%" -u -m uvicorn server:app --host 127.0.0.1 --port 3000 --loop asyncio:ProactorEventLoop"
 
 <nul set /p =[2/3] Waiting for orchestrator on port 3000 
 set ORCH_RETRIES=0
@@ -989,6 +1015,8 @@ echo   (You can close this window)
 
         def launch_app():
             self.destroy()
+            if "--from-launcher" in sys.argv:
+                return
             launcher_candidates = [
                 os.path.join(BASE_DIR, "Dot.exe"),
                 os.path.join(BASE_DIR, "launcher.pyw"),

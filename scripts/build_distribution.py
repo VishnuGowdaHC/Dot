@@ -4,6 +4,7 @@ This script follows ASD-STE100 standards.
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -119,27 +120,86 @@ def copy_backend(root_dir: Path, dist_dir: Path) -> None:
             "*.pyo",
             ".pytest_cache",
             "tests",
+            "storage",
             "*.log",
         ),
     )
 
 
-def copy_launcher_and_configs(root_dir: Path, dist_dir: Path) -> None:
+def sanitize_app_config(src_config: Path, dst_config: Path) -> None:
+    """Copy appConfig.json and clear developer-specific paths and credentials."""
+    with open(src_config, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
+    cfg["allowed_workspace"] = ""
+    cfg["github_token"] = ""
+    if isinstance(cfg.get("cloud"), dict):
+        cfg["cloud"]["api_key"] = ""
+
+    with open(dst_config, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=4)
+    log("Copied and sanitized appConfig.json.")
+
+
+def rebuild_dot_exe(root_dir: Path, venv_dir: Path, dist_dir: Path) -> bool:
+    """Rebuild Dot.exe from launcher.pyw using PyInstaller."""
+    pyinstaller_exe = venv_dir / "Scripts" / "pyinstaller.exe"
+    if not pyinstaller_exe.exists():
+        which_pyi = shutil.which("pyinstaller")
+        pyinstaller_exe = Path(which_pyi) if which_pyi else None
+
+    if not pyinstaller_exe or not pyinstaller_exe.exists():
+        log_error("PyInstaller not found. Falling back to prebuilt Dot.exe.")
+        return False
+
+    launcher_script = root_dir / "launcher.pyw"
+    icon_file = root_dir / "app_icon.ico"
+    build_tmp = root_dir / "build" / "pyinstaller_dot"
+
+    cmd = [
+        str(pyinstaller_exe),
+        "--noconfirm",
+        "--onefile",
+        "--windowed",
+        "--name", "Dot",
+        "--distpath", str(dist_dir),
+        "--workpath", str(build_tmp),
+        "--specpath", str(build_tmp),
+    ]
+    if icon_file.exists():
+        cmd.extend(["--icon", str(icon_file)])
+    cmd.append(str(launcher_script))
+
+    log("Rebuilding Dot.exe from launcher.pyw via PyInstaller...")
+    result = subprocess.run(cmd, cwd=str(root_dir))
+    if result.returncode != 0:
+        log_error("PyInstaller build failed. Falling back to prebuilt Dot.exe.")
+        return False
+
+    log("Rebuilt Dot.exe successfully.")
+    return True
+
+
+def copy_launcher_and_configs(root_dir: Path, dist_dir: Path, skip_dot_exe: bool = False) -> None:
     """Copy launcher, setup wizard, icons, and configuration templates."""
     files_to_copy = [
-        "Dot.exe",
         "launcher.pyw",
         "setup.py",
         "app_icon.ico",
         "requirements.txt",
-        "appConfig.json",
     ]
+    if not skip_dot_exe:
+        files_to_copy.insert(0, "Dot.exe")
 
     for fname in files_to_copy:
         src = root_dir / fname
         if src.exists():
             shutil.copy2(src, dist_dir / fname)
             log(f"Copied root file: {fname}")
+
+    src_cfg = root_dir / "appConfig.json"
+    if src_cfg.exists():
+        sanitize_app_config(src_cfg, dist_dir / "appConfig.json")
 
     # Ensure required empty runtime directories exist
     (dist_dir / "bin").mkdir(exist_ok=True)
@@ -185,6 +245,11 @@ def main() -> int:
         action="store_true",
         help="Skip bundling the Python runtime",
     )
+    parser.add_argument(
+        "--rebuild-exe",
+        action="store_true",
+        help="Rebuild Dot.exe from launcher.pyw using PyInstaller",
+    )
     args = parser.parse_args()
 
     root_dir = Path(__file__).resolve().parent.parent
@@ -201,8 +266,9 @@ def main() -> int:
         # 2. Copy backend
         copy_backend(root_dir, dist_dir)
 
-        # 3. Copy launcher and configs
-        copy_launcher_and_configs(root_dir, dist_dir)
+        # 3. Rebuild Dot.exe if requested and copy launcher and configs
+        rebuilt_exe = rebuild_dot_exe(root_dir, args.venv, dist_dir) if args.rebuild_exe else False
+        copy_launcher_and_configs(root_dir, dist_dir, skip_dot_exe=rebuilt_exe)
 
         # 4. Create README
         create_readme(dist_dir)

@@ -20,6 +20,8 @@ import SettingsModal from "./components/SettingsModal";
  */
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState("model");
+  const [updateAvailable, setUpdateAvailable] = useState(null);
   const [hopTelemetry, setHopTelemetry] = useState(null);
   const inputRef = useRef(null);
   const hasDockedRef = useRef(false);
@@ -54,6 +56,8 @@ export default function App() {
     setActiveModel,
     isCloudModel,
     setIsCloudModel,
+    wsConnected,
+    setWsConnected,
     tokenUsage,
     setTokenUsage,
   } = useMessage();
@@ -93,6 +97,32 @@ export default function App() {
     loadInitialSettings();
   }, [setActiveModel, setIsCloudModel, setBrowserHeadless]);
 
+  // Non-blocking background update check on startup.
+  useEffect(() => {
+    fetch("http://localhost:3000/api/update/check")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.update_available) {
+          setUpdateAvailable(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Global keyboard shortcuts: Esc closes settings, Ctrl+L clears chat.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape" && isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        clearChat();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isSettingsOpen, clearChat]);
+
   // Initialize WebSocket and native Neutralino window
   useEffect(() => {
     initWS({
@@ -113,6 +143,7 @@ export default function App() {
       setIsCloudModel,
       setClarification,
       setHopTelemetry,
+      setWsConnected,
     });
 
     const initWindow = async () => {
@@ -158,6 +189,7 @@ export default function App() {
     setIsCloudModel,
     setClarification,
     setHopTelemetry,
+    setWsConnected,
   ]);
 
   // Adjust native window dimensions when expanding or collapsing
@@ -375,6 +407,40 @@ export default function App() {
             )}
 
             {/* Active Human Intervention Banner */}
+            {updateAvailable && (
+              <div className="px-4 py-1 z-20 select-none">
+                <div className="bg-emerald-950/85 border border-emerald-500/40 text-emerald-200 px-3 py-1.5 rounded-xl text-[10.5px] font-mono flex items-center justify-between shadow-sm">
+                  <span>Update v{updateAvailable.latest_version} available</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettingsInitialTab("updates");
+                        setIsSettingsOpen(true);
+                      }}
+                      className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[9.5px] cursor-pointer"
+                    >
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUpdateAvailable(null)}
+                      className="text-emerald-300/70 hover:text-white text-[10px] cursor-pointer"
+                      title="Dismiss"
+                    >
+                      x
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!wsConnected && (
+              <div className="px-4 py-1 z-20 select-none">
+                <div className="bg-amber-950/90 border border-amber-500/40 text-amber-200 px-3 py-1.5 rounded-xl text-[10.5px] font-mono flex items-center justify-between shadow-sm">
+                  <span>Backend offline. Reconnecting to port 3000...</span>
+                </div>
+              </div>
+            )}
             {intervention && (
               <div className="px-4 py-1 z-20 select-none">
                 <div className="bg-red-950/90 border border-red-500/50 text-red-200 px-3 py-2 rounded-xl text-[11px] font-mono flex flex-col gap-1.5 shadow-lg">
@@ -415,7 +481,11 @@ export default function App() {
                 onToggleBrowser={handleToggleBrowser}
                 activeModel={activeModel}
                 isCloudModel={isCloudModel}
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                wsConnected={wsConnected}
+                onOpenSettings={() => {
+                  setSettingsInitialTab("model");
+                  setIsSettingsOpen(true);
+                }}
                 hopTelemetry={hopTelemetry}
               />
               <InputPill
@@ -433,6 +503,7 @@ export default function App() {
       {/* Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
+        initialTab={settingsInitialTab}
         onClose={() => setIsSettingsOpen(false)}
         onSettingsSaved={(payload) => {
           if (!payload) return;

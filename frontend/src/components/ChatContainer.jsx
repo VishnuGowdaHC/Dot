@@ -67,6 +67,8 @@ const markdownComponents = {
 };
 
 const MessageItem = memo(function MessageItem({ msg }) {
+  const [copiedMsg, setCopiedMsg] = useState(false);
+
   if (msg.role === "user") {
     return (
       <div className="self-end max-w-[85%] bg-[#27272a] border border-white/10 text-white px-3.5 py-2 rounded-2xl rounded-br-sm text-[12.5px] leading-relaxed font-sans break-words">
@@ -75,8 +77,28 @@ const MessageItem = memo(function MessageItem({ msg }) {
     );
   }
 
+  const handleCopyMessage = () => {
+    if (!msg.content) return;
+    navigator.clipboard?.writeText(msg.content)
+      .then(() => {
+        setCopiedMsg(true);
+        setTimeout(() => setCopiedMsg(false), 1500);
+      })
+      .catch(() => {});
+  };
+
   return (
-    <div className="self-start max-w-[90%] bg-[#18181b] border border-white/8 text-zinc-200 px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed font-sans break-words">
+    <div className="group relative self-start max-w-[90%] bg-[#18181b] border border-white/8 text-zinc-200 px-3.5 py-2.5 rounded-2xl rounded-bl-sm text-[12px] leading-relaxed font-sans break-words">
+      {msg.content && (
+        <button
+          type="button"
+          onClick={handleCopyMessage}
+          className="opacity-0 group-hover:opacity-100 absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-zinc-800/90 hover:bg-zinc-700 border border-white/10 text-[9.5px] font-mono text-zinc-300 transition-opacity cursor-pointer"
+          title="Copy response"
+        >
+          {copiedMsg ? "Copied" : "Copy"}
+        </button>
+      )}
       <div className="prose prose-invert max-w-none text-[12px] leading-relaxed">
         <ReactMarkdown
           remarkPlugins={REMARK_PLUGINS}

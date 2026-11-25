@@ -49,12 +49,22 @@ const PROVIDER_PRESETS = [
  * Compact settings dialog component for Dot HUD.
  * Complies with ASD-STE100 rules.
  */
-export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
-  const [activeTab, setActiveTab] = useState("model");
+export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initialTab = "model" }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   const [backend, setBackend] = useState("cuda");
   const [selectedTier, setSelectedTier] = useState("4B");
@@ -389,6 +399,59 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
     }
   };
 
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateMessage(null);
+    try {
+      const res = await fetch("http://localhost:3000/api/update/check");
+      const data = await res.json();
+      setUpdateInfo(data);
+      if (data.status === "error") {
+        setUpdateMessage({ type: "error", text: data.error || "Failed to check updates." });
+      } else if (!data.update_available) {
+        setUpdateMessage({ type: "success", text: `Dot v${data.current_version} is up to date.` });
+      }
+    } catch (err) {
+      setUpdateMessage({ type: "error", text: `Update check failed: ${err.message}` });
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!updateInfo?.download_url) return;
+    setInstallingUpdate(true);
+    setUpdateMessage({ type: "info", text: "Downloading and verifying installer..." });
+    try {
+      const res = await fetch("http://localhost:3000/api/update/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          download_url: updateInfo.download_url,
+          sha256_url: updateInfo.sha256_url || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "installing") {
+        setUpdateMessage({ type: "success", text: data.message || "Installer started. Restarting..." });
+      } else {
+        setUpdateMessage({ type: "error", text: data.message || "Update install failed." });
+        setInstallingUpdate(false);
+      }
+    } catch (err) {
+      setUpdateMessage({ type: "error", text: `Install error: ${err.message}` });
+      setInstallingUpdate(false);
+    }
+  };
+
+  const handleOpenLogsFolder = async () => {
+    try {
+      await fetch("http://localhost:3000/api/logs/open", { method: "POST" });
+    } catch (err) {
+      console.warn("Failed to open logs folder:", err);
+    }
+  };
+
   if (!isOpen) return null;
 
   const currentPreset = PROVIDER_PRESETS.find((p) => p.id === cloudProvider) || PROVIDER_PRESETS[0];
@@ -457,6 +520,20 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
             }`}
           >
             <span>Tools</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("updates");
+              if (!updateInfo) handleCheckUpdate();
+            }}
+            className={`py-2.5 px-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "updates"
+                ? "border-[#FF5A5F] text-white font-semibold"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <span>Updates</span>
           </button>
         </div>
 
@@ -949,6 +1026,90 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved }) {
                     {mcpSyncStatus.message}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* UPDATES & DIAGNOSTICS TAB */}
+          {!loading && activeTab === "updates" && (
+            <div className="space-y-4">
+              <div className="p-3.5 bg-[#141417] border border-zinc-800/90 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold text-zinc-100">Application Updates</h3>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">
+                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "2.1.0"}</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCheckUpdate}
+                    disabled={checkingUpdate || installingUpdate}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {checkingUpdate ? "Checking..." : "Check Now"}
+                  </button>
+                </div>
+
+                {updateInfo?.update_available && (
+                  <div className="p-2.5 bg-emerald-950/30 border border-emerald-700/50 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-emerald-300">
+                        New release v{updateInfo.latest_version} available
+                      </span>
+                      {updateInfo.asset_size > 0 && (
+                        <span className="text-[10px] font-mono text-zinc-400">
+                          {(updateInfo.asset_size / (1024 * 1024)).toFixed(1)} MB
+                        </span>
+                      )}
+                    </div>
+                    {updateInfo.release_notes && (
+                      <div className="text-[10px] text-zinc-300 max-h-24 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                        {updateInfo.release_notes}
+                      </div>
+                    )}
+                    {updateInfo.download_url && (
+                      <button
+                        type="button"
+                        onClick={handleInstallUpdate}
+                        disabled={installingUpdate}
+                        className="w-full py-1.5 bg-[#FF5A5F] hover:bg-[#FF454A] text-white rounded-lg text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        {installingUpdate ? "Downloading & Installing..." : "Download & Install Update"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {updateMessage && (
+                  <div
+                    className={`p-2 rounded-lg text-[10px] font-mono ${
+                      updateMessage.type === "error"
+                        ? "bg-red-950/40 border border-red-800/80 text-red-200"
+                        : updateMessage.type === "success"
+                        ? "bg-emerald-950/40 border border-emerald-800/80 text-emerald-200"
+                        : "bg-zinc-900 border border-zinc-700 text-zinc-300"
+                    }`}
+                  >
+                    {updateMessage.text}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3.5 bg-[#141417] border border-zinc-800/90 rounded-xl flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-semibold text-zinc-100">Diagnostics</h3>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">
+                    Open backend and engine log files
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenLogsFolder}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                >
+                  Open Logs
+                </button>
               </div>
             </div>
           )}

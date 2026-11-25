@@ -617,6 +617,40 @@ async def stop_engine_endpoint():
     return {"status": "ok", "message": msg}
 
 
+@app.get("/api/update/check")
+async def check_update_endpoint():
+    """Checks GitHub Releases for a newer Dot version."""
+    from dot.core.updater import check_for_updates
+    return await check_for_updates()
+
+
+@app.post("/api/update/install")
+async def install_update_endpoint(request: Request):
+    """Downloads, verifies, and launches the latest Dot installer."""
+    from dot.core.updater import download_and_install_update
+    payload = await request.json()
+    download_url = str(payload.get("download_url", "")).strip()
+    sha256_url = payload.get("sha256_url")
+    result = await download_and_install_update(download_url, sha256_url)
+    if result.get("status") == "installing":
+        # Schedule clean process exit after returning HTTP response so installer can replace files.
+        async def delayed_exit():
+            await asyncio.sleep(1.0)
+            os._exit(0)
+        asyncio.create_task(delayed_exit())
+    return result
+
+
+@app.post("/api/logs/open")
+async def open_logs_folder_endpoint():
+    """Opens the Dot logs directory in Windows Explorer."""
+    from dot.config.paths import LOGS_DIR
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        await asyncio.to_thread(os.startfile, str(LOGS_DIR))
+    return {"status": "ok", "path": str(LOGS_DIR)}
+
+
 @app.post("/api/cloud/test")
 async def test_cloud_connection(request: Request):
     """Validates the cloud API credentials and returns connection status."""

@@ -11,6 +11,7 @@ export default function ControlShelf({
   onToggleBrowser,
   activeModel = "Gemma 4B",
   isCloudModel = false,
+  wsConnected = true,
   onOpenSettings,
   hopTelemetry,
 }) {
@@ -50,9 +51,13 @@ export default function ControlShelf({
         type="button"
         onClick={onOpenSettings}
         className="h-7 px-2.5 bg-[#202024] border border-white/8 rounded-xl flex items-center gap-1.5 text-[9px] font-sans text-zinc-300 hover:text-white hover:border-white/20 transition-all cursor-pointer shrink-0"
-        title="Active model. Click to configure settings."
+        title={wsConnected ? "Backend connected. Click to configure settings." : "Backend offline. Reconnecting..."}
       >
-        
+        <span
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            wsConnected ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
+          }`}
+        />
         <span className="truncate max-w-[120px] font-medium">{activeModel}</span>
       </button>
 

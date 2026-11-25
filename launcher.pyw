@@ -1156,7 +1156,7 @@ def main():
 
     # Launch setup wizard if configuration or essentials are missing
     if not config or not check_essentials(config):
-        subprocess.run([py_exe, os.path.join(BASE_DIR, "setup.py")], cwd=BASE_DIR)
+        subprocess.run([py_exe, os.path.join(BASE_DIR, "setup.py"), "--from-launcher"], cwd=BASE_DIR)
         if not os.path.exists(CONFIG_PATH):
             return
         try:

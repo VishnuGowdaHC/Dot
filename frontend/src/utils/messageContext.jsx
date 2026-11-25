@@ -16,6 +16,7 @@ export function MessageProvider({ children }) {
   const [browserHeadless, setBrowserHeadless] = useState(true);
   const [activeModel, setActiveModel] = useState("gemini-3.5-flash-lite");
   const [isCloudModel, setIsCloudModel] = useState(true);
+  const [wsConnected, setWsConnected] = useState(true);
   const [typingLength, setTypingLength] = useState(0);
 
   const [tokenUsage, setTokenUsage] = useState({
@@ -82,11 +83,12 @@ export function MessageProvider({ children }) {
     browserHeadless, setBrowserHeadless,
     activeModel, setActiveModel,
     isCloudModel, setIsCloudModel,
+    wsConnected, setWsConnected,
     tokenUsage, setTokenUsage,
   }), [
     messages, addMessage, appendStreamChunk, setLastMessageThoughts, clearChat,
     isLoading, isStreaming, activeThoughts, actionText, voiceStatus, sandboxStatus,
-    intervention, clarification, browserHeadless, activeModel, isCloudModel, tokenUsage,
+    intervention, clarification, browserHeadless, activeModel, isCloudModel, wsConnected, tokenUsage,
   ]);
 
   const typingValue = useMemo(() => ({

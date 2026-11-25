@@ -49,6 +49,7 @@ function connectWS() {
     setIsCloudModel,
     setClarification,
     setHopTelemetry,
+    setWsConnected,
   } = activeHandlers;
 
   try {
@@ -56,6 +57,7 @@ function connectWS() {
 
     ws.onopen = () => {
       reconnectAttempts = 0;
+      if (setWsConnected) setWsConnected(true);
       console.log("[WS] Connected to Dot backend server");
     };
 
@@ -151,12 +153,14 @@ function connectWS() {
 
     ws.onerror = (err) => {
       console.error("[WS] Connection error:", err);
+      if (setWsConnected) setWsConnected(false);
       if (setIsLoading) setIsLoading(false);
       if (setIsStreaming) setIsStreaming(false);
     };
 
     ws.onclose = () => {
       console.log("[WS] Disconnected from server");
+      if (setWsConnected) setWsConnected(false);
       if (setIsLoading) setIsLoading(false);
       if (setIsStreaming) setIsStreaming(false);
       ws = null;

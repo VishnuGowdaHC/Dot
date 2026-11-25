@@ -60,6 +60,24 @@ def copy_python_binaries(base_dir: Path, target_dir: Path) -> None:
             shutil.copy2(src, target_dir / fname)
             log(f"Copied binary: {fname}")
 
+    # Bundle Microsoft Visual C++ runtime DLLs so C++ extensions load on clean Windows machines.
+    sys32_dir = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    cpp_runtime_dlls = [
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "concrt140.dll",
+    ]
+    for dll_name in cpp_runtime_dlls:
+        dst_dll = target_dir / dll_name
+        if dst_dll.exists():
+            continue
+        for search_dir in (base_dir, sys32_dir):
+            cand = search_dir / dll_name
+            if cand.exists():
+                shutil.copy2(cand, dst_dll)
+                log(f"Copied C++ runtime DLL: {dll_name}")
+                break
+
     # Copy DLLs folder
     dlls_src = base_dir / "DLLs"
     dlls_dst = target_dir / "DLLs"
