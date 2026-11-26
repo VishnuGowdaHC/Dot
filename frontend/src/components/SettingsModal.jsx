@@ -86,6 +86,9 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
   const [cloudModel, setCloudModel] = useState("gemini-2.5-flash");
   const [cloudApiKey, setCloudApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
+  const [cloudProfiles, setCloudProfiles] = useState([]);
+  const [activeCloudProfile, setActiveCloudProfile] = useState("");
+  const [profileLabelInput, setProfileLabelInput] = useState("");
 
   const [githubToken, setGithubToken] = useState("");
   const [showGithubToken, setShowGithubToken] = useState(false);
@@ -156,6 +159,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
             setCloudBaseUrl(cloud.base_url || "https://generativelanguage.googleapis.com/v1beta/openai/");
             setCloudModel(cloud.model || "gemini-2.5-flash");
             setCloudApiKey(cloud.api_key || "");
+            setCloudProfiles(Array.isArray(data.cloud_profiles) ? data.cloud_profiles : []);
+            setActiveCloudProfile(data.active_cloud_profile || "");
             setGithubToken(data.github_token || "");
             setAllowedProcesses(Array.isArray(data.allowed_processes) ? data.allowed_processes : []);
           }
@@ -373,6 +378,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
         cloud_base_url: cloudBaseUrl.trim(),
         cloud_model: cloudModel.trim(),
         cloud_api_key: cloudApiKey.trim(),
+        cloud_profiles: cloudProfiles,
+        active_cloud_profile: activeCloudProfile,
         github_token: githubToken.trim(),
       };
 
@@ -877,6 +884,97 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
 
               {backend === "cloud" && (
                 <div className="p-3.5 bg-[#141417] border border-zinc-800/90 rounded-xl space-y-3.5">
+                  <div className="p-2.5 bg-[#101013] border border-zinc-800/90 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10.5px] font-medium text-zinc-300">Saved API Key Profiles</span>
+                      <span className="text-[9.5px] font-mono text-zinc-500">{cloudProfiles.length} saved</span>
+                    </div>
+
+                    {cloudProfiles.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {cloudProfiles.map((prof) => {
+                          const isCurrent = activeCloudProfile === prof.id;
+                          return (
+                            <div
+                              key={prof.id}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] border ${
+                                isCurrent
+                                  ? "bg-[#FF5A5F]/15 border-[#FF5A5F]/60 text-white font-medium"
+                                  : "bg-zinc-900 border-zinc-700/80 text-zinc-300"
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setActiveCloudProfile(prof.id);
+                                  setCloudProvider(prof.provider || "gemini");
+                                  setCloudBaseUrl(prof.base_url || "");
+                                  setCloudModel(prof.model || "");
+                                  setCloudApiKey(prof.api_key || "");
+                                  try {
+                                    await fetch("http://localhost:3000/api/cloud/switch", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ id: prof.id }),
+                                    });
+                                  } catch (err) {
+                                    console.warn("Switch profile warning:", err);
+                                  }
+                                }}
+                                className="cursor-pointer"
+                              >
+                                {prof.label} ({prof.provider})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCloudProfiles(cloudProfiles.filter((p) => p.id !== prof.id));
+                                  if (activeCloudProfile === prof.id) setActiveCloudProfile("");
+                                }}
+                                className="text-zinc-500 hover:text-rose-400 ml-1 cursor-pointer"
+                                title="Remove profile"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={profileLabelInput}
+                        onChange={(e) => setProfileLabelInput(e.target.value)}
+                        placeholder="Profile name (e.g. Gemini Work)"
+                        className="flex-1 bg-[#141417] border border-zinc-700/80 rounded-lg px-2.5 py-1 text-[11px] text-zinc-100 outline-none focus:border-[#FF5A5F]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const label = profileLabelInput.trim() || `${cloudProvider}-${cloudModel || "key"}`;
+                          const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `prof-${Date.now()}`;
+                          const entry = {
+                            id,
+                            label,
+                            provider: cloudProvider,
+                            base_url: cloudBaseUrl.trim(),
+                            model: cloudModel.trim(),
+                            api_key: cloudApiKey.trim(),
+                          };
+                          const next = [...cloudProfiles.filter((p) => p.id !== id), entry];
+                          setCloudProfiles(next);
+                          setActiveCloudProfile(id);
+                          setProfileLabelInput("");
+                        }}
+                        className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-lg text-[11px] font-medium cursor-pointer shrink-0"
+                      >
+                        Save Key
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[10.5px] font-medium text-zinc-300 mb-1.5">
                       Provider
@@ -1317,7 +1415,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                   <div>
                     <h3 className="text-xs font-semibold text-zinc-100">Application Updates</h3>
                     <p className="text-[10px] text-zinc-400 mt-0.5">
-                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "3.0.2"}</span>
+                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "3.0.3"}</span>
                     </p>
                   </div>
                   <button

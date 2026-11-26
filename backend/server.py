@@ -225,6 +225,8 @@ async def get_settings():
         "github_token": gh_token,
         "allowed_workspace": get_allowed_workspace(),
         "allowed_processes": cfg.get("allowed_processes", []),
+        "cloud_profiles": cfg.get("cloud_profiles", []),
+        "active_cloud_profile": cfg.get("active_cloud_profile", ""),
     }
 
 
@@ -250,6 +252,10 @@ async def update_settings(request: Request):
         cfg["allowed_processes"] = sorted({
             str(p).strip().lower() for p in payload["allowed_processes"] if str(p).strip()
         })
+    if "cloud_profiles" in payload and isinstance(payload["cloud_profiles"], list):
+        cfg["cloud_profiles"] = payload["cloud_profiles"]
+    if "active_cloud_profile" in payload:
+        cfg["active_cloud_profile"] = str(payload["active_cloud_profile"] or "").strip()
     if "cloud" in payload and isinstance(payload["cloud"], dict):
         for k, v in payload["cloud"].items():
             cloud[k] = v
@@ -688,6 +694,30 @@ async def open_logs_folder_endpoint():
     if sys.platform == "win32":
         await asyncio.to_thread(os.startfile, str(LOGS_DIR))
     return {"status": "ok", "path": str(LOGS_DIR)}
+
+
+@app.post("/api/cloud/switch")
+async def switch_cloud_profile(request: Request):
+    """Switches the active cloud API key profile and reloads LLM clients."""
+    payload = await request.json()
+    profile_id = str(payload.get("id", "")).strip()
+    cfg = load_config()
+    profiles = cfg.get("cloud_profiles", [])
+    target = next((p for p in profiles if p.get("id") == profile_id), None)
+    if not target:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "API key profile not found."})
+
+    cloud = cfg.setdefault("cloud", {})
+    cloud["provider"] = str(target.get("provider", "gemini")).strip()
+    cloud["base_url"] = str(target.get("base_url", "")).strip()
+    cloud["model"] = str(target.get("model", "")).strip()
+    cloud["api_key"] = str(target.get("api_key", "")).strip()
+    cfg["active_cloud_profile"] = profile_id
+    save_config(cfg)
+    if cloud["api_key"]:
+        update_cloud_api_key(cloud["api_key"])
+    reload_llm_clients()
+    return {"status": "ok", "active_cloud_profile": profile_id, "cloud": cloud}
 
 
 @app.post("/api/cloud/test")

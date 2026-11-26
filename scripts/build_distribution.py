@@ -85,6 +85,11 @@ def build_frontend(root_dir: Path, dist_frontend_dir: Path) -> None:
         log_error("resources.neu not found.")
         raise FileNotFoundError("Missing resources.neu.")
 
+    src_neu_cfg = src_frontend / "neutralino.config.json"
+    if src_neu_cfg.exists():
+        shutil.copy2(src_neu_cfg, dist_frontend_dir / "neutralino.config.json")
+        log("Copied neutralino.config.json.")
+
     # Copy dist folder for static assets
     src_dist = src_frontend / "dist"
     dst_dist = dist_frontend_dir / "dist"
@@ -133,6 +138,8 @@ def sanitize_app_config(src_config: Path, dst_config: Path) -> None:
 
     cfg["allowed_workspace"] = ""
     cfg["github_token"] = ""
+    cfg["cloud_profiles"] = []
+    cfg["active_cloud_profile"] = ""
     if isinstance(cfg.get("cloud"), dict):
         cfg["cloud"]["api_key"] = ""
 

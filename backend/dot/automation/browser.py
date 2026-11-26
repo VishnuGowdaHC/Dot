@@ -425,6 +425,13 @@ async def _ensure_browser():
     _playwright = await async_playwright().start()
     
     connected_cdp = False
+    if not desired_headless:
+        try:
+            from dot.config.settings import get_browser_profile_settings
+            if get_browser_profile_settings()[0] == "persistent":
+                ensure_clean_chrome_cdp(9222)
+        except Exception:
+            pass
     if not desired_headless and _is_port_open(9222):
         try:
             _browser = await _playwright.chromium.connect_over_cdp("http://127.0.0.1:9222")

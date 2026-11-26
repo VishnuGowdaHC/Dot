@@ -87,7 +87,7 @@ def get_app_version():
                     return ver.lstrip("vV")
         except Exception:
             pass
-    return "2.1.0"
+    return "3.0.3"
 
 CLOUD_PROVIDERS = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},

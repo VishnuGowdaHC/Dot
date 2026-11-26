@@ -48,6 +48,23 @@ jobs:
           npm ci
           npm run build
 
+      - name: Bundle pinned MCP binaries (agent-browser 0.42.0 & github-mcp-server 1.5.0)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "backend/dot/mcp/bin" | Out-Null
+          npm install -g agent-browser@0.42.0
+          $abRoot = (npm root -g).Trim()
+          $abExe = Get-ChildItem -Path (Join-Path $abRoot "agent-browser") -Filter "agent-browser*.exe" -Recurse | Select-Object -First 1
+          if (-not $abExe) { throw "agent-browser.exe not found after npm install -g agent-browser@0.42.0" }
+          Copy-Item $abExe.FullName "backend/dot/mcp/bin/agent-browser.exe" -Force
+
+          $ghZip = "$env:TEMP/github-mcp-server.zip"
+          Invoke-WebRequest -Uri "https://github.com/github/github-mcp-server/releases/download/v1.5.0/github-mcp-server_Windows_x86_64.zip" -OutFile $ghZip
+          Expand-Archive -Path $ghZip -DestinationPath "$env:TEMP/gh_mcp" -Force
+          $ghExe = Get-ChildItem -Path "$env:TEMP/gh_mcp" -Filter "github-mcp-server.exe" -Recurse | Select-Object -First 1
+          if (-not $ghExe) { throw "github-mcp-server.exe not found in release archive" }
+          Copy-Item $ghExe.FullName "backend/dot/mcp/bin/github-mcp-server.exe" -Force
+
       - name: Assemble distribution package
         run: |
           python scripts/build_distribution.py --venv .venv --rebuild-exe
