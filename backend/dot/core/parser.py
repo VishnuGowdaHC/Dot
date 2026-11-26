@@ -67,6 +67,8 @@ class AgentStep(BaseModel):
                         payload["query"] = values.pop("get_tool")
                     elif values.get("tool_name"):
                         payload["query"] = values.pop("tool_name")
+                    if values.get("service"):
+                        payload["service"] = values.pop("service")
                 elif action == "Tool-exec":
                     if values.get("tool_name"):
                         payload["name"] = values.pop("tool_name")
@@ -81,12 +83,38 @@ class AgentStep(BaseModel):
 
                 if payload:
                     values["payload"] = payload
+
+            if action == "Tool-exec" and isinstance(values.get("payload"), dict):
+                p = dict(values["payload"])
+                if "name" not in p and "tool_name" in p:
+                    p["name"] = p.pop("tool_name")
+                if "args" not in p:
+                    for alt in ("arguments", "params"):
+                        if alt in p and isinstance(p[alt], dict):
+                            p["args"] = p.pop(alt)
+                            break
+                extra_keys = [k for k in list(p.keys()) if k not in ("name", "args")]
+                if extra_keys:
+                    args_dict = dict(p.get("args")) if isinstance(p.get("args"), dict) else {}
+                    for k in extra_keys:
+                        args_dict[k] = p.pop(k)
+                    p["args"] = args_dict
+                values["payload"] = p
         return values
 
     @property
     def get_tool(self) -> Optional[str]:
         """Returns the search query when action is Tool."""
         return self.payload.get("query") if self.payload and self.action == "Tool" else None
+
+    @property
+    def drill_service(self) -> Optional[str]:
+        """Returns the target service name for drill-down when action is Tool."""
+        if not self.action == "Tool":
+            return None
+        if self.payload and self.payload.get("service"):
+            return self.payload.get("service")
+        return self.tool_service
 
     @property
     def tool_name(self) -> Optional[str]:

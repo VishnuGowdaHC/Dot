@@ -241,6 +241,10 @@ async def update_settings(request: Request):
         active["selected_tier"] = payload["selected_tier"]
     if "browser_headless" in payload:
         active["browser_headless"] = bool(payload["browser_headless"])
+    if "browser_profile_mode" in payload and payload["browser_profile_mode"]:
+        active["browser_profile_mode"] = str(payload["browser_profile_mode"]).strip()
+    if "browser_profile_name" in payload and payload["browser_profile_name"]:
+        active["browser_profile_name"] = str(payload["browser_profile_name"]).strip()
     if "cloud" in payload and isinstance(payload["cloud"], dict):
         for k, v in payload["cloud"].items():
             cloud[k] = v
@@ -753,6 +757,54 @@ async def toggle_browser_headless():
             pass
 
     return {"status": "ok", "browser_headless": new_state}
+
+
+@app.get("/api/browser/profiles")
+async def get_browser_profiles():
+    """Lists available local Chrome profiles via agent-browser."""
+    from dot.config.paths import MCP_BIN_DIR
+    import subprocess
+    import re
+
+    exe_path = MCP_BIN_DIR / "agent-browser.exe"
+    if not exe_path.exists():
+        return {"profiles": []}
+
+    def _list_profiles() -> list[dict]:
+        try:
+            proc = subprocess.run(
+                [str(exe_path), "profiles"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            items = []
+            for line in (proc.stdout or "").splitlines():
+                m = re.match(r"^\s{2,}(.+?)\s{2,}\((.+?)\)\s*$", line)
+                if m:
+                    items.append({"id": m.group(1).strip(), "label": m.group(2).strip()})
+            return items
+        except Exception:
+            return []
+
+    profiles = await asyncio.to_thread(_list_profiles)
+    return {"profiles": profiles}
+
+
+@app.post("/api/browser/open-login")
+async def open_browser_for_login():
+    """Launches clean Chrome with the persistent Dot profile on CDP port 9222 for sign-in."""
+    from dot.config.paths import ROOT_DIR
+    from dot.automation.browser import ensure_clean_chrome_cdp
+
+    profile_dir = ROOT_DIR / "data" / "browser_profile"
+    ok = await asyncio.to_thread(ensure_clean_chrome_cdp, 9222, profile_dir)
+    if not ok:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Google Chrome executable not found or port 9222 failed to open."})
+    return {"status": "ok", "cdp_port": 9222}
 
 
 @app.get("/api/mcp/servers")

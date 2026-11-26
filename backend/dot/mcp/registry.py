@@ -8,8 +8,8 @@ import os
 import sys
 import shutil
 
-from dot.config.paths import MCP_CONFIG_PATH, BACKEND_DIR
-from dot.config.settings import get_github_token
+from dot.config.paths import MCP_CONFIG_PATH, BACKEND_DIR, ROOT_DIR
+from dot.config.settings import get_github_token, load_config
 from dot.mcp.client_core import fetch_server_tools
 from dot.memory.collections.tools_collection import upsert_tools
 from dot.memory.collections.native_tools_collection import sync_native_tools
@@ -70,6 +70,34 @@ def load_server_config() -> dict:
         env["FASTMCP_SHOW_SERVER_BANNER"] = "false"
         existing_pythonpath = env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
         env["PYTHONPATH"] = f"{base_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else base_dir
+
+        if server_name == "browser":
+            app_cfg = load_config()
+            active_cfg = app_cfg.get("active_settings", {})
+            if not active_cfg.get("browser_headless", False):
+                env["AGENT_BROWSER_HEADED"] = "1"
+            else:
+                env.pop("AGENT_BROWSER_HEADED", None)
+
+            profile_mode = str(active_cfg.get("browser_profile_mode", "persistent")).strip()
+            if profile_mode == "auto_connect":
+                env["AGENT_BROWSER_AUTO_CONNECT"] = "1"
+            elif profile_mode == "chrome_profile":
+                profile_name = str(active_cfg.get("browser_profile_name", "Default")).strip()
+                if profile_name:
+                    env["AGENT_BROWSER_PROFILE"] = profile_name
+            elif profile_mode == "persistent":
+                profile_dir = ROOT_DIR / "data" / "browser_profile"
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                if not active_cfg.get("browser_headless", False):
+                    from dot.automation.browser import ensure_clean_chrome_cdp
+                    if ensure_clean_chrome_cdp(port=9222, profile_dir=profile_dir):
+                        env["AGENT_BROWSER_CDP"] = "9222"
+                        env.pop("AGENT_BROWSER_PROFILE", None)
+                    else:
+                        env["AGENT_BROWSER_PROFILE"] = str(profile_dir)
+                else:
+                    env["AGENT_BROWSER_PROFILE"] = str(profile_dir)
 
         valid_servers[server_name] = server_cfg
 
@@ -185,6 +213,9 @@ async def sync_registry(active_client=None):
             elif tool_name.startswith("os_tools_"):
                 # Remove redundant server prefix for OS tools.
                 tool_name = tool_name[len("os_tools_"):]
+                service = "os_tools"
+            elif tool_name.startswith("os_"):
+                # Preserve native os_ tool prefix and classify under os_tools.
                 service = "os_tools"
             else:
                 service = next((s for s in server_names if tool_name.startswith(f"{s}_")), "unknown")

@@ -123,9 +123,10 @@ def check_guardrails(step_obj: Any) -> Optional[str]:
 
     if action == "Tool":
         tool_query = getattr(step_obj, "get_tool", None)
-        tool_service = getattr(step_obj, "tool_service", None)
-        if not is_real_value(tool_query):
-            return "action='Tool' requires a search query in the payload. Example: {'query': 'search'}"
+        drill_service = getattr(step_obj, "drill_service", None)
+        tool_service = drill_service or getattr(step_obj, "tool_service", None)
+        if not is_real_value(tool_query) and not is_real_value(drill_service):
+            return "action='Tool' requires a 'query' or 'service' in the payload. Example: {'query': 'search'} or {'service': 'os_tools'}"
         if tool_service == "github" or (tool_query and "github" in str(tool_query).lower()):
             if not settings.get_github_token():
                 return "GitHub Personal Access Token (PAT) is missing. Configure a valid GitHub PAT in Settings."
@@ -137,7 +138,7 @@ def check_guardrails(step_obj: Any) -> Optional[str]:
         tool_args = getattr(step_obj, "tool_args", {}) or {}
 
         if not tool_name:
-            return "action='Tool-exec' requires a 'name' in the payload."
+            return "action='Tool-exec' requires 'name' and 'args' in payload. Example: {'name': 'os_replace_text', 'args': {...}}"
 
         if tool_service == "github" or tool_name.startswith("github_"):
             if not settings.get_github_token():
@@ -165,6 +166,8 @@ DELIVERY_TOOLS = {
     "agent_browser_fill",
     "os_keyboard_type",
     "os_tools_os_keyboard_type",
+    "os_replace_text",
+    "os_tools_os_replace_text",
     "write_file",
     "sandbox_write_file",
 }
@@ -202,12 +205,26 @@ def extract_delivery_destination(query: str) -> Optional[str]:
 
 
 def check_unfulfilled_delivery(query: str, executed_tool_names: set) -> Optional[str]:
-    """Verifies that an external delivery request executes before allowing Final action."""
+    """Verifies that an external delivery or desktop edit executes before allowing Final action."""
+    clean = (query or "").lower()
+    has_delivered = any(t in DELIVERY_TOOLS for t in executed_tool_names)
+
+    # Enforce desktop edit completion when user asks to replace/edit text on screen.
+    if not has_delivered and re.search(r"\b(replace|edit|rename|overwrite|change)\b", clean):
+        if any(k in clean for k in ("screen", "cell", "spreadsheet", "excel", "candidate", "text", "name")):
+            if "os_click_text" not in executed_tool_names:
+                return (
+                    "[System Directive: You have not replaced the target text yet. "
+                    "Call os_replace_text(target='...', replacement='...') directly.]"
+                )
+            return (
+                "[System Directive: You clicked the target, but did not type the replacement text yet. "
+                "Call os_keyboard_type(text='...') and os_keyboard_press(keys=['enter']) before finishing.]"
+            )
+
     dest = extract_delivery_destination(query)
     if not dest:
         return None
-
-    has_delivered = any(t in DELIVERY_TOOLS for t in executed_tool_names)
     if not has_delivered:
         return (
             f"[System Directive: The user requested delivery to '{dest}'. "

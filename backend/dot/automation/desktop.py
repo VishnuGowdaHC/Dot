@@ -1,4 +1,7 @@
 import os
+import re
+import subprocess
+import tempfile
 from fastmcp import FastMCP, Context
 import psutil
 import pygetwindow as gw
@@ -160,10 +163,9 @@ def os_get_active_window():
 
 @mcp.tool
 async def os_take_screenshot(ctx: Context = None, question: str = "Describe what's visible on the screen.") -> dict:
-    """
-    Capture a screenshot of the user's actual computer monitor, Windows desktop, or active applications.
-    Use this when the user asks what is happening on their screen, wants to see their desktop,
-    or asks to describe what is currently visible on their display.
+    """Capture a screenshot of the computer monitor, desktop, or active windows.
+    Use this when the user asks to check, inspect, or describe their screen.
+    Keywords: screen, screenshot, check screen, inspect, see, read screen, desktop.
 
     Returns:
         dict: A status dictionary containing a text description in 'detail' and image path in 'filepath'.
@@ -245,9 +247,10 @@ def os_mouse_click(x: int, y: int, button: str = "left", clicks: int = 1) -> str
 
 @mcp.tool
 def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
-    """Simulates physical keystrokes or pastes text into the active foreground window.
-    Optionally activates the window matching target_window before typing.
-    Use this to fill out forms, type URLs, or write messages.
+    """Type or paste text into the active desktop window or selected cell.
+    Activate the window matching target_window before typing when provided.
+    Use this to type, edit, replace, update, modify, or enter text in cells, spreadsheets, forms, or editors.
+    Keywords: type, edit, replace, change, rename, overwrite, paste, fill, write, cell, spreadsheet.
 
     Args:
         text (str): The exact string of text to type or paste.
@@ -334,11 +337,12 @@ def os_keyboard_type(text: str, target_window: Optional[str] = None) -> str:
 
 @mcp.tool
 def os_keyboard_press(keys: Union[List[str], str]) -> str:
-    """
-    Presses a specific key or combination of keys simultaneously (e.g., hotkeys).
-    
+    """Press a specific key or key combination simultaneously.
+    Use this to press Enter, Tab, Backspace, Delete, or Ctrl+A to confirm or clear edits.
+    Keywords: press, key, enter, backspace, delete, escape, shortcut, hotkey, clear, submit.
+
     Args:
-        keys (List[str]): A list of key names to press together. 
+        keys (List[str]): A list of key names to press together.
             Examples: ['enter'], ['ctrl', 'c'], ['win', 'd'], ['tab'].
     """
     try:
@@ -364,16 +368,221 @@ def _calculate_text_match_score(target: str, candidate: str) -> int:
         return 0
     if target_clean == candidate_clean:
         return 100
-    if target_clean in candidate_clean:
-        return 80 + len(target_clean)
-    if len(candidate_clean) >= 4 and candidate_clean in target_clean:
-        return 50 + len(candidate_clean)
+    if re.search(rf"(?<!\w){re.escape(target_clean)}(?!\w)", candidate_clean):
+        return 85
+    if len(target_clean) >= 4 and target_clean in candidate_clean:
+        return 65
     target_words = set(w for w in target_clean.split() if len(w) >= 3)
     candidate_words = set(w for w in candidate_clean.split() if len(w) >= 3)
     overlap = target_words.intersection(candidate_words)
-    if overlap:
-        return 30 + sum(len(w) for w in overlap)
+    if overlap and len(overlap) == len(target_words):
+        return 60
     return 0
+
+
+def _get_dot_window_rects() -> list[tuple[int, int, int, int]]:
+    """Return screen rectangles for visible Dot overlay windows to exclude from OCR."""
+    rects = []
+    try:
+        for w in gw.getAllWindows():
+            title = (w.title or "").strip().lower()
+            if title == "dot" and getattr(w, "visible", True):
+                if 0 < w.width < 900 and 0 < w.height < 900:
+                    rects.append((w.left, w.top, w.left + w.width, w.top + w.height))
+    except Exception:
+        pass
+    return rects
+
+
+def _point_in_rects(x: int, y: int, rects: list[tuple[int, int, int, int]]) -> bool:
+    """Return True when coordinates fall inside any excluded rectangle."""
+    return any(l <= x <= r and t <= y <= b for (l, t, r, b) in rects)
+
+
+def _run_windows_ocr(image_path: str) -> list[tuple[int, int, str]]:
+    """Run built-in Windows 10/11 WinRT OCR and return (x, y, text) word entries."""
+    ps_script = f"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime]
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' }})[0]
+Function Await($WinRtTask, $ResultType) {{
+    $netTask = $asTaskGeneric.MakeGenericMethod($ResultType).Invoke($null, @($WinRtTask))
+    $netTask.Wait(-1) | Out-Null
+    $netTask.Result
+}}
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync('{image_path.replace("'", "''")}')) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+$ocrResult = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+$items = @()
+foreach ($line in $ocrResult.Lines) {{
+    foreach ($word in $line.Words) {{
+        $r = $word.BoundingRect
+        $items += [PSCustomObject]@{{
+            x = [int]($r.X + ($r.Width / 2))
+            y = [int]($r.Y + ($r.Height / 2))
+            text = $word.Text
+        }}
+    }}
+    if ($line.Words.Count -gt 1) {{
+        $first = $line.Words[0].BoundingRect
+        $last = $line.Words[$line.Words.Count - 1].BoundingRect
+        $items += [PSCustomObject]@{{
+            x = [int](($first.X + $last.X + $last.Width) / 2)
+            y = [int]($first.Y + ($first.Height / 2))
+            text = $line.Text
+        }}
+    }}
+}}
+$items | ConvertTo-Json -Compress
+"""
+    ps1_path = os.path.join(tempfile.gettempdir(), f"dot_ocr_{os.getpid()}.ps1")
+    try:
+        with open(ps1_path, "w", encoding="utf-8") as f:
+            f.write(ps_script)
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps1_path],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        raw = (proc.stdout or "").strip()
+        if proc.returncode != 0 or not raw:
+            if proc.stderr:
+                print(f"[WinOCR Warning] rc={proc.returncode} err={proc.stderr.strip()[:200]}", file=sys.stderr)
+            return []
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        return [(int(item["x"]), int(item["y"]), str(item["text"])) for item in parsed if item.get("text")]
+    except Exception as e:
+        print(f"[WinOCR Error] {e}", file=sys.stderr)
+        return []
+    finally:
+        try:
+            if os.path.exists(ps1_path):
+                os.remove(ps1_path)
+        except Exception:
+            pass
+
+
+def _scan_screen_words() -> list[tuple[int, int, str]]:
+    """Scan desktop screenshot using native Windows OCR with downscaled EasyOCR fallback."""
+    screenshot = pyautogui.screenshot()
+    tmp_path = os.path.join(tempfile.gettempdir(), f"dot_ocr_{os.getpid()}.png")
+    try:
+        screenshot.save(tmp_path)
+        win_items = _run_windows_ocr(tmp_path)
+        if win_items:
+            return win_items
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+
+    reader = _get_ocr_reader()
+    if not reader:
+        return []
+
+    import cv2
+    import numpy as np
+    img = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+    height, width = img.shape[:2]
+    scale = 1.0
+    if width > 1920:
+        scale = 1920.0 / float(width)
+        img = cv2.resize(img, (1920, int(height * scale)), interpolation=cv2.INTER_AREA)
+
+    results = reader.readtext(img)
+    items = []
+    for (bbox, recognized_text, _prob) in results:
+        cx = int(((bbox[0][0] + bbox[1][0]) / 2.0) / scale)
+        cy = int(((bbox[0][1] + bbox[2][1]) / 2.0) / scale)
+        items.append((cx, cy, recognized_text))
+    return items
+
+
+def _find_text_candidates(
+    target: str,
+    min_score: int = 60,
+    words: Optional[list[tuple[int, int, str]]] = None,
+) -> tuple[list[tuple[int, int, str, int]], int, int]:
+    """Return all matching OCR candidates sorted by score, plus total and excluded counts."""
+    excluded = _get_dot_window_rects()
+    scanned = words if words is not None else _scan_screen_words()
+    excluded_count = 0
+    candidates: list[tuple[int, int, str, int]] = []
+    for x, y, recognized_text in scanned:
+        if _point_in_rects(x, y, excluded):
+            excluded_count += 1
+            continue
+        score = _calculate_text_match_score(target, recognized_text)
+        if score >= min_score:
+            candidates.append((x, y, recognized_text, score))
+    candidates.sort(key=lambda item: (-item[3], item[1], item[0]))
+    return candidates, len(scanned), excluded_count
+
+
+def _find_best_text_match(target: str, min_score: int = 60) -> Optional[tuple[int, int, str, int]]:
+    """Find the highest-scoring OCR text match outside Dot windows."""
+    candidates, _, _ = _find_text_candidates(target, min_score=min_score)
+    return candidates[0] if candidates else None
+
+
+def _activate_window_at(x: int, y: int) -> str:
+    """Activate the non-Dot desktop window at screen coordinates (x, y)."""
+    try:
+        for w in gw.getWindowsAt(x, y):
+            title = (w.title or "").strip()
+            lower = title.lower()
+            if title and lower != "dot" and not any(k in lower for k in ("taskbar", "program manager")):
+                try:
+                    w.activate()
+                    time.sleep(0.08)
+                except Exception:
+                    pass
+                return title
+    except Exception:
+        pass
+    return ""
+
+
+def _read_active_selection_via_clipboard() -> str:
+    """Copy the active cell or selection text while preserving the previous clipboard."""
+    import pyperclip
+    prev_clipboard = None
+    try:
+        prev_clipboard = pyperclip.paste()
+    except Exception:
+        prev_clipboard = None
+
+    copied = ""
+    try:
+        pyperclip.copy("")
+        time.sleep(0.03)
+        pyautogui.hotkey("ctrl", "c")
+        time.sleep(0.08)
+        copied = (pyperclip.paste() or "").strip()
+    except Exception:
+        copied = ""
+    finally:
+        if prev_clipboard is not None:
+            try:
+                pyperclip.copy(prev_clipboard)
+            except Exception:
+                pass
+    return copied
 
 
 @mcp.tool
@@ -382,7 +591,7 @@ def os_find_text_coordinates(
     title: Optional[str] = None,
     description: Optional[str] = None,
 ) -> str:
-    """Scans the current desktop screen for the specified text using OCR and returns its center coordinates.
+    """Scans the current desktop screen for the specified text using fast OCR and returns its center coordinates.
 
     Use this before clicking to find the exact X, Y location of a button or word.
 
@@ -395,28 +604,10 @@ def os_find_text_coordinates(
     if not target:
         return "Provide target text to locate."
     try:
-        reader = _get_ocr_reader()
-        if not reader:
-            return "OCR reader is not available."
-
-        screenshot = pyautogui.screenshot()
-        import numpy as np
-        results = reader.readtext(np.array(screenshot))
-
-        best_score = 0
-        best_match = None
-        for (bbox, recognized_text, prob) in results:
-            score = _calculate_text_match_score(target, recognized_text)
-            if score > best_score:
-                x = int((bbox[0][0] + bbox[1][0]) / 2)
-                y = int((bbox[0][1] + bbox[2][1]) / 2)
-                best_score = score
-                best_match = (x, y, recognized_text)
-
-        if best_match and best_score >= 30:
-            x, y, label = best_match
+        match = _find_best_text_match(target, min_score=60)
+        if match:
+            x, y, label, _ = match
             return f"Found '{label}' at coordinates: x={x}, y={y}"
-
         return f"Could not find the text '{target}' on the screen."
     except Exception as e:
         return f"OCR failed: {str(e)}"
@@ -429,10 +620,11 @@ def os_click_text(
     description: Optional[str] = None,
     clicks: int = 1,
     button: str = "left",
+    verify_text: bool = False,
 ) -> str:
-    """Scans the desktop screen for the specified text using OCR and clicks it.
-
-    Use this to click buttons, video titles, links, or text visible on the monitor.
+    """Scan the desktop screen for the specified text with fast OCR and click it.
+    Use this without coordinates to select cells, buttons, links, or text on the monitor.
+    Keywords: click, select, focus, cell, button, link, menu, text.
 
     Args:
         text (str, optional): The visible text or title to locate and click on the screen.
@@ -440,41 +632,91 @@ def os_click_text(
         description (str, optional): Alternative description of the target element.
         clicks (int, optional): The number of clicks to perform. Defaults to 1.
         button (str, optional): The mouse button to click. Defaults to left.
+        verify_text (bool, optional): Verify the active selection text via clipboard after clicking.
     """
     target = text or title or description
     if not target:
         return "Provide target text or title to click."
     try:
-        reader = _get_ocr_reader()
-        if not reader:
-            return "OCR reader is not available."
+        match = _find_best_text_match(target, min_score=60)
+        if not match:
+            return (
+                f"Could not find the text '{target}' on the screen to click. "
+                "Use os_take_screenshot to inspect the visible titles and labels first."
+            )
 
-        screenshot = pyautogui.screenshot()
-        import numpy as np
-        results = reader.readtext(np.array(screenshot))
+        x, y, label, _ = match
+        win_title = _activate_window_at(x, y)
+        pyautogui.moveTo(x, y, duration=0.12)
+        pyautogui.click(clicks=clicks, button=button)
+        time.sleep(0.08)
 
-        best_score = 0
-        best_match = None
-        for (bbox, recognized_text, prob) in results:
-            score = _calculate_text_match_score(target, recognized_text)
-            if score > best_score:
-                x = int((bbox[0][0] + bbox[1][0]) / 2)
-                y = int((bbox[0][1] + bbox[2][1]) / 2)
-                best_score = score
-                best_match = (x, y, recognized_text)
+        if verify_text:
+            actual = _read_active_selection_via_clipboard()
+            if actual and _calculate_text_match_score(target, actual) < 60:
+                return (
+                    f"Verification failed at ({x}, {y}): active cell/selection contains "
+                    f"'{actual}', expected '{target}'."
+                )
 
-        if best_match and best_score >= 30:
-            x, y, label = best_match
-            pyautogui.moveTo(x, y, duration=0.2)
-            pyautogui.click(clicks=clicks, button=button)
-            return f"Successfully clicked on '{label}' at screen coordinates ({x}, {y})."
-
-        return (
-            f"Could not find the text '{target}' on the screen to click. "
-            "Use os_take_screenshot to inspect the visible titles and labels first."
-        )
+        win_info = f" in '{win_title}'" if win_title else ""
+        return f"Successfully clicked on '{label}'{win_info} at screen coordinates ({x}, {y})."
     except Exception as e:
         return f"Failed to click text on screen: {str(e)}"
+
+
+@mcp.tool
+def os_replace_text(
+    target: str,
+    replacement: str,
+    press_enter: bool = True,
+) -> str:
+    """Locate visible text on screen, verify the active selection, and replace it.
+    Use this directly to edit or replace text in any desktop application or input field.
+    Keywords: replace, edit, change, rename, overwrite, update, field, cell, text.
+
+    Args:
+        target (str): The existing visible text to locate and replace.
+        replacement (str): The new text to enter in place of target.
+        press_enter (bool, optional): Press Enter after typing to commit the edit. Defaults to True.
+    """
+    if not target or not target.strip():
+        return "Provide target text to replace."
+    try:
+        candidates, total_words, excluded_count = _find_text_candidates(target, min_score=60)
+        if not candidates:
+            return (
+                f"Could not find '{target}' on the screen "
+                f"(OCR scanned {total_words} words, excluded {excluded_count})."
+            )
+
+        mismatches: list[str] = []
+        for x, y, label, _ in candidates[:3]:
+            win_title = _activate_window_at(x, y)
+            pyautogui.moveTo(x, y, duration=0.12)
+            pyautogui.click(clicks=1, button="left")
+            time.sleep(0.1)
+
+            actual = _read_active_selection_via_clipboard()
+            if actual and _calculate_text_match_score(target, actual) >= 60:
+                pyautogui.click(clicks=2, button="left")
+                time.sleep(0.05)
+                pyautogui.hotkey("ctrl", "a")
+                time.sleep(0.04)
+                type_res = os_keyboard_type(text=replacement, target_window=win_title or None)
+                if press_enter:
+                    time.sleep(0.04)
+                    pyautogui.press("enter")
+                return f"Verified '{actual}' at ({x}, {y}) and replaced with '{replacement}'. ({type_res})"
+
+            mismatches.append(f"({x}, {y}) -> '{actual or '<empty>'}'")
+
+        return (
+            f"Verification failed for '{target}'. Clicked candidates did not match: "
+            f"{'; '.join(mismatches)}. Aborted edit."
+        )
+    except Exception as e:
+        return f"Failed to replace text on screen: {str(e)}"
 
 
 if __name__ == "__main__":

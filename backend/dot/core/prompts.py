@@ -28,8 +28,8 @@ ACTION STATES:
    - Set "payload": {}, "tool_service": null, "final_answer": "<response>".
 2. "Tool-exec": Direct execution for tools in CURRENT_CONTEXT_TOOLS.
    - Set "payload": {"name": "<exact_tool_name>", "args": {...}}, "final_answer": null.
-3. "Tool": Search for a tool ONLY when the required tool is missing from context.
-   - Set "payload": {"query": "<short action phrase>"}, "final_answer": null.
+3. "Tool": Search for a tool or drill down into a service ONLY when the required tool is missing from context.
+   - Set "payload": {"query": "<short action phrase>"} or {"service": "<service_name>"}, "final_answer": null.
 4. "Clarify": Ask user clarification ONLY when truly blocked or missing options.
    - Set "question": "<question>", "choices": ["choice 1", "choice 2"], "final_answer": null.
 
@@ -49,8 +49,11 @@ OPERATIONAL INSTRUCTIONS (WHEN TO DO WHAT):
      Find element via probe_page(query="...", tag_type="textbox"), then execute browser_fill(selector="@e1", text="...").
      Never use os_keyboard_type on web controls.
    - Desktop Application Window (editor, messenger, terminal, or any OS program):
+     To replace or edit visible text or a cell on screen, call os_replace_text(target="...", replacement="...") directly; skip os_take_screenshot.
+     To select visible text or a cell on screen, call os_click_text(text="...") directly; it locates text automatically via OCR.
+     To type into an already active window, call os_keyboard_type(text="...") and os_keyboard_press(keys=["enter"]).
      If the target application is not running, start it: os_manage_process(action="start", process_name="<app>.exe").
-     Then type or paste into the active window: os_keyboard_type(text="...", target_window="<app>").
+     Never ask the user where visible text is on screen before calling os_replace_text or os_click_text.
      Never use os_keyboard_type without ensuring the application is running.
    - File Target: write to file directly.
    - Chat Response: If no external app, web field, or file was requested, output action="Final" with your answer.
@@ -94,8 +97,8 @@ ACTION STATES:
    - Set "payload": {}, "tool_service": null, "final_answer": "<response>".
 2. "Tool-exec": Direct execution for tools in CURRENT_CONTEXT_TOOLS or [Found tools].
    - Set "payload": {"name": "<exact_tool_name>", "args": {...}}, "final_answer": null.
-3. "Tool": Search for a tool ONLY when the required tool is missing from context.
-   - Set "payload": {"query": "<short action phrase>"}, "final_answer": null.
+3. "Tool": Search for a tool or drill down into a service ONLY when the required tool is missing from context.
+   - Set "payload": {"query": "<short action phrase>"} or {"service": "<service_name>"}, "final_answer": null.
 4. "Clarify": Ask user clarification ONLY when truly blocked or missing options.
    - Set "question": "<question>", "choices": ["choice 1", "choice 2"], "final_answer": null.
 
@@ -115,8 +118,11 @@ OPERATIONAL INSTRUCTIONS (WHEN TO DO WHAT):
      Find element via probe_page(query="...", tag_type="textbox"), then execute browser_fill(selector="@e1", text="...").
      Never use os_keyboard_type on web controls.
    - Desktop Application Window (editor, messenger, terminal, or any OS program):
+     To replace or edit visible text or a cell on screen, call os_replace_text(target="...", replacement="...") directly; skip os_take_screenshot.
+     To select visible text or a cell on screen, call os_click_text(text="...") directly; it locates text automatically via OCR.
+     To type into an already active window, call os_keyboard_type(text="...") and os_keyboard_press(keys=["enter"]).
      If the target application is not running, start it: os_manage_process(action="start", process_name="<app>.exe").
-     Then type or paste into the active window: os_keyboard_type(text="...", target_window="<app>").
+     Never ask the user where visible text is on screen before calling os_replace_text or os_click_text.
      Never use os_keyboard_type without ensuring the application is running.
    - File Target: write to file directly.
    - Chat Response: If no external app, web field, or file was requested, output action="Final" with your answer.
@@ -161,8 +167,8 @@ DECISION FRAMEWORK:
 2. "Tool-exec": Direct execution for tools present in CURRENT_CONTEXT_TOOLS or [Found tools].
    - payload: {"name": "<exact_tool_name>", "args": {...}}, final_answer: null
    - Execute known tools immediately on Turn 1 with zero discovery overhead.
-3. "Tool": Speculative tool retrieval ONLY when necessary tool is absent from context.
-   - payload: {"query": "<concise action phrase>"}, final_answer: null
+3. "Tool": Speculative tool retrieval or service drill-down ONLY when necessary tool is absent from context.
+   - payload: {"query": "<concise action phrase>"} or {"service": "<service_name>"}, final_answer: null
 4. "Clarify": Human-in-the-loop pause when blocked, ambiguous, or needing user selection.
    - Set "question": "<question>", "choices": ["choice 1", "choice 2"], "final_answer": null
 
@@ -240,19 +246,14 @@ def _get_active_tier() -> str:
 
 
 def get_system_prompt(tools_text: str = "", tier: Optional[str] = None) -> str:
-    """Returns the tier-optimized system prompt with optional injected tool schemas."""
+    """Returns the static tier-optimized system prompt to preserve KV prefix caching."""
     selected_tier = (tier or _get_active_tier()).upper()
 
     if selected_tier == "2B":
-        base_prompt = SYSTEM_PROMPT_2B
-    elif selected_tier == "CLOUD":
-        base_prompt = SYSTEM_PROMPT_CLOUD
-    else:
-        base_prompt = SYSTEM_PROMPT_BALANCED
-
-    if tools_text:
-        return f"{base_prompt}\n\n### CURRENT CONTEXT TOOLS (Available if needed):\n{tools_text}\n"
-    return base_prompt
+        return SYSTEM_PROMPT_2B
+    if selected_tier == "CLOUD":
+        return SYSTEM_PROMPT_CLOUD
+    return SYSTEM_PROMPT_BALANCED
 
 
 # Default base prompt and backward compatibility alias

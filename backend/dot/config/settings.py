@@ -101,6 +101,24 @@ def set_browser_headless(headless: bool) -> None:
     save_config(cfg)
 
 
+def get_browser_profile_settings() -> tuple[str, str]:
+    """Returns the browser profile mode and Chrome profile name."""
+    cfg = load_config()
+    active = cfg.get("active_settings", {})
+    mode = str(active.get("browser_profile_mode", "persistent")).strip() or "persistent"
+    name = str(active.get("browser_profile_name", "Default")).strip() or "Default"
+    return mode, name
+
+
+def set_browser_profile_settings(mode: str, profile_name: str = "Default") -> None:
+    """Updates and saves the browser profile mode and Chrome profile name."""
+    cfg = load_config()
+    active = cfg.setdefault("active_settings", {})
+    active["browser_profile_mode"] = str(mode).strip() or "persistent"
+    active["browser_profile_name"] = str(profile_name).strip() or "Default"
+    save_config(cfg)
+
+
 def get_allowed_workspace() -> str:
     """Returns the allowed workspace directory path for file modifications."""
     cfg = load_config()

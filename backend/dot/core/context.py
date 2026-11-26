@@ -14,11 +14,11 @@ STREAM_CHUNK_SIZE = 16
 MAX_LOOP_TOKENS = 3500
 
 SERVICE_MAP = {
-    "github": "GitHub API (search repos/commits/code)",
-    "browser": "browser automation/YouTube/web search",
-    "os_tools": "OS management/processes",
-    "native": "local session memory only",
-    "sandbox": "isolated container (shell CLI, test runs, sandboxed browser, git)",
+    "github": "GitHub API (repos, commits, issues, PRs, code search)",
+    "browser": "web automation (search_web, navigate, read, snapshot, click, fill, press)",
+    "os_tools": "desktop automation (take_screenshot, click_text, keyboard_type, keyboard_press, manage_process)",
+    "native": "local session memory (search_active_session, search_past_sessions)",
+    "sandbox": "isolated container (sandbox_exec, sandbox_browser_*, sandbox_request_human_intervention)",
 }
 
 

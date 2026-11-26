@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import socket
+import subprocess
+import time
 import sys
 import os
 import json
@@ -34,6 +36,60 @@ def _is_port_open(port: int = 9222, host: str = "127.0.0.1", timeout: float = 0.
             return True
     except (OSError, socket.timeout):
         return False
+
+
+def find_chrome_executable() -> Optional[str]:
+    """Finds the local Google Chrome executable on Windows."""
+    candidates = [
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "Application" / "chrome.exe",
+    ]
+    for cand in candidates:
+        if cand and cand.exists():
+            return str(cand)
+    return None
+
+
+def ensure_clean_chrome_cdp(port: int = 9222, profile_dir: Optional[Path] = None) -> bool:
+    """Starts real Chrome without automation flags on the CDP port when available."""
+    if _is_port_open(port):
+        return True
+
+    chrome_exe = find_chrome_executable()
+    if not chrome_exe:
+        return False
+
+    if profile_dir is None:
+        from dot.config.paths import ROOT_DIR
+        profile_dir = ROOT_DIR / "data" / "browser_profile"
+    profile_dir = Path(profile_dir)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    creation_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    try:
+        subprocess.Popen(
+            [
+                chrome_exe,
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creation_flags,
+        )
+    except Exception:
+        return False
+
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        if _is_port_open(port):
+            return True
+        time.sleep(0.1)
+    return _is_port_open(port)
 
 mcp = FastMCP(name="Dot Browser Automation")
 

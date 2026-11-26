@@ -39,7 +39,9 @@ def detect_service_hints(query: str) -> list[str]:
     os_keywords = [
         "app", "application", "program", "software", "desktop", "window", "monitor", "screen",
         "screenshot", "process", "task", "kill", "terminate", "launch", "open app", "start program",
-        "type", "typing", "paste", "keyboard", "hotkey", "press key", "mouse", "click"
+        "type", "typing", "paste", "keyboard", "hotkey", "press key", "mouse", "click",
+        "edit", "replace", "modify", "update", "change", "rename", "overwrite", "cell",
+        "spreadsheet", "excel", "write"
     ]
     if any(k in clean for k in os_keywords):
         hints.append("os_tools")
@@ -120,16 +122,21 @@ def get_relevant_tools(query: str, service_hint=None, k=2, distance_threshold=1.
     )
 
     if results and "distances" in results and results["distances"]:
+        query_terms = set(re.findall(r"[a-z0-9_]{3,}", query.lower()))
         for doc, metadata, distance in zip(results["documents"][0], results["metadatas"][0], results["distances"][0]):
-            if distance <= distance_threshold:
+            doc_lower = (doc or "").lower()
+            overlap = sum(1 for term in query_terms if term in doc_lower)
+            adjusted_distance = float(distance) - (0.12 * min(overlap, 4))
+            if adjusted_distance <= distance_threshold:
                 tool_schema = json.loads(metadata["inputSchema"])
                 selected_tool.append({
                     "tool_name": metadata["toolName"],
                     "tool_service": metadata["service"],
                     "schema": tool_schema,
                     "description": metadata.get("description", ""),
-                    "distance": distance
+                    "distance": adjusted_distance
                 })
+        selected_tool.sort(key=lambda item: item.get("distance", 999.0))
 
     return selected_tool
 
@@ -182,9 +189,21 @@ def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.
     if any(keyword in clean for keyword in ["launch", "open app", "start program", "start process", "start app", "kill", "terminate", "process"]):
         add_tool(get_tool_by_name("os_manage_process"))
 
-    if any(keyword in clean for keyword in ["type", "paste", "keyboard", "enter text", "fill"]):
-        add_tool(get_tool_by_name("os_keyboard_type"))
-        add_tool(get_tool_by_name("os_manage_process"))
+    edit_input_keywords = [
+        "type", "paste", "keyboard", "enter text", "fill",
+        "edit", "replace", "modify", "update", "change", "rename", "overwrite", "write"
+    ]
+    if any(keyword in clean for keyword in edit_input_keywords):
+        if "os_tools" in hints or "browser" not in hints:
+            add_tool(get_tool_by_name("os_replace_text"))
+            if any(k in clean for k in ["click", "select", "cell", "edit", "replace", "change", "rename", "screen"]):
+                add_tool(get_tool_by_name("os_click_text"))
+            add_tool(get_tool_by_name("os_keyboard_type"))
+            add_tool(get_tool_by_name("os_keyboard_press"))
+            if any(k in clean for k in ["check", "inspect", "describe", "what is on"]):
+                add_tool(get_tool_by_name("os_take_screenshot"))
+        if any(k in clean for k in ["app", "window", "program", "open", "start"]):
+            add_tool(get_tool_by_name("os_manage_process"))
 
     if any(keyword in clean for keyword in ["http://", "https://", "wikipedia", "url", "navigate", "website"]):
         add_tool(get_tool_by_name("browser_navigate"))

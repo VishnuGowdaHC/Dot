@@ -69,6 +69,9 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
   const [backend, setBackend] = useState("cuda");
   const [selectedTier, setSelectedTier] = useState("4B");
   const [browserHeadless, setBrowserHeadless] = useState(false);
+  const [browserProfileMode, setBrowserProfileMode] = useState("persistent");
+  const [browserProfileName, setBrowserProfileName] = useState("Default");
+  const [chromeProfiles, setChromeProfiles] = useState([]);
 
   const [cloudProvider, setCloudProvider] = useState("gemini");
   const [cloudBaseUrl, setCloudBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai/");
@@ -122,9 +125,10 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
 
     async function fetchSettings() {
       try {
-        const [settingsResult, serversResult] = await Promise.allSettled([
+        const [settingsResult, serversResult, profilesResult] = await Promise.allSettled([
           fetch("http://localhost:3000/api/settings"),
           fetch("http://localhost:3000/api/mcp/servers"),
+          fetch("http://localhost:3000/api/browser/profiles"),
         ]);
 
         if (settingsResult.status === "fulfilled" && settingsResult.value.ok) {
@@ -135,6 +139,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
             setBackend(active.backend || "cuda");
             setSelectedTier(active.selected_tier || "4B");
             setBrowserHeadless(Boolean(active.browser_headless));
+            setBrowserProfileMode(active.browser_profile_mode || "persistent");
+            setBrowserProfileName(active.browser_profile_name || "Default");
 
             setCloudProvider(cloud.provider || "gemini");
             setCloudBaseUrl(cloud.base_url || "https://generativelanguage.googleapis.com/v1beta/openai/");
@@ -150,6 +156,13 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
           const sData = await serversResult.value.json();
           if (isMounted) {
             setMcpServers(sData.servers || []);
+          }
+        }
+
+        if (profilesResult.status === "fulfilled" && profilesResult.value.ok) {
+          const pData = await profilesResult.value.json();
+          if (isMounted) {
+            setChromeProfiles(pData.profiles || []);
           }
         }
       } catch (err) {
@@ -326,6 +339,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
         backend,
         selected_tier: selectedTier,
         browser_headless: browserHeadless,
+        browser_profile_mode: browserProfileMode,
+        browser_profile_name: browserProfileName,
         cloud: {
           provider: cloudProvider,
           base_url: cloudBaseUrl.trim(),
@@ -924,6 +939,83 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                     {browserHeadless ? "Disabled" : "Active"}
                   </span>
                 </div>
+              </div>
+
+              <div className="p-3.5 bg-[#141417] border border-zinc-800/90 rounded-xl space-y-2.5">
+                <div>
+                  <h3 className="text-xs font-semibold text-zinc-100">Browser Profile & Login State</h3>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">
+                    Keep logins across restarts or reuse a local Chrome profile
+                  </p>
+                </div>
+
+                <select
+                  value={browserProfileMode}
+                  onChange={(e) => setBrowserProfileMode(e.target.value)}
+                  className="w-full px-2.5 py-2 bg-[#0d0d10] border border-zinc-800 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-[#FF5A5F]/60"
+                >
+                  <option value="persistent">Dot Persistent Profile (Recommended)</option>
+                  <option value="chrome_profile">Use Local Chrome Profile</option>
+                  <option value="auto_connect">Auto-Connect Running Chrome</option>
+                  <option value="ephemeral">Ephemeral (Clean Session)</option>
+                </select>
+
+                {browserProfileMode === "chrome_profile" && (
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-medium text-zinc-400">Chrome Profile</label>
+                    {chromeProfiles.length > 0 ? (
+                      <select
+                        value={browserProfileName}
+                        onChange={(e) => setBrowserProfileName(e.target.value)}
+                        className="w-full px-2.5 py-2 bg-[#0d0d10] border border-zinc-800 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-[#FF5A5F]/60"
+                      >
+                        {chromeProfiles.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.id} ({p.label})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={browserProfileName}
+                        onChange={(e) => setBrowserProfileName(e.target.value)}
+                        placeholder="Default"
+                        className="w-full px-2.5 py-2 bg-[#0d0d10] border border-zinc-800 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-[#FF5A5F]/60"
+                      />
+                    )}
+                    <p className="text-[10px] text-amber-400/90">
+                      Close regular Chrome before using a shared Chrome profile, then restart Dot backend.
+                    </p>
+                  </div>
+                )}
+
+                {browserProfileMode === "persistent" && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-zinc-400">
+                      Sign in once in Dot&apos;s clean Chrome window. Logins persist across restarts even while your main Chrome is open.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await fetch("http://localhost:3000/api/browser/open-login", { method: "POST" });
+                        } catch (err) {
+                          console.warn("Failed to open login browser:", err);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#1c1c21] hover:bg-[#25252b] border border-zinc-700/80 text-[11px] font-medium text-zinc-200 transition-colors cursor-pointer"
+                    >
+                      Open Browser to Sign In
+                    </button>
+                  </div>
+                )}
+
+                {browserProfileMode === "auto_connect" && (
+                  <p className="text-[10px] text-zinc-400">
+                    Attaches to a running Chrome instance with remote debugging enabled.
+                  </p>
+                )}
               </div>
             </div>
           )}

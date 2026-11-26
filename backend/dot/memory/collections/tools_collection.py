@@ -23,8 +23,9 @@ def upsert_tools(all_tools: list, clear_before: bool = False):
         return
 
     if clear_before:
-        # Determine unique services present in all_tools to clear their stale entries
+        # Clear stale entries for active services and legacy unknown entries.
         services_to_clear = {t["service"] for t in all_tools if "service" in t}
+        services_to_clear.add("unknown")
         for s in services_to_clear:
             clear_tools(s)
 

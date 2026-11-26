@@ -11,7 +11,7 @@ from dot.core.parser import AgentStep
 from dot.core.guardrails import check_guardrails
 from dot.core.utils import dump_observation, trim_observation, log_tool_execution
 from dot.core.context import append_or_update_error
-from dot.memory.vector_store import get_relevant_tools
+from dot.memory.vector_store import BYPASS_SERVICES, get_relevant_tools, get_tool_by_name
 from dot.mcp.client import execute_mcp_tool
 from dot.memory.collections.native_tools_collection import NATIVE_TOOLS
 from dot.sandbox.tools import SANDBOX_TOOLS
@@ -70,6 +70,8 @@ STATE_CHANGING_TOOLS = {
     "os_click_at",
     "os_click_text",
     "os_tools_os_click_text",
+    "os_replace_text",
+    "os_tools_os_replace_text",
     "os_mouse_click",
     "os_tools_os_mouse_click",
     "sandbox_exec",
@@ -106,16 +108,21 @@ async def execute_tool_discovery(
         append_or_update_error(history_parts, f"[{error}]")
         return ExecutionResult(should_retry=True)
 
-    discovery_sig = f"search_{step_obj.tool_service}_{step_obj.get_tool}"
+    drill_service = step_obj.drill_service or step_obj.tool_service
+    query_text = (step_obj.get_tool or "").strip()
+    discovery_sig = f"search_{drill_service}_{query_text}"
     if discovery_sig in executed_signatures:
         append_or_update_error(
             history_parts,
-            f"[Warning: You already searched for '{step_obj.get_tool}'. Use action='Tool-exec' with an available tool, or search with a different query.]"
+            f"[Warning: You already searched for '{query_text or drill_service}'. Use action='Tool-exec' with an available tool, or search with a different query.]"
         )
         return ExecutionResult(should_retry=True)
 
     executed_signatures.add(discovery_sig)
-    results = get_relevant_tools(query=step_obj.get_tool, k=3, service_hint=step_obj.tool_service)
+    if drill_service in BYPASS_SERVICES and (not query_text or query_text.lower() == drill_service):
+        results = get_relevant_tools(query="", service_hint=drill_service)
+    else:
+        results = get_relevant_tools(query=query_text or drill_service or "", k=4, service_hint=drill_service)
 
     if results:
         lines = []
@@ -208,11 +215,30 @@ async def execute_tool_call(
             return ExecutionResult(tripped_circuit_breaker=True), last_tool_sig, loop_strikes
 
         has_obs = any(h.get("role") == "observation" for h in history_parts)
-        hint = (
-            f"[Notice: You are calling '{step_obj.tool_name}' with identical parameters on the same state. Call 'browser_navigate' to read a different page or proceed with your next action.]"
-            if is_inspection else
-            f"[Notice: You already executed '{step_obj.tool_name}' with these arguments. {'Synthesize your final answer using action=\"Final\".' if has_obs else 'Try different arguments or another tool.'}]"
-        )
+        if step_obj.tool_name in ("os_click_text", "unknown_os_click_text"):
+            hint = (
+                "[Notice: You already clicked the target. Call 'os_keyboard_type' to type text, "
+                "or use action='Tool' with payload={'service': 'os_tools'} to list input tools.]"
+            )
+            # Surface desktop keyboard tools when the model repeats a screen click.
+            for extra_name in ("os_keyboard_type", "os_keyboard_press"):
+                extra_tool = get_tool_by_name(extra_name)
+                if extra_tool:
+                    schema_dict = extra_tool.get("schema", {})
+                    preserved_schema = {
+                        "properties": schema_dict.get("properties", {}),
+                        "required": schema_dict.get("required", []),
+                    }
+                    line = f"- {extra_tool['tool_name']} via {extra_tool['tool_service']}: {json.dumps(preserved_schema)}"
+                    existing_role = next((h for h in history_parts if h.get("role") == "tool_found"), None)
+                    if existing_role and line not in existing_role["text"]:
+                        existing_role["text"] = f"{existing_role['text']}\n{line}"
+                    elif not existing_role:
+                        history_parts.append({"role": "tool_found", "text": f"[Found tools:\n{line}]", "pinned": True})
+        elif is_inspection:
+            hint = f"[Notice: You are calling '{step_obj.tool_name}' with identical parameters on the same state. Call 'browser_navigate' to read a different page or proceed with your next action.]"
+        else:
+            hint = f"[Notice: You already executed '{step_obj.tool_name}' with these arguments. {'Synthesize your final answer using action=\"Final\".' if has_obs else 'Try different arguments or another tool.'}]"
         append_or_update_error(history_parts, hint)
         return ExecutionResult(should_retry=True), last_tool_sig, loop_strikes
 
