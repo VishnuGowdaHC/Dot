@@ -74,6 +74,12 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
   const [browserProfileMode, setBrowserProfileMode] = useState("persistent");
   const [browserProfileName, setBrowserProfileName] = useState("Default");
   const [chromeProfiles, setChromeProfiles] = useState([]);
+  const [verifyingBrowser, setVerifyingBrowser] = useState(false);
+  const [browserVerifyStatus, setBrowserVerifyStatus] = useState(null);
+  const [installedApps, setInstalledApps] = useState([]);
+  const [allowedProcesses, setAllowedProcesses] = useState([]);
+  const [appSearch, setAppSearch] = useState("");
+  const [customAppInput, setCustomAppInput] = useState("");
 
   const [cloudProvider, setCloudProvider] = useState("gemini");
   const [cloudBaseUrl, setCloudBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai/");
@@ -128,10 +134,11 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
 
     async function fetchSettings() {
       try {
-        const [settingsResult, serversResult, profilesResult] = await Promise.allSettled([
+        const [settingsResult, serversResult, profilesResult, appsResult] = await Promise.allSettled([
           fetch("http://localhost:3000/api/settings"),
           fetch("http://localhost:3000/api/mcp/servers"),
           fetch("http://localhost:3000/api/browser/profiles"),
+          fetch("http://localhost:3000/api/apps/installed"),
         ]);
 
         if (settingsResult.status === "fulfilled" && settingsResult.value.ok) {
@@ -150,6 +157,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
             setCloudModel(cloud.model || "gemini-2.5-flash");
             setCloudApiKey(cloud.api_key || "");
             setGithubToken(data.github_token || "");
+            setAllowedProcesses(Array.isArray(data.allowed_processes) ? data.allowed_processes : []);
           }
         } else if (isMounted) {
           setErrorMessage("Failed to load settings. Verify backend server is active.");
@@ -166,6 +174,16 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
           const pData = await profilesResult.value.json();
           if (isMounted) {
             setChromeProfiles(pData.profiles || []);
+          }
+        }
+
+        if (appsResult.status === "fulfilled" && appsResult.value.ok) {
+          const aData = await appsResult.value.json();
+          if (isMounted) {
+            setInstalledApps(aData.installed || []);
+            if (Array.isArray(aData.allowed)) {
+              setAllowedProcesses(aData.allowed);
+            }
           }
         }
       } catch (err) {
@@ -344,6 +362,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
         browser_headless: browserHeadless,
         browser_profile_mode: browserProfileMode,
         browser_profile_name: browserProfileName,
+        allowed_processes: allowedProcesses,
         cloud: {
           provider: cloudProvider,
           base_url: cloudBaseUrl.trim(),
@@ -1060,6 +1079,48 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                     Attaches to a running Chrome instance with remote debugging enabled.
                   </p>
                 )}
+
+                <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-zinc-400">Verify automation browser &amp; open test page</span>
+                    <button
+                      type="button"
+                      disabled={verifyingBrowser}
+                      onClick={async () => {
+                        setVerifyingBrowser(true);
+                        setBrowserVerifyStatus(null);
+                        try {
+                          const r = await fetch("http://localhost:3000/api/browser/verify", { method: "POST" });
+                          const d = await r.json();
+                          setBrowserVerifyStatus({
+                            ok: r.ok && d.status === "ok",
+                            text: d.status === "ok"
+                              ? `Verified (${d.agent_browser_found ? "agent-browser" : "Playwright fallback"}). Opened example.com.`
+                              : (d.detail || "Browser verification failed."),
+                          });
+                        } catch (err) {
+                          setBrowserVerifyStatus({ ok: false, text: `Verify failed: ${err.message}` });
+                        } finally {
+                          setVerifyingBrowser(false);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#FF5A5F] hover:bg-[#FF454A] text-white text-[11px] font-medium transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                    >
+                      {verifyingBrowser ? "Opening..." : "Open & Verify Browser"}
+                    </button>
+                  </div>
+                  {browserVerifyStatus && (
+                    <div
+                      className={`p-2 rounded-lg text-[10px] font-mono ${
+                        browserVerifyStatus.ok
+                          ? "bg-emerald-950/40 border border-emerald-800/80 text-emerald-200"
+                          : "bg-red-950/40 border border-red-800/80 text-red-200"
+                      }`}
+                    >
+                      {browserVerifyStatus.text}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1163,6 +1224,88 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                   </div>
                 )}
               </div>
+
+              <div className="p-3.5 bg-[#141417] border border-zinc-800/90 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold text-zinc-100">Allowed Applications</h3>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">
+                      Select installed apps Dot is permitted to launch
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-400">
+                    {allowedProcesses.length} allowed
+                  </span>
+                </div>
+
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={appSearch}
+                    onChange={(e) => setAppSearch(e.target.value)}
+                    placeholder="Filter installed apps..."
+                    className="flex-1 bg-[#101013] border border-zinc-700/80 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-[#FF5A5F]"
+                  />
+                  <input
+                    type="text"
+                    value={customAppInput}
+                    onChange={(e) => setCustomAppInput(e.target.value)}
+                    placeholder="Add exe..."
+                    className="w-28 bg-[#101013] border border-zinc-700/80 rounded-lg px-2 py-1.5 text-xs text-zinc-100 font-mono outline-none focus:border-[#FF5A5F]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = customAppInput.trim().toLowerCase();
+                      if (!val) return;
+                      const exe = val.endsWith(".exe") ? val : `${val}.exe`;
+                      if (!allowedProcesses.includes(exe)) {
+                        setAllowedProcesses([...allowedProcesses, exe]);
+                      }
+                      setCustomAppInput("");
+                    }}
+                    className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-lg text-[11px] font-medium cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                  {installedApps
+                    .filter((a) => {
+                      const q = appSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return a.name.toLowerCase().includes(q) || a.exe.toLowerCase().includes(q);
+                    })
+                    .slice(0, 60)
+                    .map((app) => {
+                      const checked = allowedProcesses.includes(app.exe);
+                      return (
+                        <label
+                          key={app.exe}
+                          className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#101013] border border-zinc-800/80 hover:border-zinc-700 cursor-pointer text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setAllowedProcesses(
+                                  checked
+                                    ? allowedProcesses.filter((p) => p !== app.exe)
+                                    : [...allowedProcesses, app.exe]
+                                );
+                              }}
+                              className="accent-[#FF5A5F]"
+                            />
+                            <span className="text-zinc-200 truncate">{app.name}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-zinc-500 ml-2 shrink-0">{app.exe}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1174,7 +1317,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                   <div>
                     <h3 className="text-xs font-semibold text-zinc-100">Application Updates</h3>
                     <p className="text-[10px] text-zinc-400 mt-0.5">
-                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "3.0.0"}</span>
+                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "3.0.1"}</span>
                     </p>
                   </div>
                   <button

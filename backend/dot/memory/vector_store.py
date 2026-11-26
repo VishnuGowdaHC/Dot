@@ -30,7 +30,8 @@ def detect_service_hints(query: str) -> list[str]:
     browser_keywords = [
         "search", "google", "bing", "look up", "find online", "research",
         "browse", "browser", "website", "webpage", "web", "site", "tab", "link",
-        "url", "http://", "https://", "wikipedia", "youtube", "video", "article"
+        "url", "http://", "https://", "wikipedia", "youtube", "video", "article",
+        "go to", "visit", "open site"
     ]
     if any(k in clean for k in browser_keywords):
         hints.append("browser")
@@ -205,7 +206,7 @@ def get_speculative_tools(query: str, k: int = 3, distance_threshold: float = 1.
         if any(k in clean for k in ["app", "window", "program", "open", "start"]):
             add_tool(get_tool_by_name("os_manage_process"))
 
-    if any(keyword in clean for keyword in ["http://", "https://", "wikipedia", "url", "navigate", "website"]):
+    if any(keyword in clean for keyword in ["http://", "https://", "wikipedia", "url", "navigate", "website", "go to", "visit", "open site"]):
         add_tool(get_tool_by_name("browser_navigate"))
 
     # When multiple service domains match, retrieve vector candidates per service.

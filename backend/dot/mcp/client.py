@@ -506,6 +506,28 @@ async def execute_mcp_tool(active_client: Client, tool_service: str, tool_name: 
                 "detail": None,
                 "error": "Browser connection reset. The background browser session has restarted. Please retry your request."
             }
+        elif (tool_service == "browser" or resolved_name.startswith("agent_browser_")) and any(
+            m in err_msg.lower() for m in ("unknown tool", "not found", "does not exist")
+        ):
+            import dot.automation.browser as browser_mod
+            if resolved_name == "agent_browser_open":
+                return await browser_mod.navigate(url=str(call_args.get("url", "")))
+            if resolved_name == "agent_browser_snapshot":
+                return await browser_mod.snapshot()
+            if resolved_name == "agent_browser_click":
+                return await browser_mod.click(selector=call_args.get("selector"), text=call_args.get("text"))
+            if resolved_name == "agent_browser_fill":
+                return await browser_mod.fill(selector=call_args.get("selector"), text=str(call_args.get("text", "")))
+            if resolved_name == "agent_browser_read":
+                return await browser_mod.extract_text(url=call_args.get("url"))
+            if resolved_name == "agent_browser_close":
+                return await browser_mod.close_browser()
+            if resolved_name == "agent_browser_press":
+                page = await browser_mod._ensure_browser()
+                key_val = str(call_args.get("key") or "Enter")
+                await page.keyboard.press(key_val)
+                return {"success": True, "detail": f"Pressed key '{key_val}' in Playwright fallback browser."}
+            raise RuntimeError(f"Tool '{tool_name}' failed to execute on server '{tool_service}': {last_error}")
         else:
             raise RuntimeError(f"Tool '{tool_name}' failed to execute on server '{tool_service}': {last_error}")
 

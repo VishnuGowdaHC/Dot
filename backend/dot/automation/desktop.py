@@ -76,6 +76,8 @@ def os_manage_process(action: str, process_name: Optional[str] = "") -> str:
         action (str): The operation to perform. Must be 'list', 'kill', or 'start'.
         process_name (str, optional): The name of the executable (e.g., 'chrome.exe'). Required for 'kill' and 'start'.
     """
+    global ALLOWED_PROCESSES
+    ALLOWED_PROCESSES = load_allowed_processes()
     action = action.lower() if action else ""
     process_name = process_name.lower() if process_name else ""
 

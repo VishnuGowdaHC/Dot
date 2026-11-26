@@ -75,3 +75,62 @@ async def routeAppOpener(text: str):
     webbrowser.open(url)
     return "Task Executed"
 
+
+def list_installed_apps() -> list[dict]:
+    """Lists installed Windows applications and executable names for permission selection."""
+    import os
+    from pathlib import Path
+
+    apps_by_exe: dict[str, str] = {}
+
+    # 1. Read Windows App Paths registry for exact .exe names.
+    try:
+        import winreg
+        for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                key = winreg.OpenKey(root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths")
+                idx = 0
+                while True:
+                    try:
+                        sub_name = winreg.EnumKey(key, idx)
+                        idx += 1
+                        if sub_name.lower().endswith(".exe"):
+                            exe_lower = sub_name.lower()
+                            label = Path(sub_name).stem.replace("_", " ").replace("-", " ").title()
+                            apps_by_exe.setdefault(exe_lower, label)
+                    except OSError:
+                        break
+                winreg.CloseKey(key)
+            except OSError:
+                continue
+    except Exception:
+        pass
+
+    # 2. Include AppOpener discovered application names.
+    try:
+        from AppOpener import give_appnames
+        for raw_name in give_appnames() or []:
+            clean = str(raw_name or "").strip()
+            if not clean:
+                continue
+            exe_key = f"{clean.lower().replace(' ', '')}.exe" if not clean.lower().endswith(".exe") else clean.lower()
+            apps_by_exe.setdefault(exe_key, clean.title())
+    except Exception:
+        pass
+
+    # 3. Ensure common built-in Windows utilities are selectable.
+    for exe_name, label in [
+        ("notepad.exe", "Notepad"),
+        ("calc.exe", "Calculator"),
+        ("mspaint.exe", "Paint"),
+        ("explorer.exe", "File Explorer"),
+        ("cmd.exe", "Command Prompt"),
+        ("powershell.exe", "PowerShell"),
+    ]:
+        apps_by_exe.setdefault(exe_name, label)
+
+    return [
+        {"exe": exe, "name": label}
+        for exe, label in sorted(apps_by_exe.items(), key=lambda x: x[1].lower())
+    ]
+

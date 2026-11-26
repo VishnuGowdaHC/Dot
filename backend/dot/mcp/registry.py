@@ -50,14 +50,18 @@ def load_server_config() -> dict:
             server_cfg["command"] = active_py
         elif not os.path.isabs(cmd):
             cand = os.path.join(base_dir, cmd)
+            bin_cand = os.path.join(base_dir, "dot", "mcp", "bin", os.path.basename(cmd))
             if os.path.exists(cand):
                 server_cfg["command"] = cand
+            elif os.path.exists(bin_cand):
+                server_cfg["command"] = bin_cand
             elif shutil.which(cmd):
                 server_cfg["command"] = shutil.which(cmd)
             else:
-                # Omit missing server executable to prevent startup delay
+                print(f"[MCP Warning] Executable for '{server_name}' not found: {cmd}")
                 continue
         elif not os.path.exists(cmd) and not shutil.which(cmd):
+            print(f"[MCP Warning] Executable for '{server_name}' not found: {cmd}")
             continue
 
         if "cwd" not in server_cfg:
@@ -251,6 +255,25 @@ async def sync_registry(active_client=None):
                             tool_name = tool_name[len("os_tools_"):]
                             t["toolName"] = tool_name
                     all_tools.append(t)
+
+    # Ensure core browser schemas exist even if agent-browser.exe failed to mount.
+    existing_names = {t.get("toolName") for t in all_tools}
+    fallback_browser_schemas = {
+        "browser_navigate": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
+        "browser_read": {"type": "object", "properties": {"url": {"type": "string"}}, "required": []},
+        "browser_snapshot": {"type": "object", "properties": {}, "required": []},
+        "browser_click": {"type": "object", "properties": {"selector": {"type": "string"}, "text": {"type": "string"}}, "required": []},
+        "browser_fill": {"type": "object", "properties": {"selector": {"type": "string"}, "text": {"type": "string"}}, "required": ["selector", "text"]},
+        "browser_press": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+    }
+    for fb_name, fb_schema in fallback_browser_schemas.items():
+        if fb_name not in existing_names:
+            all_tools.append({
+                "service": "browser",
+                "toolName": fb_name,
+                "description": BROWSER_TOOL_DESCRIPTIONS.get(fb_name, fb_name),
+                "inputSchema": fb_schema,
+            })
 
     # Register preserved native fast-path tools
     all_tools.extend(PRESERVED_BROWSER_TOOLS)

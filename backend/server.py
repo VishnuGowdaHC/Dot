@@ -224,6 +224,7 @@ async def get_settings():
         "backends": cfg.get("backends", {}),
         "github_token": gh_token,
         "allowed_workspace": get_allowed_workspace(),
+        "allowed_processes": cfg.get("allowed_processes", []),
     }
 
 
@@ -245,6 +246,10 @@ async def update_settings(request: Request):
         active["browser_profile_mode"] = str(payload["browser_profile_mode"]).strip()
     if "browser_profile_name" in payload and payload["browser_profile_name"]:
         active["browser_profile_name"] = str(payload["browser_profile_name"]).strip()
+    if "allowed_processes" in payload and isinstance(payload["allowed_processes"], list):
+        cfg["allowed_processes"] = sorted({
+            str(p).strip().lower() for p in payload["allowed_processes"] if str(p).strip()
+        })
     if "cloud" in payload and isinstance(payload["cloud"], dict):
         for k, v in payload["cloud"].items():
             cloud[k] = v
@@ -831,6 +836,53 @@ async def open_browser_for_login():
     if not ok:
         return JSONResponse(status_code=500, content={"status": "error", "message": "Google Chrome executable not found or port 9222 failed to open."})
     return {"status": "ok", "cdp_port": 9222}
+
+
+@app.post("/api/browser/verify")
+async def verify_browser_path():
+    """Verifies browser executable availability and opens a test page."""
+    from dot.config.paths import MCP_BIN_DIR
+    from dot.automation.browser import find_chrome_executable, navigate
+    from dot.mcp.client import execute_mcp_tool
+
+    agent_exe = MCP_BIN_DIR / "agent-browser.exe"
+    chrome_exe = find_chrome_executable()
+    mcp_client = app_state.get("mcp_client")
+
+    try:
+        if mcp_client is not None:
+            res = await execute_mcp_tool(mcp_client, "browser", "browser_navigate", {"url": "https://example.com"})
+        else:
+            res = await navigate("https://example.com")
+        ok = not (isinstance(res, dict) and res.get("success") is False)
+        return {
+            "status": "ok" if ok else "error",
+            "agent_browser_found": agent_exe.exists(),
+            "agent_browser_path": str(agent_exe),
+            "chrome_found": bool(chrome_exe),
+            "chrome_path": chrome_exe or "",
+            "detail": (res.get("error") or res.get("detail") or "Browser opened https://example.com.") if isinstance(res, dict) else str(res),
+        }
+    except Exception as err:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "agent_browser_found": agent_exe.exists(),
+                "chrome_found": bool(chrome_exe),
+                "detail": str(err),
+            },
+        )
+
+
+@app.get("/api/apps/installed")
+async def get_installed_apps():
+    """Returns installed Windows applications and allowed process whitelist."""
+    from dot.automation.app_opener import list_installed_apps
+    apps = await asyncio.to_thread(list_installed_apps)
+    cfg = load_config()
+    allowed = [str(p).strip().lower() for p in cfg.get("allowed_processes", []) if str(p).strip()]
+    return {"installed": apps, "allowed": allowed}
 
 
 @app.get("/api/mcp/servers")

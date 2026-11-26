@@ -20,7 +20,7 @@ from dot.config.paths import FRONTEND_DIR
 
 GITHUB_REPO = "VishnuGowdaHC/Dot"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-DEFAULT_VERSION = "3.0.0"
+DEFAULT_VERSION = "3.0.1"
 
 UPDATE_PROGRESS: Dict[str, Any] = {
     "stage": "idle",
