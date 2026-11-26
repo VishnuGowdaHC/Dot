@@ -628,21 +628,47 @@ async def check_update_endpoint():
     return await check_for_updates()
 
 
+@app.get("/api/update/status")
+async def get_update_status_endpoint():
+    """Returns live download and installation progress for the active update."""
+    from dot.core.updater import get_update_progress
+    return get_update_progress()
+
+
 @app.post("/api/update/install")
 async def install_update_endpoint(request: Request):
-    """Downloads, verifies, and launches the latest Dot installer."""
-    from dot.core.updater import download_and_install_update
+    """Starts update download, verification, and installation in the background."""
+    from dot.core.updater import download_and_install_update, get_update_progress
     payload = await request.json()
     download_url = str(payload.get("download_url", "")).strip()
     sha256_url = payload.get("sha256_url")
-    result = await download_and_install_update(download_url, sha256_url)
-    if result.get("status") == "installing":
-        # Schedule clean process exit after returning HTTP response so installer can replace files.
-        async def delayed_exit():
-            await asyncio.sleep(1.0)
+    expected_size = int(payload.get("asset_size") or 0)
+
+    current = get_update_progress()
+    if current.get("stage") in ("downloading", "verifying", "launching"):
+        return {"status": "started", "progress": current}
+
+    async def _broadcast_progress(snap: dict) -> None:
+        ws = app_state.get("active_websocket")
+        if ws:
+            try:
+                await ws.send_text(json.dumps({"type": "update_progress", "data": snap}))
+            except Exception:
+                pass
+
+    async def _run_update() -> None:
+        result = await download_and_install_update(
+            download_url,
+            sha256_url,
+            expected_size=expected_size,
+            on_progress=_broadcast_progress,
+        )
+        if result.get("status") == "installing":
+            await asyncio.sleep(1.5)
             os._exit(0)
-        asyncio.create_task(delayed_exit())
-    return result
+
+    asyncio.create_task(_run_update())
+    return {"status": "started"}
 
 
 @app.post("/api/logs/open")

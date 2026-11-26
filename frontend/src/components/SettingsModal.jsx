@@ -59,6 +59,8 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [installingUpdate, setInstallingUpdate] = useState(false);
   const [updateMessage, setUpdateMessage] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(null);
+  const updatePollRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && initialTab) {
@@ -112,6 +114,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
       if (engineRefreshTimerRef.current) clearTimeout(engineRefreshTimerRef.current);
+      if (updatePollRef.current) clearInterval(updatePollRef.current);
     };
   }, []);
 
@@ -433,10 +436,27 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
     }
   };
 
+  const stopUpdatePolling = () => {
+    if (updatePollRef.current) {
+      clearInterval(updatePollRef.current);
+      updatePollRef.current = null;
+    }
+  };
+
   const handleInstallUpdate = async () => {
     if (!updateInfo?.download_url) return;
     setInstallingUpdate(true);
-    setUpdateMessage({ type: "info", text: "Downloading and verifying installer..." });
+    setUpdateMessage(null);
+    setUpdateProgress({
+      stage: "downloading",
+      percent: 0,
+      downloaded_bytes: 0,
+      total_bytes: updateInfo.asset_size || 0,
+      speed_bps: 0,
+      detail: "Starting update download...",
+      error: null,
+    });
+
     try {
       const res = await fetch("http://localhost:3000/api/update/install", {
         method: "POST",
@@ -444,16 +464,40 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
         body: JSON.stringify({
           download_url: updateInfo.download_url,
           sha256_url: updateInfo.sha256_url || null,
+          asset_size: updateInfo.asset_size || 0,
         }),
       });
       const data = await res.json();
-      if (data.status === "installing") {
-        setUpdateMessage({ type: "success", text: data.message || "Installer started. Restarting..." });
-      } else {
+      if (data.status === "error") {
         setUpdateMessage({ type: "error", text: data.message || "Update install failed." });
         setInstallingUpdate(false);
+        return;
       }
+
+      stopUpdatePolling();
+      updatePollRef.current = setInterval(async () => {
+        try {
+          const stRes = await fetch("http://localhost:3000/api/update/status");
+          if (!stRes.ok) return;
+          const st = await stRes.json();
+          setUpdateProgress(st);
+          if (st.stage === "installing") {
+            stopUpdatePolling();
+            setUpdateMessage({
+              type: "success",
+              text: st.detail || "Installer running. Dot will close and restart automatically.",
+            });
+          } else if (st.stage === "error") {
+            stopUpdatePolling();
+            setUpdateMessage({ type: "error", text: st.error || st.detail || "Update failed." });
+            setInstallingUpdate(false);
+          }
+        } catch {
+          // Backend may exit once installer takes over.
+        }
+      }, 300);
     } catch (err) {
+      stopUpdatePolling();
       setUpdateMessage({ type: "error", text: `Install error: ${err.message}` });
       setInstallingUpdate(false);
     }
@@ -1130,7 +1174,7 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                   <div>
                     <h3 className="text-xs font-semibold text-zinc-100">Application Updates</h3>
                     <p className="text-[10px] text-zinc-400 mt-0.5">
-                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "2.1.1"}</span>
+                      Installed version: <span className="text-zinc-200 font-mono">v{updateInfo?.current_version || "3.0.0"}</span>
                     </p>
                   </div>
                   <button
@@ -1160,16 +1204,70 @@ export default function SettingsModal({ isOpen, onClose, onSettingsSaved, initia
                         {updateInfo.release_notes}
                       </div>
                     )}
-                    {updateInfo.download_url && (
+                    {updateInfo.download_url ? (
                       <button
                         type="button"
                         onClick={handleInstallUpdate}
                         disabled={installingUpdate}
                         className="w-full py-1.5 bg-[#FF5A5F] hover:bg-[#FF454A] text-white rounded-lg text-[11px] font-semibold transition-all disabled:opacity-50 cursor-pointer"
                       >
-                        {installingUpdate ? "Downloading & Installing..." : "Download & Install Update"}
+                        {installingUpdate ? "Updating..." : "Download & Install Update"}
                       </button>
+                    ) : (
+                      updateInfo.html_url && (
+                        <a
+                          href={updateInfo.html_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block w-full text-center py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-lg text-[11px] font-medium transition-colors"
+                        >
+                          Open Release Page
+                        </a>
+                      )
                     )}
+                  </div>
+                )}
+
+                {updateProgress && updateProgress.stage !== "idle" && (
+                  <div className="p-2.5 bg-[#0e0e11] border border-zinc-800 rounded-lg space-y-2">
+                    <div className="grid grid-cols-4 gap-1 text-[9.5px] font-mono">
+                      {[
+                        { key: "downloading", label: "1. Download" },
+                        { key: "verifying", label: "2. Verify" },
+                        { key: "launching", label: "3. Launch" },
+                        { key: "installing", label: "4. Restart" },
+                      ].map((step, idx, arr) => {
+                        const order = arr.findIndex((s) => s.key === updateProgress.stage);
+                        const active = step.key === updateProgress.stage;
+                        const done = order > idx || updateProgress.stage === "installing";
+                        return (
+                          <div
+                            key={step.key}
+                            className={`px-1.5 py-1 rounded text-center border ${
+                              active
+                                ? "bg-[#FF5A5F]/15 border-[#FF5A5F]/60 text-white font-semibold"
+                                : done
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                                : "bg-zinc-900/60 border-zinc-800 text-zinc-500"
+                            }`}
+                          >
+                            {step.label}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#FF5A5F] transition-all duration-200"
+                        style={{ width: `${Math.max(0, Math.min(100, updateProgress.percent || 0))}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                      <span className="truncate pr-2 text-zinc-200">{updateProgress.detail}</span>
+                      <span className="shrink-0 text-zinc-300">{updateProgress.percent || 0}%</span>
+                    </div>
                   </div>
                 )}
 

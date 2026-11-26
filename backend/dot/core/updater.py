@@ -10,8 +10,9 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 import httpx
 
@@ -19,7 +20,37 @@ from dot.config.paths import FRONTEND_DIR
 
 GITHUB_REPO = "VishnuGowdaHC/Dot"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-DEFAULT_VERSION = "2.1.1"
+DEFAULT_VERSION = "3.0.0"
+
+UPDATE_PROGRESS: Dict[str, Any] = {
+    "stage": "idle",
+    "percent": 0,
+    "downloaded_bytes": 0,
+    "total_bytes": 0,
+    "speed_bps": 0.0,
+    "detail": "",
+    "error": None,
+}
+
+
+def get_update_progress() -> Dict[str, Any]:
+    """Returns a snapshot of the current update download and installation progress."""
+    return dict(UPDATE_PROGRESS)
+
+
+async def _set_progress(
+    on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Updates the shared progress state and invokes an optional async callback."""
+    UPDATE_PROGRESS.update(kwargs)
+    snap = get_update_progress()
+    if on_progress:
+        try:
+            await on_progress(snap)
+        except Exception:
+            pass
+    return snap
 
 
 def get_current_version() -> str:
@@ -147,57 +178,109 @@ def verify_sha256_file(file_path: Path, expected_content: str) -> bool:
 async def download_and_install_update(
     download_url: str,
     sha256_url: Optional[str] = None,
+    expected_size: int = 0,
+    on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> Dict[str, Any]:
     """Downloads the installer, verifies its checksum, and starts the update."""
     if not download_url or not download_url.startswith("https://github.com/"):
+        await _set_progress(on_progress, stage="error", percent=0, detail="Invalid update download URL.", error="Invalid update download URL.")
         return {"status": "error", "message": "Invalid update download URL."}
 
     update_dir = Path(tempfile.gettempdir()) / "DotUpdate"
     update_dir.mkdir(parents=True, exist_ok=True)
     installer_path = update_dir / "Dot-Setup-x64.exe"
-
     headers = {"User-Agent": f"Dot-Updater/{get_current_version()}"}
+
+    await _set_progress(
+        on_progress,
+        stage="downloading",
+        percent=0,
+        downloaded_bytes=0,
+        total_bytes=int(expected_size or 0),
+        speed_bps=0.0,
+        detail="Connecting to GitHub Releases...",
+        error=None,
+    )
 
     try:
         async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
             async with client.stream("GET", download_url, headers=headers) as resp:
                 resp.raise_for_status()
+                total_bytes = int(resp.headers.get("content-length") or expected_size or 0)
+                downloaded = 0
+                started_at = time.monotonic()
+                last_emit = 0.0
+
                 with open(installer_path, "wb") as f:
                     async for chunk in resp.aiter_bytes(chunk_size=65536):
-                        if chunk:
-                            f.write(chunk)
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        now = time.monotonic()
+                        if now - last_emit >= 0.15 or (total_bytes > 0 and downloaded >= total_bytes):
+                            elapsed = max(now - started_at, 0.01)
+                            speed_bps = downloaded / elapsed
+                            pct = min(99, int((downloaded / total_bytes) * 100)) if total_bytes > 0 else 0
+                            dl_mb = downloaded / (1024 * 1024)
+                            tot_mb = total_bytes / (1024 * 1024)
+                            spd_mb = speed_bps / (1024 * 1024)
+                            detail = (
+                                f"Downloading installer ({dl_mb:.1f} / {tot_mb:.1f} MB at {spd_mb:.1f} MB/s)"
+                                if total_bytes > 0
+                                else f"Downloading installer ({dl_mb:.1f} MB at {spd_mb:.1f} MB/s)"
+                            )
+                            await _set_progress(
+                                on_progress,
+                                stage="downloading",
+                                percent=pct,
+                                downloaded_bytes=downloaded,
+                                total_bytes=total_bytes,
+                                speed_bps=speed_bps,
+                                detail=detail,
+                                error=None,
+                            )
+                            last_emit = now
 
             if sha256_url and sha256_url.startswith("https://github.com/"):
+                await _set_progress(
+                    on_progress,
+                    stage="verifying",
+                    percent=100,
+                    speed_bps=0.0,
+                    detail="Verifying SHA-256 installer checksum...",
+                )
                 sha_resp = await client.get(sha256_url, headers=headers)
                 if sha_resp.status_code == 200:
-                    valid = await asyncio.to_thread(
-                        verify_sha256_file, installer_path, sha_resp.text
-                    )
+                    valid = await asyncio.to_thread(verify_sha256_file, installer_path, sha_resp.text)
                     if not valid:
                         installer_path.unlink(missing_ok=True)
-                        return {
-                            "status": "error",
-                            "message": "Checksum verification failed for downloaded installer.",
-                        }
+                        msg = "Checksum verification failed for downloaded installer."
+                        await _set_progress(on_progress, stage="error", detail=msg, error=msg)
+                        return {"status": "error", "message": msg}
     except Exception as err:
-        return {"status": "error", "message": f"Update download failed: {err}"}
+        msg = f"Update download failed: {err}"
+        await _set_progress(on_progress, stage="error", detail=msg, error=msg)
+        return {"status": "error", "message": msg}
 
+    await _set_progress(
+        on_progress,
+        stage="launching",
+        percent=100,
+        speed_bps=0.0,
+        detail="Starting silent installer...",
+    )
     try:
         subprocess.Popen(
-            [
-                str(installer_path),
-                "/SILENT",
-                "/CLOSEAPPLICATIONS",
-                "/RESTARTAPPLICATIONS",
-            ],
+            [str(installer_path), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
             cwd=str(update_dir),
             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0x00000008),
         )
     except Exception as err:
-        return {"status": "error", "message": f"Failed to start installer: {err}"}
+        msg = f"Failed to start installer: {err}"
+        await _set_progress(on_progress, stage="error", detail=msg, error=msg)
+        return {"status": "error", "message": msg}
 
-    return {
-        "status": "installing",
-        "message": "Installer started. Dot will close and restart after the update.",
-        "installer_path": str(installer_path),
-    }
+    final_msg = "Installer running. Dot will close and restart automatically."
+    await _set_progress(on_progress, stage="installing", percent=100, detail=final_msg, error=None)
+    return {"status": "installing", "message": final_msg, "installer_path": str(installer_path)}
