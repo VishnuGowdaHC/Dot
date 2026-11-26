@@ -2,7 +2,7 @@
 ; Generates a single-file Windows installer for Dot.
 
 #define MyAppName "Dot"
-#define MyAppVersion "2.1.1"
+#define MyAppVersion "3.0.2"
 #define MyAppPublisher "Dot"
 #define MyAppURL "https://github.com/VishnuGowdaHC/Dot"
 #define MyAppExeName "Dot.exe"
@@ -27,7 +27,7 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
-RestartApplications=no
+RestartApplications=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -49,4 +49,14 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\backend\__pycache__"
 Type: filesandordirs; Name: "{app}\runtime\__pycache__"
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+  Exec('taskkill.exe', '/F /IM Dot.exe /IM dot-win32_x64.exe /IM llama-server.exe /IM agent-browser.exe /IM github-mcp-server.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+end;
 

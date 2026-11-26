@@ -16,11 +16,11 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 import httpx
 
-from dot.config.paths import FRONTEND_DIR
+from dot.config.paths import FRONTEND_DIR, ROOT_DIR
 
 GITHUB_REPO = "VishnuGowdaHC/Dot"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-DEFAULT_VERSION = "3.0.1"
+DEFAULT_VERSION = "3.0.2"
 
 UPDATE_PROGRESS: Dict[str, Any] = {
     "stage": "idle",
@@ -175,6 +175,26 @@ def verify_sha256_file(file_path: Path, expected_content: str) -> bool:
     return hasher.hexdigest().lower() == expected_hash
 
 
+def write_update_launcher_script(installer_path: Path, install_root: Path) -> Path:
+    """Writes a detached Windows script that closes locked Dot processes before running Setup."""
+    script_path = installer_path.parent / "run_update.cmd"
+    root_escaped = str(install_root).replace("'", "''")
+    script_content = (
+        "@echo off\r\n"
+        "timeout /t 2 /nobreak >nul\r\n"
+        "taskkill /F /T /IM Dot.exe >nul 2>&1\r\n"
+        "taskkill /F /T /IM dot-win32_x64.exe >nul 2>&1\r\n"
+        "taskkill /F /T /IM llama-server.exe >nul 2>&1\r\n"
+        "taskkill /F /T /IM agent-browser.exe >nul 2>&1\r\n"
+        "taskkill /F /T /IM github-mcp-server.exe >nul 2>&1\r\n"
+        f"powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process | Where-Object {{ ($_.Name -in @('python.exe','pythonw.exe')) -and ($_.ExecutablePath -like '{root_escaped}*' -or $_.CommandLine -like '*{root_escaped}*') }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}\" >nul 2>&1\r\n"
+        "timeout /t 1 /nobreak >nul\r\n"
+        f"start \"\" \"{installer_path}\" /SILENT /FORCECLOSEAPPLICATIONS /RESTARTAPPLICATIONS\r\n"
+    )
+    script_path.write_text(script_content, encoding="utf-8")
+    return script_path
+
+
 async def download_and_install_update(
     download_url: str,
     sha256_url: Optional[str] = None,
@@ -271,10 +291,18 @@ async def download_and_install_update(
         detail="Starting silent installer...",
     )
     try:
+        launcher_script = write_update_launcher_script(installer_path, ROOT_DIR)
+        creation_flags = (
+            getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+            | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        )
         subprocess.Popen(
-            [str(installer_path), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+            ["cmd.exe", "/c", str(launcher_script)],
             cwd=str(update_dir),
-            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0x00000008),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creation_flags,
         )
     except Exception as err:
         msg = f"Failed to start installer: {err}"

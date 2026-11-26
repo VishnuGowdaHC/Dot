@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
   "applicationId": "ai.dot.assistant",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "defaultMode": "window",
   "port": 0,
   "documentRoot": "/dist/",

@@ -669,6 +669,10 @@ async def install_update_endpoint(request: Request):
             on_progress=_broadcast_progress,
         )
         if result.get("status") == "installing":
+            try:
+                await stop_engine()
+            except Exception:
+                pass
             await asyncio.sleep(1.5)
             os._exit(0)
 
